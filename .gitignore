@@ -1,0 +1,25 @@
+# Local brainstorming artifacts
+.superpowers/
+
+# IDE and operating system files
+.idea/
+.vscode/
+.DS_Store
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Backend build output
+backend/target/
+*.log
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
+# Local runtime data
+data/
+backups/
