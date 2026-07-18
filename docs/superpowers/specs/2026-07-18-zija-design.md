@@ -2,6 +2,7 @@
 
 - **状态：** 已完成产品与架构讨论，等待文档审阅
 - **日期：** 2026-07-18
+- **最后修订：** 2026-07-19
 - **首期形态：** 家庭私有部署的电脑端 Web 管理后台
 - **产品名称：** 中文“知家”，英文“zija”
 
@@ -11,7 +12,7 @@
 
 系统同时支持耐用品与消耗品。一个“物品”描述它是什么，一个“批次”描述某次购入或某件独立资产，一个“库存位”描述某批次在某个位置的当前数量，所有数量变化则由不可随意删除的库存流水记录。这个模型既能管理多批次牛奶、药品和清洁用品，也能管理数量为 1、带序列号的家电或数码设备。
 
-技术上采用 API 优先的模块化单体：后端使用 Java 25、Spring Boot 4.1.x 和 PostgreSQL；前端使用 Vue 3、TypeScript 与 Element Plus；通过 Docker Compose 在 NAS、家庭服务器或云主机上私有部署。首期只交付桌面 Web 后台，但 REST API、认证边界和 OpenAPI 合约为后续 Android、iOS 客户端保留稳定接入点。
+技术上采用 API 优先的模块化单体：后端使用 Java 25、Spring Boot 4.1.x、MyBatis、MyBatis-Plus 和 PostgreSQL；前端使用 Vue 3、TypeScript 与 Element Plus；通过 Docker Compose 在 NAS、家庭服务器或云主机上私有部署。首期只交付桌面 Web 后台，但 REST API、认证边界和 OpenAPI 合约为后续 Android、iOS 客户端保留稳定接入点。
 
 ## 2. 设计目标与原则
 
@@ -327,7 +328,8 @@ Docker Compose 包含反向代理、应用和 PostgreSQL 三个主要服务。�
 - Java 25；
 - Spring Boot 4.1.x；
 - Spring Web MVC、Spring Security、Bean Validation；
-- Spring Data JPA 处理事务聚合，`JdbcClient` 处理明确的报表和投影查询；
+- MyBatis 处理显式 SQL 映射，MyBatis-Plus 简化常规 CRUD、分页和乐观锁；
+- 使用 `com.baomidou:mybatis-plus-bom` 管理版本，以 `mybatis-plus-spring-boot4-starter` 集成 Spring Boot 4，并显式引入分页所需的 `mybatis-plus-jsqlparser`；
 - Spring Modulith 用于模块建模、边界验证和可靠的应用事件发布；
 - Flyway 管理数据库迁移；
 - Maven Wrapper 固定构建入口。
@@ -347,9 +349,27 @@ Docker Compose 包含反向代理、应用和 PostgreSQL 三个主要服务。�
 - Nginx；
 - 可选 SMTP。
 
-具体补丁版本在实施开始时固定到 Wrapper、锁文件和容器镜像标签中。[当前 Spring Boot 4.1 系统要求](https://github.com/spring-projects/spring-boot/blob/main/documentation/spring-boot-docs/src/docs/antora/modules/ROOT/pages/system-requirements.adoc)明确支持 Java 17 至 Java 26，因此 Java 25 位于支持范围内。
+具体补丁版本在实施开始时固定到 Wrapper、锁文件和容器镜像标签中。[当前 Spring Boot 4.1 系统要求](https://github.com/spring-projects/spring-boot/blob/main/documentation/spring-boot-docs/src/docs/antora/modules/ROOT/pages/system-requirements.adoc)明确支持 Java 17 至 Java 26，因此 Java 25 位于支持范围内。[MyBatis-Plus 官方变更记录](https://github.com/baomidou/mybatis-plus-doc/blob/master/src/content/docs/resources/changlog.md)显示 Spring Boot 4 Starter 自 3.5.13 起提供，3.5.14 起由 BOM 管理；当前实现基线采用 3.5.16 或同一受支持版本线中的更新维护版本。
 
-### 8.3 后端模块
+### 8.3 持久化策略
+
+MyBatis-Plus 是 MyBatis 的增强层，不替代对 SQL 和事务边界的显式设计。各模块按以下规则使用：
+
+- Spring Boot 4 Starter 已传递集成 MyBatis 和 `mybatis-spring`，项目不再叠加其他 MyBatis Spring Boot Starter，避免依赖版本冲突；
+- 单表新增、按主键查询、简单条件查询和普通更新使用 MyBatis-Plus `BaseMapper` 与 Lambda Wrapper；
+- 列表分页使用 `MybatisPlusInterceptor` 和 PostgreSQL 方言的 `PaginationInnerInterceptor`，分页插件在拦截器链中最后注册；
+- 物品、位置、提醒规则等元数据使用版本字段和 `OptimisticLockerInnerInterceptor` 防止覆盖式并发修改；
+- 库存扣减、移位和盘点不依赖通用乐观锁插件，使用自定义 Mapper XML 执行明确的 `SELECT ... FOR UPDATE`、条件更新和流水写入；
+- 流水汇总、临期报表、低库存报表和 CSV 导出等复杂查询使用自定义 Mapper 接口与 XML SQL，不把大型 SQL 拼接进 Java 业务代码；
+- 所有 Mapper 通过 Spring 管理并参与 `@Transactional` 事务，库存流水、库存位和事件发布登记必须在同一事务中提交；
+- MyBatis-Plus 的分页、乐观锁和字段自动填充插件需要对应的 PostgreSQL Testcontainers 集成测试；
+- 不启用全局逻辑删除。物品归档、成员停用和流水冲正均使用明确业务状态，审计敏感记录不得被通用删除能力隐藏；
+- Mapper、XML、数据库记录对象和 MyBatis-Plus 实体都位于所属模块的内部持久化包，不能作为跨模块公开类型；
+- 核心库存领域对象与持久化记录分离，Mapper 负责转换，避免数据库字段结构渗透到领域接口和 REST 合约。
+
+MyBatis-Plus 提供的代码生成器不作为运行时依赖。若实施阶段使用生成器，只生成初始 Mapper、记录对象和 XML 骨架，生成结果必须按模块边界审阅后纳入源码。
+
+### 8.4 后端模块
 
 | 模块 | 职责 | 允许依赖 |
 |---|---|---|
@@ -363,9 +383,9 @@ Docker Compose 包含反向代理、应用和 PostgreSQL 三个主要服务。�
 | `reporting` | 查询投影、报表、CSV 导入导出 | 订阅公开事件并调用稳定查询端口 |
 | `system` | 健康检查、审计、时钟、通用技术能力 | 无业务模块依赖 |
 
-模块采用按业务能力组织的包结构。外部模块只能使用被明确公开的接口、数据传输类型和领域事件，不能直接引用其他模块的实体或 Repository。自动化架构测试持续验证依赖方向。
+模块采用按业务能力组织的包结构。外部模块只能使用被明确公开的接口、数据传输类型和领域事件，不能直接引用其他模块的实体、Mapper 或 XML 映射。自动化架构测试持续验证依赖方向。
 
-### 8.4 写入数据流与一致性
+### 8.5 写入数据流与一致性
 
 ```mermaid
 sequenceDiagram
@@ -425,7 +445,7 @@ sequenceDiagram
 
 ### 11.2 并发库存操作
 
-- 库存写入在事务中锁定受影响库存位；
+- 库存写入通过自定义 MyBatis Mapper SQL 在事务中锁定受影响库存位；
 - 校验和扣减基于锁定后的最新数量；
 - 任何操作都不能造成负库存；
 - 幂等标识防止页面重复点击和网络重试造成重复流水；
@@ -446,7 +466,7 @@ sequenceDiagram
 
 - 领域单元测试：批次、计量精度、流水、负库存、冲正、临期和权限规则；
 - 模块边界测试：禁止跨模块引用内部包；
-- PostgreSQL 集成测试：使用 Testcontainers 验证迁移、约束、锁和查询；
+- PostgreSQL 集成测试：使用 Testcontainers 验证 Flyway 迁移、Mapper、XML SQL、分页、乐观锁、行锁和报表查询；
 - API 测试：认证、授权、CSRF、校验、并发、幂等和 Problem Details；
 - 事件测试：提醒与报表投影失败后可以重试且不会重复处理。
 
@@ -539,5 +559,6 @@ Web 首版稳定后，按以下顺序演进：
 - 首期提供 CSV 导入导出和完整备份恢复方案；
 - 首期只支持物品封面图片；
 - 技术架构采用 API 优先的模块化单体；
+- 后端持久化采用 MyBatis 与 MyBatis-Plus，复杂库存和报表 SQL 使用自定义 XML Mapper；
 - Web 使用服务端安全会话，移动端认证留到 App 阶段；
 - 首版按七个可独立验收的阶段交付。
