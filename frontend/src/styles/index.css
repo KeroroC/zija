@@ -1,0 +1,96 @@
+:root {
+  color: #20312c;
+  background: #f4f7f6;
+  font-family:
+    Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-width: 1024px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  color: #edf7f3;
+  background: #264f46;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  height: 64px;
+  padding: 18px 20px;
+}
+
+.brand-cn {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.brand-en {
+  color: #b9d8cd;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+
+.app-menu {
+  border-right: 0;
+  background: transparent;
+}
+
+.app-menu .el-menu-item {
+  color: #edf7f3;
+}
+
+.app-menu .el-menu-item.is-active {
+  color: #ffffff;
+  background: #397262;
+}
+
+.app-menu .el-menu-item.is-disabled {
+  color: #9bb8ae;
+  opacity: 1;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e1e8e5;
+  background: #ffffff;
+}
+
+.header-context {
+  color: #65756f;
+}
+
+.app-main {
+  padding: 24px;
+  background: #f4f7f6;
+}
+
+.app-main h1 {
+  margin-top: 0;
+}
+
+.status-hint {
+  color: #6d7e77;
+}
