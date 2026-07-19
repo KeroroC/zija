@@ -1,0 +1,108 @@
+package com.zija.system.internal;
+
+import com.zija.ZijaRequestIdFilter;
+import com.zija.ZijaSecurityConfiguration;
+import com.zija.system.SystemApi;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import static org.hamcrest.Matchers.matchesPattern;
+import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@Import({
+        ZijaSecurityConfiguration.class,
+        ZijaRequestIdFilter.class,
+        SystemExceptionHandler.class
+})
+class SystemControllerTest {
+
+    @Autowired
+    private MockMvc mvc;
+
+    @MockitoBean
+    private SystemApi systemApi;
+
+    @Test
+    void returnsPublicSystemInformation() throws Exception {
+        var installationId =
+                UUID.fromString("34bf30dd-d082-4e26-9dfe-8f30421f4772");
+        var databaseTime =
+                OffsetDateTime.parse("2026-07-19T12:00:00Z");
+        given(systemApi.current()).willReturn(new SystemApi.SystemSnapshot(
+                "zija",
+                "dev",
+                "UP",
+                installationId,
+                databaseTime
+        ));
+
+        mvc.perform(get("/api/v1/system/info"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(header().exists("X-Request-Id"))
+                .andExpect(jsonPath("$.application").value("zija"))
+                .andExpect(jsonPath("$.version").value("dev"))
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.installationId")
+                        .value(installationId.toString()))
+                .andExpect(jsonPath("$.databaseTime")
+                        .value("2026-07-19T12:00:00Z"));
+    }
+
+    @Test
+    void returnsProblemDetailsWithStableCodeAndRequestId() throws Exception {
+        given(systemApi.current())
+                .willThrow(new SystemStateUnavailableException(
+                        "installation missing"
+                ));
+
+        mvc.perform(get("/api/v1/system/info")
+                        .header("X-Request-Id", "request-123"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.title").value("System state unavailable"))
+                .andExpect(jsonPath("$.errorCode")
+                        .value("system_state_unavailable"))
+                .andExpect(jsonPath("$.requestId").value("request-123"));
+    }
+
+    @Test
+    void replacesUnsafeRequestIdBeforeWritingResponseHeaders() throws Exception {
+        given(systemApi.current()).willReturn(new SystemApi.SystemSnapshot(
+                "zija",
+                "dev",
+                "UP",
+                UUID.fromString("34bf30dd-d082-4e26-9dfe-8f30421f4772"),
+                OffsetDateTime.parse("2026-07-19T12:00:00Z")
+        ));
+
+        mvc.perform(get("/api/v1/system/info")
+                        .header("X-Request-Id", "unsafe request id"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "X-Request-Id",
+                        matchesPattern(
+                                "[0-9a-f]{8}-[0-9a-f]{4}-"
+                                        + "[0-9a-f]{4}-[0-9a-f]{4}-"
+                                        + "[0-9a-f]{12}"
+                        )
+                ));
+    }
+}
