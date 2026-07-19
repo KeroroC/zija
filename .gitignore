@@ -27,3 +27,6 @@ frontend/.vite/
 # Local runtime data
 data/
 backups/
+
+# Specs and plans
+docs/
