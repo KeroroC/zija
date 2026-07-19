@@ -1,5 +1,6 @@
 package com.zija;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -15,6 +16,8 @@ public class ZijaSecurityConfiguration {
             throws Exception {
         return http
                 .authorizeHttpRequests(authorize -> authorize
+                        .dispatcherTypeMatchers(DispatcherType.ERROR)
+                        .permitAll()
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/v1/system/info",

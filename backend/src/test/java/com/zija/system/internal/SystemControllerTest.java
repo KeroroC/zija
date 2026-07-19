@@ -3,6 +3,8 @@ package com.zija.system.internal;
 import com.zija.ZijaRequestIdFilter;
 import com.zija.ZijaSecurityConfiguration;
 import com.zija.system.SystemApi;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.RequestDispatcher;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,6 +13,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -23,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.flyway.enabled=false")
 @AutoConfigureMockMvc
 @Import({
         ZijaSecurityConfiguration.class,
@@ -104,5 +107,44 @@ class SystemControllerTest {
                                         + "[0-9a-f]{12}"
                         )
                 ));
+    }
+
+    @Test
+    void returnsStableProblemDetailsForDatabaseFailures() throws Exception {
+        given(systemApi.current()).willThrow(
+                new CannotCreateTransactionException("database unavailable")
+        );
+
+        mvc.perform(get("/api/v1/system/info")
+                        .header("X-Request-Id", "database-request-123"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.title")
+                        .value("System state unavailable"))
+                .andExpect(jsonPath("$.errorCode")
+                        .value("system_state_unavailable"))
+                .andExpect(jsonPath("$.requestId")
+                        .value("database-request-123"));
+    }
+
+    @Test
+    void permitsServletErrorDispatches() throws Exception {
+        mvc.perform(get("/error")
+                        .with(request -> {
+                            request.setDispatcherType(
+                                    DispatcherType.ERROR
+                            );
+                            return request;
+                        })
+                        .requestAttr(
+                                RequestDispatcher.ERROR_STATUS_CODE,
+                                500
+                        )
+                        .requestAttr(
+                                RequestDispatcher.ERROR_REQUEST_URI,
+                                "/api/v1/system/info"
+                        ))
+                .andExpect(status().isInternalServerError());
     }
 }
