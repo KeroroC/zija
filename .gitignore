@@ -1,5 +1,6 @@
 # Local brainstorming artifacts
 .superpowers/
+.worktrees/
 
 # IDE and operating system files
 .idea/
