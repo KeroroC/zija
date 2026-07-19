@@ -1,29 +1,29 @@
-# Zija Engineering Foundation Baseline Implementation Plan
+# Zija 工程基础基线实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **面向智能体执行者：** 必须使用子 Skill：通过 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐项实施本计划。各步骤使用复选框（`- [ ]`）语法跟踪进度。
 
-**Goal:** Create a clean, reproducible foundation for zija with a Java 25 modular Spring Boot backend, MyBatis-Plus and PostgreSQL persistence, a Vue 3 + Element Plus desktop shell, and verified local and container workflows.
+**目标：** 为 zija 建立整洁、可复现的工程基础，包括 Java 25 模块化 Spring Boot 后端、MyBatis-Plus 与 PostgreSQL 持久化、Vue 3 + Element Plus 桌面端外壳，以及经过验证的本地与容器工作流。
 
-**Architecture:** Keep backend and frontend as separate build units under one repository. The backend starts as a Spring Modulith modular monolith with one public system module and a real PostgreSQL-backed status API; the frontend consumes the versioned REST API through Nginx, while Docker Compose provides the deployment topology that later phases extend.
+**架构：** 在同一仓库中将后端和前端保持为独立构建单元。后端以 Spring Modulith 模块化单体起步，包含一个公开的 system 模块和由真实 PostgreSQL 支撑的状态 API；前端通过 Nginx 调用带版本的 REST API，Docker Compose 则提供供后续阶段扩展的部署拓扑。
 
-**Tech Stack:** Java 25, Maven 3.9.11 Wrapper, Spring Boot 4.1.0, Spring Modulith 2.0.5, MyBatis-Plus 3.5.16, Flyway, PostgreSQL 17, JUnit 5, AssertJ, Testcontainers, Vue 3.5, TypeScript 5.8, Vite 7, Element Plus 2.10, Vitest 3, Playwright 1.53, Node.js 24, Docker Compose, Nginx 1.28, GitHub Actions
+**技术栈：** Java 25、Maven 3.9.11 Wrapper、Spring Boot 4.1.0、Spring Modulith 2.0.5、MyBatis-Plus 3.5.16、Flyway、PostgreSQL 17、JUnit 5、AssertJ、Testcontainers、Vue 3.5、TypeScript 5.8、Vite 7、Element Plus 2.10、Vitest 3、Playwright 1.53、Node.js 24、Docker Compose、Nginx 1.28、GitHub Actions
 
 ---
 
-## Plan Scope
+## 计划范围
 
-This plan implements only delivery-roadmap Phase 1. It establishes infrastructure and one vertical system-status slice. It fixes the versioned URL, request ID, and Problem Details conventions; generated OpenAPI contracts begin in Phase 2 when authenticated business APIs exist. It does not implement household accounts, sessions, catalog data, locations, inventory movements, reminders, reports, CSV exchange, or business file uploads.
+本计划仅实施 delivery-roadmap 的阶段 1。它建立基础设施和一个贯穿各层的系统状态切片，并确定带版本 URL、request ID 和 Problem Details 约定；生成 OpenAPI 契约的工作从阶段 2 开始，届时将存在需要认证的业务 API。本计划不实现家庭账户、会话、目录数据、位置、库存流转、提醒、报表、CSV 交换或业务文件上传。
 
-## Prerequisites
+## 前置条件
 
-- JDK 25 is installed and selected by <code>java -version</code>.
-- A bootstrap Maven 3.9 installation is available once to generate the Maven Wrapper.
-- Node.js 24 and npm are installed.
-- Docker Engine with Docker Compose v2 is running.
-- <code>curl</code> is available for HTTP smoke checks.
-- Commands are executed from the repository root unless a step says otherwise.
+- 已安装 JDK 25，且 <code>java -version</code> 显示正在使用该版本。
+- 可临时使用一次 Maven 3.9 来生成 Maven Wrapper。
+- 已安装 Node.js 24 和 npm。
+- Docker Engine 与 Docker Compose v2 正在运行。
+- 可使用 <code>curl</code> 执行 HTTP 冒烟检查。
+- 除非步骤另有说明，否则所有命令均从仓库根目录执行。
 
-## Target File Map
+## 目标文件清单
 
 ~~~text
 .
@@ -107,16 +107,16 @@ This plan implements only delivery-roadmap Phase 1. It establishes infrastructur
     └── verify-layout.sh
 ~~~
 
-## Task 1: Establish Repository Conventions
+## 任务 1：建立仓库约定
 
-**Files:**
-- Create: <code>.editorconfig</code>
-- Create: <code>.gitattributes</code>
-- Create: <code>.env.example</code>
+**文件：**
+- 创建：<code>.editorconfig</code>
+- 创建：<code>.gitattributes</code>
+- 创建：<code>.env.example</code>
 
-- [ ] **Step 1: Add editor settings**
+- [ ] **步骤 1：添加编辑器设置**
 
-Create <code>.editorconfig</code>:
+创建 <code>.editorconfig</code>：
 
 ~~~ini
 root = true
@@ -139,9 +139,9 @@ indent_style = tab
 trim_trailing_whitespace = false
 ~~~
 
-- [ ] **Step 2: Normalize Git text files**
+- [ ] **步骤 2：统一 Git 文本文件规则**
 
-Create <code>.gitattributes</code>:
+创建 <code>.gitattributes</code>：
 
 ~~~gitattributes
 * text=auto eol=lf
@@ -153,9 +153,9 @@ Create <code>.gitattributes</code>:
 *.webp binary
 ~~~
 
-- [ ] **Step 3: Document local environment variables**
+- [ ] **步骤 3：记录本地环境变量**
 
-Create <code>.env.example</code>:
+创建 <code>.env.example</code>：
 
 ~~~dotenv
 ZIJA_POSTGRES_DB=zija
@@ -169,36 +169,36 @@ ZIJA_HTTP_PORT=8088
 ZIJA_POSTGRES_PORT=5432
 ~~~
 
-- [ ] **Step 4: Verify formatting**
+- [ ] **步骤 4：验证格式**
 
-Run:
+运行：
 
 ~~~bash
 git diff --check
 ~~~
 
-Expected: no output and exit status <code>0</code>.
+预期结果：无输出，退出状态为 <code>0</code>。
 
-- [ ] **Step 5: Commit repository conventions**
+- [ ] **步骤 5：提交仓库约定**
 
 ~~~bash
 git add .editorconfig .gitattributes .env.example
 git commit -m "chore: establish repository conventions"
 ~~~
 
-## Task 2: Bootstrap the Java 25 Spring Boot Build
+## 任务 2：初始化 Java 25 Spring Boot 构建
 
-**Files:**
-- Create: <code>backend/pom.xml</code>
-- Create: <code>backend/src/test/java/com/zija/ZijaApplicationTest.java</code>
-- Create: <code>backend/src/main/java/com/zija/ZijaApplication.java</code>
-- Generate: <code>backend/mvnw</code>
-- Generate: <code>backend/mvnw.cmd</code>
-- Generate: <code>backend/.mvn/wrapper/maven-wrapper.properties</code>
+**文件：**
+- 创建：<code>backend/pom.xml</code>
+- 创建：<code>backend/src/test/java/com/zija/ZijaApplicationTest.java</code>
+- 创建：<code>backend/src/main/java/com/zija/ZijaApplication.java</code>
+- 生成：<code>backend/mvnw</code>
+- 生成：<code>backend/mvnw.cmd</code>
+- 生成：<code>backend/.mvn/wrapper/maven-wrapper.properties</code>
 
-- [ ] **Step 1: Create the Maven build**
+- [ ] **步骤 1：创建 Maven 构建**
 
-Create <code>backend/pom.xml</code>:
+创建 <code>backend/pom.xml</code>：
 
 ~~~xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -342,9 +342,9 @@ Create <code>backend/pom.xml</code>:
 </project>
 ~~~
 
-- [ ] **Step 2: Write the failing application test**
+- [ ] **步骤 2：编写失败的应用测试**
 
-Create <code>backend/src/test/java/com/zija/ZijaApplicationTest.java</code>:
+创建 <code>backend/src/test/java/com/zija/ZijaApplicationTest.java</code>：
 
 ~~~java
 package com.zija;
@@ -364,20 +364,20 @@ class ZijaApplicationTest {
 }
 ~~~
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [ ] **步骤 3：运行测试并确认其失败**
 
-Run:
+运行：
 
 ~~~bash
 cd backend
 mvn -q -Dtest=ZijaApplicationTest test
 ~~~
 
-Expected: compilation fails because <code>ZijaApplication</code> does not exist.
+预期结果：由于 <code>ZijaApplication</code> 不存在，编译失败。
 
-- [ ] **Step 4: Add the application entry point**
+- [ ] **步骤 4：添加应用入口点**
 
-Create <code>backend/src/main/java/com/zija/ZijaApplication.java</code>:
+创建 <code>backend/src/main/java/com/zija/ZijaApplication.java</code>：
 
 ~~~java
 package com.zija;
@@ -394,42 +394,42 @@ public class ZijaApplication {
 }
 ~~~
 
-- [ ] **Step 5: Generate the Maven Wrapper**
+- [ ] **步骤 5：生成 Maven Wrapper**
 
-Run from <code>backend/</code>:
+在 <code>backend/</code> 中运行：
 
 ~~~bash
 mvn -N wrapper:wrapper -Dmaven=3.9.11
 ~~~
 
-Expected: Maven creates <code>mvnw</code>, <code>mvnw.cmd</code>, and <code>.mvn/wrapper/maven-wrapper.properties</code> configured for Maven 3.9.11.
+预期结果：Maven 创建 <code>mvnw</code>、<code>mvnw.cmd</code> 和 <code>.mvn/wrapper/maven-wrapper.properties</code>，并将其配置为使用 Maven 3.9.11。
 
-- [ ] **Step 6: Run the test through the Wrapper**
+- [ ] **步骤 6：通过 Wrapper 运行测试**
 
 ~~~bash
 ./mvnw -q -Dtest=ZijaApplicationTest test
 ~~~
 
-Expected: one passing test.
+预期结果：一个测试通过。
 
-- [ ] **Step 7: Commit the backend bootstrap**
+- [ ] **步骤 7：提交后端初始化内容**
 
 ~~~bash
 git add backend
 git commit -m "build: bootstrap spring boot backend"
 ~~~
 
-## Task 3: Lock the Spring Modulith Boundary
+## 任务 3：锁定 Spring Modulith 边界
 
-**Files:**
-- Create: <code>backend/src/main/java/com/zija/system/package-info.java</code>
-- Create: <code>backend/src/main/java/com/zija/system/SystemApi.java</code>
-- Create: <code>backend/src/test/java/com/zija/ModularityTests.java</code>
-- Create: <code>backend/src/test/java/com/zija/DocumentationTests.java</code>
+**文件：**
+- 创建：<code>backend/src/main/java/com/zija/system/package-info.java</code>
+- 创建：<code>backend/src/main/java/com/zija/system/SystemApi.java</code>
+- 创建：<code>backend/src/test/java/com/zija/ModularityTests.java</code>
+- 创建：<code>backend/src/test/java/com/zija/DocumentationTests.java</code>
 
-- [ ] **Step 1: Write the failing modularity test**
+- [ ] **步骤 1：编写失败的模块化测试**
 
-Create <code>backend/src/test/java/com/zija/ModularityTests.java</code>:
+创建 <code>backend/src/test/java/com/zija/ModularityTests.java</code>：
 
 ~~~java
 package com.zija;
@@ -452,18 +452,18 @@ class ModularityTests {
 }
 ~~~
 
-- [ ] **Step 2: Run the modularity test to verify it fails**
+- [ ] **步骤 2：运行模块化测试并确认其失败**
 
 ~~~bash
 cd backend
 ./mvnw -q -Dtest=ModularityTests test
 ~~~
 
-Expected: failure because no <code>system</code> application module exists.
+预期结果：由于不存在 <code>system</code> 应用模块，测试失败。
 
-- [ ] **Step 3: Define the system module and public API**
+- [ ] **步骤 3：定义 system 模块和公开 API**
 
-Create <code>backend/src/main/java/com/zija/system/package-info.java</code>:
+创建 <code>backend/src/main/java/com/zija/system/package-info.java</code>：
 
 ~~~java
 @org.springframework.modulith.ApplicationModule(
@@ -472,7 +472,7 @@ Create <code>backend/src/main/java/com/zija/system/package-info.java</code>:
 package com.zija.system;
 ~~~
 
-Create <code>backend/src/main/java/com/zija/system/SystemApi.java</code>:
+创建 <code>backend/src/main/java/com/zija/system/SystemApi.java</code>：
 
 ~~~java
 package com.zija.system;
@@ -495,9 +495,9 @@ public interface SystemApi {
 }
 ~~~
 
-- [ ] **Step 4: Add module documentation generation**
+- [ ] **步骤 4：添加模块文档生成**
 
-Create <code>backend/src/test/java/com/zija/DocumentationTests.java</code>:
+创建 <code>backend/src/test/java/com/zija/DocumentationTests.java</code>：
 
 ~~~java
 package com.zija;
@@ -518,36 +518,36 @@ class DocumentationTests {
 }
 ~~~
 
-- [ ] **Step 5: Verify module boundaries and documentation**
+- [ ] **步骤 5：验证模块边界和文档**
 
 ~~~bash
 ./mvnw -q -Dtest=ModularityTests,DocumentationTests test
 test -d target/spring-modulith-docs
 ~~~
 
-Expected: both tests pass and <code>target/spring-modulith-docs</code> exists.
+预期结果：两个测试均通过，且 <code>target/spring-modulith-docs</code> 存在。
 
-- [ ] **Step 6: Commit the module baseline**
+- [ ] **步骤 6：提交模块基线**
 
 ~~~bash
 git add backend/src/main/java/com/zija/system backend/src/test/java/com/zija/ModularityTests.java backend/src/test/java/com/zija/DocumentationTests.java
 git commit -m "test: enforce backend module boundaries"
 ~~~
 
-## Task 4: Add PostgreSQL, Flyway, and MyBatis-Plus
+## 任务 4：添加 PostgreSQL、Flyway 和 MyBatis-Plus
 
-**Files:**
-- Create: <code>backend/src/test/java/com/zija/system/internal/persistence/SystemInstallationMapperIntegrationTest.java</code>
-- Create: <code>backend/src/main/resources/db/migration/V1__create_system_installation.sql</code>
-- Create: <code>backend/src/main/resources/application.yml</code>
-- Create: <code>backend/src/main/java/com/zija/ZijaMybatisConfiguration.java</code>
-- Create: <code>backend/src/main/java/com/zija/system/internal/persistence/SystemInstallationEntity.java</code>
-- Create: <code>backend/src/main/java/com/zija/system/internal/persistence/SystemInstallationMapper.java</code>
-- Create: <code>backend/src/main/resources/mapper/system/SystemInstallationMapper.xml</code>
+**文件：**
+- 创建：<code>backend/src/test/java/com/zija/system/internal/persistence/SystemInstallationMapperIntegrationTest.java</code>
+- 创建：<code>backend/src/main/resources/db/migration/V1__create_system_installation.sql</code>
+- 创建：<code>backend/src/main/resources/application.yml</code>
+- 创建：<code>backend/src/main/java/com/zija/ZijaMybatisConfiguration.java</code>
+- 创建：<code>backend/src/main/java/com/zija/system/internal/persistence/SystemInstallationEntity.java</code>
+- 创建：<code>backend/src/main/java/com/zija/system/internal/persistence/SystemInstallationMapper.java</code>
+- 创建：<code>backend/src/main/resources/mapper/system/SystemInstallationMapper.xml</code>
 
-- [ ] **Step 1: Write the failing PostgreSQL integration test**
+- [ ] **步骤 1：编写失败的 PostgreSQL 集成测试**
 
-Create <code>backend/src/test/java/com/zija/system/internal/persistence/SystemInstallationMapperIntegrationTest.java</code>:
+创建 <code>backend/src/test/java/com/zija/system/internal/persistence/SystemInstallationMapperIntegrationTest.java</code>：
 
 ~~~java
 package com.zija.system.internal.persistence;
@@ -586,18 +586,18 @@ class SystemInstallationMapperIntegrationTest {
 }
 ~~~
 
-- [ ] **Step 2: Run the integration test to verify it fails**
+- [ ] **步骤 2：运行集成测试并确认其失败**
 
 ~~~bash
 cd backend
 ./mvnw -q -Dtest=SystemInstallationMapperIntegrationTest test
 ~~~
 
-Expected: compilation fails because the Mapper and entity do not exist.
+预期结果：由于 Mapper 和实体不存在，编译失败。
 
-- [ ] **Step 3: Create the Flyway baseline**
+- [ ] **步骤 3：创建 Flyway 基线**
 
-Create <code>backend/src/main/resources/db/migration/V1__create_system_installation.sql</code>:
+创建 <code>backend/src/main/resources/db/migration/V1__create_system_installation.sql</code>：
 
 ~~~sql
 CREATE TABLE system_installation (
@@ -611,9 +611,9 @@ INSERT INTO system_installation (singleton_key, installation_id)
 VALUES (1, gen_random_uuid());
 ~~~
 
-- [ ] **Step 4: Configure Spring, Flyway, and MyBatis-Plus**
+- [ ] **步骤 4：配置 Spring、Flyway 和 MyBatis-Plus**
 
-Create <code>backend/src/main/resources/application.yml</code>:
+创建 <code>backend/src/main/resources/application.yml</code>：
 
 ~~~yaml
 spring:
@@ -664,7 +664,7 @@ mybatis-plus:
       id-type: assign_uuid
 ~~~
 
-Create <code>backend/src/main/java/com/zija/ZijaMybatisConfiguration.java</code>:
+创建 <code>backend/src/main/java/com/zija/ZijaMybatisConfiguration.java</code>：
 
 ~~~java
 package com.zija;
@@ -689,9 +689,9 @@ public class ZijaMybatisConfiguration {
 }
 ~~~
 
-- [ ] **Step 5: Add the installation entity and Mapper**
+- [ ] **步骤 5：添加安装实体和 Mapper**
 
-Create <code>backend/src/main/java/com/zija/system/internal/persistence/SystemInstallationEntity.java</code>:
+创建 <code>backend/src/main/java/com/zija/system/internal/persistence/SystemInstallationEntity.java</code>：
 
 ~~~java
 package com.zija.system.internal.persistence;
@@ -739,7 +739,7 @@ public class SystemInstallationEntity {
 }
 ~~~
 
-Create <code>backend/src/main/java/com/zija/system/internal/persistence/SystemInstallationMapper.java</code>:
+创建 <code>backend/src/main/java/com/zija/system/internal/persistence/SystemInstallationMapper.java</code>：
 
 ~~~java
 package com.zija.system.internal.persistence;
@@ -757,7 +757,7 @@ public interface SystemInstallationMapper
 }
 ~~~
 
-Create <code>backend/src/main/resources/mapper/system/SystemInstallationMapper.xml</code>:
+创建 <code>backend/src/main/resources/mapper/system/SystemInstallationMapper.xml</code>：
 
 ~~~xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -771,37 +771,37 @@ Create <code>backend/src/main/resources/mapper/system/SystemInstallationMapper.x
 </mapper>
 ~~~
 
-- [ ] **Step 6: Run the real PostgreSQL integration test**
+- [ ] **步骤 6：运行真实 PostgreSQL 集成测试**
 
 ~~~bash
 ./mvnw -q -Dtest=SystemInstallationMapperIntegrationTest test
 ~~~
 
-Expected: Testcontainers starts PostgreSQL 17, Flyway applies version 1, and the test passes.
+预期结果：Testcontainers 启动 PostgreSQL 17，Flyway 应用版本 1，测试通过。
 
-- [ ] **Step 7: Commit the persistence baseline**
+- [ ] **步骤 7：提交持久化基线**
 
 ~~~bash
 git add backend/src/main backend/src/test/java/com/zija/system/internal/persistence
 git commit -m "feat: add postgresql mybatis foundation"
 ~~~
 
-## Task 5: Expose a Secured System Information API
+## 任务 5：提供受保护的系统信息 API
 
-**Files:**
-- Create: <code>backend/src/test/java/com/zija/system/internal/SystemControllerTest.java</code>
-- Create: <code>backend/src/test/java/com/zija/system/SystemApplicationModuleTest.java</code>
-- Create: <code>backend/src/main/java/com/zija/ZijaRequestIdFilter.java</code>
-- Create: <code>backend/src/main/java/com/zija/ZijaSecurityConfiguration.java</code>
-- Create: <code>backend/src/main/java/com/zija/system/internal/SystemInfoService.java</code>
-- Create: <code>backend/src/main/java/com/zija/system/internal/SystemInfoResponse.java</code>
-- Create: <code>backend/src/main/java/com/zija/system/internal/SystemController.java</code>
-- Create: <code>backend/src/main/java/com/zija/system/internal/SystemStateUnavailableException.java</code>
-- Create: <code>backend/src/main/java/com/zija/system/internal/SystemExceptionHandler.java</code>
+**文件：**
+- 创建：<code>backend/src/test/java/com/zija/system/internal/SystemControllerTest.java</code>
+- 创建：<code>backend/src/test/java/com/zija/system/SystemApplicationModuleTest.java</code>
+- 创建：<code>backend/src/main/java/com/zija/ZijaRequestIdFilter.java</code>
+- 创建：<code>backend/src/main/java/com/zija/ZijaSecurityConfiguration.java</code>
+- 创建：<code>backend/src/main/java/com/zija/system/internal/SystemInfoService.java</code>
+- 创建：<code>backend/src/main/java/com/zija/system/internal/SystemInfoResponse.java</code>
+- 创建：<code>backend/src/main/java/com/zija/system/internal/SystemController.java</code>
+- 创建：<code>backend/src/main/java/com/zija/system/internal/SystemStateUnavailableException.java</code>
+- 创建：<code>backend/src/main/java/com/zija/system/internal/SystemExceptionHandler.java</code>
 
-- [ ] **Step 1: Write the failing MVC slice tests**
+- [ ] **步骤 1：编写失败的 MVC 切片测试**
 
-Create <code>backend/src/test/java/com/zija/system/internal/SystemControllerTest.java</code>:
+创建 <code>backend/src/test/java/com/zija/system/internal/SystemControllerTest.java</code>：
 
 ~~~java
 package com.zija.system.internal;
@@ -912,18 +912,18 @@ class SystemControllerTest {
 }
 ~~~
 
-- [ ] **Step 2: Run the MVC tests to verify they fail**
+- [ ] **步骤 2：运行 MVC 测试并确认其失败**
 
 ~~~bash
 cd backend
 ./mvnw -q -Dtest=SystemControllerTest test
 ~~~
 
-Expected: compilation fails because the controller and Web support classes do not exist.
+预期结果：由于 controller 和 Web 支持类不存在，编译失败。
 
-- [ ] **Step 3: Add request correlation and baseline security**
+- [ ] **步骤 3：添加请求关联与基础安全配置**
 
-Create <code>backend/src/main/java/com/zija/ZijaRequestIdFilter.java</code>:
+创建 <code>backend/src/main/java/com/zija/ZijaRequestIdFilter.java</code>：
 
 ~~~java
 package com.zija;
@@ -972,7 +972,7 @@ public class ZijaRequestIdFilter extends OncePerRequestFilter {
 }
 ~~~
 
-Create <code>backend/src/main/java/com/zija/ZijaSecurityConfiguration.java</code>:
+创建 <code>backend/src/main/java/com/zija/ZijaSecurityConfiguration.java</code>：
 
 ~~~java
 package com.zija;
@@ -1007,9 +1007,9 @@ public class ZijaSecurityConfiguration {
 }
 ~~~
 
-- [ ] **Step 4: Implement the system service and response**
+- [ ] **步骤 4：实现系统服务和响应**
 
-Create <code>backend/src/main/java/com/zija/system/internal/SystemInfoService.java</code>:
+创建 <code>backend/src/main/java/com/zija/system/internal/SystemInfoService.java</code>：
 
 ~~~java
 package com.zija.system.internal;
@@ -1055,7 +1055,7 @@ class SystemInfoService implements SystemApi {
 }
 ~~~
 
-Create <code>backend/src/main/java/com/zija/system/internal/SystemInfoResponse.java</code>:
+创建 <code>backend/src/main/java/com/zija/system/internal/SystemInfoResponse.java</code>：
 
 ~~~java
 package com.zija.system.internal;
@@ -1084,7 +1084,7 @@ record SystemInfoResponse(
 }
 ~~~
 
-Create <code>backend/src/main/java/com/zija/system/internal/SystemController.java</code>:
+创建 <code>backend/src/main/java/com/zija/system/internal/SystemController.java</code>：
 
 ~~~java
 package com.zija.system.internal;
@@ -1111,9 +1111,9 @@ class SystemController {
 }
 ~~~
 
-- [ ] **Step 5: Implement the Problem Details handler**
+- [ ] **步骤 5：实现 Problem Details 处理器**
 
-Create <code>backend/src/main/java/com/zija/system/internal/SystemStateUnavailableException.java</code>:
+创建 <code>backend/src/main/java/com/zija/system/internal/SystemStateUnavailableException.java</code>：
 
 ~~~java
 package com.zija.system.internal;
@@ -1126,7 +1126,7 @@ class SystemStateUnavailableException extends RuntimeException {
 }
 ~~~
 
-Create <code>backend/src/main/java/com/zija/system/internal/SystemExceptionHandler.java</code>:
+创建 <code>backend/src/main/java/com/zija/system/internal/SystemExceptionHandler.java</code>：
 
 ~~~java
 package com.zija.system.internal;
@@ -1164,17 +1164,17 @@ class SystemExceptionHandler {
 }
 ~~~
 
-- [ ] **Step 6: Run the MVC slice tests**
+- [ ] **步骤 6：运行 MVC 切片测试**
 
 ~~~bash
 ./mvnw -q -Dtest=SystemControllerTest test
 ~~~
 
-Expected: all three MVC slice tests pass.
+预期结果：三个 MVC 切片测试全部通过。
 
-- [ ] **Step 7: Add a real system-module integration test**
+- [ ] **步骤 7：添加真实的 system 模块集成测试**
 
-Create <code>backend/src/test/java/com/zija/system/SystemApplicationModuleTest.java</code>:
+创建 <code>backend/src/test/java/com/zija/system/SystemApplicationModuleTest.java</code>：
 
 ~~~java
 package com.zija.system;
@@ -1213,38 +1213,38 @@ class SystemApplicationModuleTest {
 }
 ~~~
 
-- [ ] **Step 8: Run all backend tests**
+- [ ] **步骤 8：运行全部后端测试**
 
 ~~~bash
 ./mvnw -q test
 ~~~
 
-Expected: unit, MVC, modularity, documentation, module integration, and PostgreSQL Mapper tests all pass.
+预期结果：单元测试、MVC 测试、模块化测试、文档测试、模块集成测试和 PostgreSQL Mapper 测试全部通过。
 
-- [ ] **Step 9: Commit the system API slice**
+- [ ] **步骤 9：提交 system API 切片**
 
 ~~~bash
 git add backend/src/main/java backend/src/test/java
 git commit -m "feat: expose postgresql backed system status"
 ~~~
 
-## Task 6: Establish the Vue 3 and Element Plus Toolchain
+## 任务 6：建立 Vue 3 和 Element Plus 工具链
 
-**Files:**
-- Modify: <code>.gitignore</code>
-- Create: <code>frontend/package.json</code>
-- Generate: <code>frontend/package-lock.json</code>
-- Create: <code>frontend/index.html</code>
-- Create: <code>frontend/tsconfig.json</code>
-- Create: <code>frontend/tsconfig.app.json</code>
-- Create: <code>frontend/tsconfig.node.json</code>
-- Create: <code>frontend/vite.config.ts</code>
-- Create: <code>frontend/src/env.d.ts</code>
-- Create: <code>frontend/src/test/setup.ts</code>
+**文件：**
+- 修改：<code>.gitignore</code>
+- 创建：<code>frontend/package.json</code>
+- 生成：<code>frontend/package-lock.json</code>
+- 创建：<code>frontend/index.html</code>
+- 创建：<code>frontend/tsconfig.json</code>
+- 创建：<code>frontend/tsconfig.app.json</code>
+- 创建：<code>frontend/tsconfig.node.json</code>
+- 创建：<code>frontend/vite.config.ts</code>
+- 创建：<code>frontend/src/env.d.ts</code>
+- 创建：<code>frontend/src/test/setup.ts</code>
 
-- [ ] **Step 1: Define frontend dependencies and commands**
+- [ ] **步骤 1：定义前端依赖和命令**
 
-Create <code>frontend/package.json</code>:
+创建 <code>frontend/package.json</code>：
 
 ~~~json
 {
@@ -1283,9 +1283,9 @@ Create <code>frontend/package.json</code>:
 }
 ~~~
 
-- [ ] **Step 2: Add TypeScript project configuration**
+- [ ] **步骤 2：添加 TypeScript 项目配置**
 
-Create <code>frontend/tsconfig.json</code>:
+创建 <code>frontend/tsconfig.json</code>：
 
 ~~~json
 {
@@ -1297,7 +1297,7 @@ Create <code>frontend/tsconfig.json</code>:
 }
 ~~~
 
-Create <code>frontend/tsconfig.app.json</code>:
+创建 <code>frontend/tsconfig.app.json</code>：
 
 ~~~json
 {
@@ -1327,7 +1327,7 @@ Create <code>frontend/tsconfig.app.json</code>:
 }
 ~~~
 
-Create <code>frontend/tsconfig.node.json</code>:
+创建 <code>frontend/tsconfig.node.json</code>：
 
 ~~~json
 {
@@ -1353,9 +1353,9 @@ Create <code>frontend/tsconfig.node.json</code>:
 }
 ~~~
 
-- [ ] **Step 3: Add the Vite and Vitest configuration**
+- [ ] **步骤 3：添加 Vite 和 Vitest 配置**
 
-Create <code>frontend/vite.config.ts</code>:
+创建 <code>frontend/vite.config.ts</code>：
 
 ~~~typescript
 import { fileURLToPath, URL } from "node:url";
@@ -1386,7 +1386,7 @@ export default defineConfig({
 });
 ~~~
 
-Create <code>frontend/src/test/setup.ts</code>:
+创建 <code>frontend/src/test/setup.ts</code>：
 
 ~~~typescript
 import { afterEach } from "vitest";
@@ -1396,15 +1396,15 @@ afterEach(() => {
 });
 ~~~
 
-Create <code>frontend/src/env.d.ts</code>:
+创建 <code>frontend/src/env.d.ts</code>：
 
 ~~~typescript
 /// <reference types="vite/client" />
 ~~~
 
-- [ ] **Step 4: Add the HTML entry document**
+- [ ] **步骤 4：添加 HTML 入口文档**
 
-Create <code>frontend/index.html</code>:
+创建 <code>frontend/index.html</code>：
 
 ~~~html
 <!doctype html>
@@ -1422,9 +1422,9 @@ Create <code>frontend/index.html</code>:
 </html>
 ~~~
 
-- [ ] **Step 5: Ignore generated frontend test artifacts**
+- [ ] **步骤 5：忽略生成的前端测试产物**
 
-Append these lines to <code>.gitignore</code>:
+将以下内容追加到 <code>.gitignore</code>：
 
 ~~~gitignore
 frontend/test-results/
@@ -1432,46 +1432,46 @@ frontend/playwright-report/
 frontend/.vite/
 ~~~
 
-- [ ] **Step 6: Install and lock frontend dependencies**
+- [ ] **步骤 6：安装并锁定前端依赖**
 
-Run:
+运行：
 
 ~~~bash
 cd frontend
 npm install
 ~~~
 
-Expected: <code>package-lock.json</code> is created and npm reports no unresolved dependency.
+预期结果：已创建 <code>package-lock.json</code>，且 npm 未报告无法解析的依赖。
 
-- [ ] **Step 7: Verify the empty TypeScript project**
+- [ ] **步骤 7：验证空的 TypeScript 项目**
 
 ~~~bash
 npm run typecheck
 ~~~
 
-Expected: exit status <code>0</code>.
+预期结果：退出状态为 <code>0</code>。
 
-- [ ] **Step 8: Commit the frontend toolchain**
+- [ ] **步骤 8：提交前端工具链**
 
 ~~~bash
 git add .gitignore frontend
 git commit -m "build: establish vue frontend toolchain"
 ~~~
 
-## Task 7: Build the Desktop Application Shell
+## 任务 7：构建桌面端应用外壳
 
-**Files:**
-- Create: <code>frontend/src/components/AppShell.test.ts</code>
-- Create: <code>frontend/src/components/AppShell.vue</code>
-- Create: <code>frontend/src/views/SystemStatusView.vue</code>
-- Create: <code>frontend/src/router/index.ts</code>
-- Create: <code>frontend/src/App.vue</code>
-- Create: <code>frontend/src/main.ts</code>
-- Create: <code>frontend/src/styles/index.css</code>
+**文件：**
+- 创建：<code>frontend/src/components/AppShell.test.ts</code>
+- 创建：<code>frontend/src/components/AppShell.vue</code>
+- 创建：<code>frontend/src/views/SystemStatusView.vue</code>
+- 创建：<code>frontend/src/router/index.ts</code>
+- 创建：<code>frontend/src/App.vue</code>
+- 创建：<code>frontend/src/main.ts</code>
+- 创建：<code>frontend/src/styles/index.css</code>
 
-- [ ] **Step 1: Write the failing application-shell test**
+- [ ] **步骤 1：编写失败的应用外壳测试**
 
-Create <code>frontend/src/components/AppShell.test.ts</code>:
+创建 <code>frontend/src/components/AppShell.test.ts</code>：
 
 ~~~typescript
 import ElementPlus from "element-plus";
@@ -1518,18 +1518,18 @@ describe("AppShell", () => {
 });
 ~~~
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **步骤 2：运行测试并确认其失败**
 
 ~~~bash
 cd frontend
 npm test -- AppShell.test.ts
 ~~~
 
-Expected: failure because <code>AppShell.vue</code> does not exist.
+预期结果：由于 <code>AppShell.vue</code> 不存在，测试失败。
 
-- [ ] **Step 3: Create the Element Plus application shell**
+- [ ] **步骤 3：创建 Element Plus 应用外壳**
 
-Create <code>frontend/src/components/AppShell.vue</code>:
+创建 <code>frontend/src/components/AppShell.vue</code>：
 
 ~~~vue
 <template>
@@ -1567,7 +1567,7 @@ Create <code>frontend/src/components/AppShell.vue</code>:
 </template>
 ~~~
 
-Create <code>frontend/src/views/SystemStatusView.vue</code>:
+创建 <code>frontend/src/views/SystemStatusView.vue</code>：
 
 ~~~vue
 <template>
@@ -1581,9 +1581,9 @@ Create <code>frontend/src/views/SystemStatusView.vue</code>:
 </template>
 ~~~
 
-- [ ] **Step 4: Wire the router and application entry**
+- [ ] **步骤 4：连接路由和应用入口**
 
-Create <code>frontend/src/router/index.ts</code>:
+创建 <code>frontend/src/router/index.ts</code>：
 
 ~~~typescript
 import { createRouter, createWebHistory } from "vue-router";
@@ -1601,7 +1601,7 @@ export const router = createRouter({
 });
 ~~~
 
-Create <code>frontend/src/App.vue</code>:
+创建 <code>frontend/src/App.vue</code>：
 
 ~~~vue
 <script setup lang="ts">
@@ -1613,7 +1613,7 @@ import AppShell from "./components/AppShell.vue";
 </template>
 ~~~
 
-Create <code>frontend/src/main.ts</code>:
+创建 <code>frontend/src/main.ts</code>：
 
 ~~~typescript
 import { createApp } from "vue";
@@ -1631,9 +1631,9 @@ createApp(App)
   .mount("#app");
 ~~~
 
-- [ ] **Step 5: Add desktop styling**
+- [ ] **步骤 5：添加桌面端样式**
 
-Create <code>frontend/src/styles/index.css</code>:
+创建 <code>frontend/src/styles/index.css</code>：
 
 ~~~css
 :root {
@@ -1734,34 +1734,34 @@ body {
 }
 ~~~
 
-- [ ] **Step 6: Run the component test and production build**
+- [ ] **步骤 6：运行组件测试和生产构建**
 
 ~~~bash
 npm test -- AppShell.test.ts
 npm run build
 ~~~
 
-Expected: the component test passes and Vite writes <code>frontend/dist</code>.
+预期结果：组件测试通过，且 Vite 生成 <code>frontend/dist</code>。
 
-- [ ] **Step 7: Commit the desktop shell**
+- [ ] **步骤 7：提交桌面端外壳**
 
 ~~~bash
 git add frontend/src
 git commit -m "feat: add desktop administration shell"
 ~~~
 
-## Task 8: Connect the Vue Shell to the System API
+## 任务 8：将 Vue 外壳连接到 system API
 
-**Files:**
-- Create: <code>frontend/src/types/system.ts</code>
-- Create: <code>frontend/src/api/http.ts</code>
-- Create: <code>frontend/src/api/system.ts</code>
-- Create: <code>frontend/src/views/SystemStatusView.test.ts</code>
-- Modify: <code>frontend/src/views/SystemStatusView.vue</code>
+**文件：**
+- 创建：<code>frontend/src/types/system.ts</code>
+- 创建：<code>frontend/src/api/http.ts</code>
+- 创建：<code>frontend/src/api/system.ts</code>
+- 创建：<code>frontend/src/views/SystemStatusView.test.ts</code>
+- 修改：<code>frontend/src/views/SystemStatusView.vue</code>
 
-- [ ] **Step 1: Write failing system-status view tests**
+- [ ] **步骤 1：编写失败的系统状态视图测试**
 
-Create <code>frontend/src/views/SystemStatusView.test.ts</code>:
+创建 <code>frontend/src/views/SystemStatusView.test.ts</code>：
 
 ~~~typescript
 import ElementPlus from "element-plus";
@@ -1821,18 +1821,18 @@ describe("SystemStatusView", () => {
 });
 ~~~
 
-- [ ] **Step 2: Run the view tests to verify they fail**
+- [ ] **步骤 2：运行视图测试并确认其失败**
 
 ~~~bash
 cd frontend
 npm test -- SystemStatusView.test.ts
 ~~~
 
-Expected: failure because the API module and completed view do not exist.
+预期结果：由于 API 模块和完整视图不存在，测试失败。
 
-- [ ] **Step 3: Define the API types and HTTP error**
+- [ ] **步骤 3：定义 API 类型和 HTTP 错误**
 
-Create <code>frontend/src/types/system.ts</code>:
+创建 <code>frontend/src/types/system.ts</code>：
 
 ~~~typescript
 export interface SystemInfo {
@@ -1851,7 +1851,7 @@ export interface ApiProblem {
 }
 ~~~
 
-Create <code>frontend/src/api/http.ts</code>:
+创建 <code>frontend/src/api/http.ts</code>：
 
 ~~~typescript
 import type { ApiProblem } from "../types/system";
@@ -1900,7 +1900,7 @@ export async function getJson<T>(path: string): Promise<T> {
 }
 ~~~
 
-Create <code>frontend/src/api/system.ts</code>:
+创建 <code>frontend/src/api/system.ts</code>：
 
 ~~~typescript
 import type { SystemInfo } from "../types/system";
@@ -1911,9 +1911,9 @@ export function fetchSystemInfo(): Promise<SystemInfo> {
 }
 ~~~
 
-- [ ] **Step 4: Implement the live system-status view**
+- [ ] **步骤 4：实现实时系统状态视图**
 
-Replace <code>frontend/src/views/SystemStatusView.vue</code> with:
+将 <code>frontend/src/views/SystemStatusView.vue</code> 替换为：
 
 ~~~vue
 <script setup lang="ts">
@@ -1988,7 +1988,7 @@ onMounted(async () => {
 </template>
 ~~~
 
-- [ ] **Step 5: Run frontend tests, type checking, and build**
+- [ ] **步骤 5：运行前端测试、类型检查和构建**
 
 ~~~bash
 npm test
@@ -1996,31 +1996,31 @@ npm run typecheck
 npm run build
 ~~~
 
-Expected: all component tests pass and the production build succeeds.
+预期结果：全部组件测试通过，生产构建成功。
 
-- [ ] **Step 6: Commit the API integration**
+- [ ] **步骤 6：提交 API 集成**
 
 ~~~bash
 git add frontend/src
 git commit -m "feat: display live system status"
 ~~~
 
-## Task 9: Add Docker Compose and Browser Smoke Tests
+## 任务 9：添加 Docker Compose 和浏览器冒烟测试
 
-**Files:**
-- Create: <code>.dockerignore</code>
-- Create: <code>deploy/app/Dockerfile</code>
-- Create: <code>deploy/web/Dockerfile</code>
-- Create: <code>deploy/nginx/default.conf</code>
-- Create: <code>compose.yaml</code>
-- Create: <code>scripts/compose-smoke.sh</code>
-- Create: <code>scripts/e2e-smoke.sh</code>
-- Create: <code>frontend/playwright.config.ts</code>
-- Create: <code>frontend/e2e/system-status.spec.ts</code>
+**文件：**
+- 创建：<code>.dockerignore</code>
+- 创建：<code>deploy/app/Dockerfile</code>
+- 创建：<code>deploy/web/Dockerfile</code>
+- 创建：<code>deploy/nginx/default.conf</code>
+- 创建：<code>compose.yaml</code>
+- 创建：<code>scripts/compose-smoke.sh</code>
+- 创建：<code>scripts/e2e-smoke.sh</code>
+- 创建：<code>frontend/playwright.config.ts</code>
+- 创建：<code>frontend/e2e/system-status.spec.ts</code>
 
-- [ ] **Step 1: Write the failing Compose smoke script**
+- [ ] **步骤 1：编写失败的 Compose 冒烟脚本**
 
-Create <code>scripts/compose-smoke.sh</code>:
+创建 <code>scripts/compose-smoke.sh</code>：
 
 ~~~bash
 #!/usr/bin/env bash
@@ -2055,18 +2055,18 @@ echo "compose smoke failed" >&2
 exit 1
 ~~~
 
-Run:
+运行：
 
 ~~~bash
 chmod +x scripts/compose-smoke.sh
 ./scripts/compose-smoke.sh
 ~~~
 
-Expected: failure because <code>compose.yaml</code> does not exist.
+预期结果：由于 <code>compose.yaml</code> 不存在，执行失败。
 
-- [ ] **Step 2: Control the Docker build context**
+- [ ] **步骤 2：控制 Docker 构建上下文**
 
-Create <code>.dockerignore</code>:
+创建 <code>.dockerignore</code>：
 
 ~~~dockerignore
 .git
@@ -2083,9 +2083,9 @@ frontend/test-results
 frontend/playwright-report
 ~~~
 
-- [ ] **Step 3: Add the backend container image**
+- [ ] **步骤 3：添加后端容器镜像**
 
-Create <code>deploy/app/Dockerfile</code>:
+创建 <code>deploy/app/Dockerfile</code>：
 
 ~~~dockerfile
 FROM eclipse-temurin:25-jdk AS build
@@ -2110,9 +2110,9 @@ EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/zija.jar"]
 ~~~
 
-- [ ] **Step 4: Add the frontend and Nginx image**
+- [ ] **步骤 4：添加前端与 Nginx 镜像**
 
-Create <code>deploy/web/Dockerfile</code>:
+创建 <code>deploy/web/Dockerfile</code>：
 
 ~~~dockerfile
 FROM node:24-alpine AS build
@@ -2130,7 +2130,7 @@ COPY --from=build /workspace/dist /usr/share/nginx/html
 EXPOSE 80
 ~~~
 
-Create <code>deploy/nginx/default.conf</code>:
+创建 <code>deploy/nginx/default.conf</code>：
 
 ~~~nginx
 server {
@@ -2161,9 +2161,9 @@ server {
 }
 ~~~
 
-- [ ] **Step 5: Define the Compose topology**
+- [ ] **步骤 5：定义 Compose 拓扑**
 
-Create <code>compose.yaml</code>:
+创建 <code>compose.yaml</code>：
 
 ~~~yaml
 name: zija
@@ -2230,17 +2230,17 @@ volumes:
   postgres-data:
 ~~~
 
-- [ ] **Step 6: Run the Compose smoke test**
+- [ ] **步骤 6：运行 Compose 冒烟测试**
 
 ~~~bash
 ./scripts/compose-smoke.sh
 ~~~
 
-Expected: the script prints <code>compose smoke passed</code> and removes the test containers and volume.
+预期结果：脚本输出 <code>compose smoke passed</code>，并删除测试容器和 volume。
 
-- [ ] **Step 7: Add the Playwright browser contract**
+- [ ] **步骤 7：添加 Playwright 浏览器契约**
 
-Create <code>frontend/playwright.config.ts</code>:
+创建 <code>frontend/playwright.config.ts</code>：
 
 ~~~typescript
 import { defineConfig, devices } from "@playwright/test";
@@ -2263,7 +2263,7 @@ export default defineConfig({
 });
 ~~~
 
-Create <code>frontend/e2e/system-status.spec.ts</code>:
+创建 <code>frontend/e2e/system-status.spec.ts</code>：
 
 ~~~typescript
 import { expect, test } from "@playwright/test";
@@ -2279,7 +2279,7 @@ test("shows the live backend and PostgreSQL status", async ({ page }) => {
 });
 ~~~
 
-Create <code>scripts/e2e-smoke.sh</code>:
+创建 <code>scripts/e2e-smoke.sh</code>：
 
 ~~~bash
 #!/usr/bin/env bash
@@ -2313,7 +2313,7 @@ echo "e2e smoke failed" >&2
 exit 1
 ~~~
 
-- [ ] **Step 8: Run the browser smoke test**
+- [ ] **步骤 8：运行浏览器冒烟测试**
 
 ~~~bash
 chmod +x scripts/e2e-smoke.sh
@@ -2321,25 +2321,25 @@ npm --prefix frontend exec -- playwright install chromium
 ./scripts/e2e-smoke.sh
 ~~~
 
-Expected: Playwright passes the Chromium scenario and the script prints <code>e2e smoke passed</code>.
+预期结果：Playwright 的 Chromium 场景通过，脚本输出 <code>e2e smoke passed</code>。
 
-- [ ] **Step 9: Commit the container deployment**
+- [ ] **步骤 9：提交容器部署内容**
 
 ~~~bash
 git add .dockerignore compose.yaml deploy scripts frontend/playwright.config.ts frontend/e2e
 git commit -m "build: add compose deployment smoke tests"
 ~~~
 
-## Task 10: Add Stable Developer Commands and Documentation
+## 任务 10：添加稳定的开发命令和文档
 
-**Files:**
-- Create: <code>scripts/verify-layout.sh</code>
-- Create: <code>Makefile</code>
-- Create: <code>README.md</code>
+**文件：**
+- 创建：<code>scripts/verify-layout.sh</code>
+- 创建：<code>Makefile</code>
+- 创建：<code>README.md</code>
 
-- [ ] **Step 1: Add a repository-layout verification script**
+- [ ] **步骤 1：添加仓库布局验证脚本**
 
-Create <code>scripts/verify-layout.sh</code>:
+创建 <code>scripts/verify-layout.sh</code>：
 
 ~~~bash
 #!/usr/bin/env bash
@@ -2376,18 +2376,18 @@ done
 echo "repository layout verified"
 ~~~
 
-- [ ] **Step 2: Run the layout check before adding Make commands**
+- [ ] **步骤 2：在添加 Make 命令前运行布局检查**
 
 ~~~bash
 chmod +x scripts/verify-layout.sh
 ./scripts/verify-layout.sh
 ~~~
 
-Expected: failure that reports <code>Makefile</code> as the first missing file.
+预期结果：检查失败，并将 <code>Makefile</code> 报告为第一个缺失文件。
 
-- [ ] **Step 3: Add stable root commands**
+- [ ] **步骤 3：添加稳定的根目录命令**
 
-Create <code>Makefile</code>:
+创建 <code>Makefile</code>：
 
 ~~~makefile
 ENV_FILE ?= .env
@@ -2432,9 +2432,9 @@ clean:
 	rm -rf frontend/dist frontend/coverage frontend/test-results frontend/playwright-report
 ~~~
 
-- [ ] **Step 4: Document setup and verification**
+- [ ] **步骤 4：记录设置与验证方式**
 
-Create <code>README.md</code>:
+创建 <code>README.md</code>：
 
 ~~~~markdown
 # 知家 · zija
@@ -2492,29 +2492,29 @@ make e2e-smoke
 - 工程基础计划：<code>docs/superpowers/plans/2026-07-19-foundation-baseline.md</code>
 ~~~~
 
-- [ ] **Step 5: Run the stable verification entry point**
+- [ ] **步骤 5：运行稳定的验证入口**
 
 ~~~bash
 make verify
 ~~~
 
-Expected: layout verification, all backend tests, all frontend tests, backend package, frontend build, and whitespace checks pass.
+预期结果：布局验证、全部后端测试、全部前端测试、后端打包、前端构建和空白字符检查全部通过。
 
-- [ ] **Step 6: Commit developer workflows**
+- [ ] **步骤 6：提交开发者工作流**
 
 ~~~bash
 git add Makefile README.md scripts/verify-layout.sh
 git commit -m "docs: add stable development workflow"
 ~~~
 
-## Task 11: Add Continuous Integration
+## 任务 11：添加持续集成
 
-**Files:**
-- Create: <code>.github/workflows/ci.yml</code>
+**文件：**
+- 创建：<code>.github/workflows/ci.yml</code>
 
-- [ ] **Step 1: Add backend, frontend, and deployment jobs**
+- [ ] **步骤 1：添加后端、前端和部署 job**
 
-Create <code>.github/workflows/ci.yml</code>:
+创建 <code>.github/workflows/ci.yml</code>：
 
 ~~~yaml
 name: ci
@@ -2576,9 +2576,9 @@ jobs:
         run: ./scripts/e2e-smoke.sh
 ~~~
 
-- [ ] **Step 2: Validate the workflow and local command parity**
+- [ ] **步骤 2：验证工作流与本地命令的一致性**
 
-Run:
+运行：
 
 ~~~bash
 make verify
@@ -2587,53 +2587,53 @@ make e2e-smoke
 git diff --check
 ~~~
 
-Expected: every command exits with status <code>0</code>.
+预期结果：每条命令均以状态 <code>0</code> 退出。
 
-- [ ] **Step 3: Commit continuous integration**
+- [ ] **步骤 3：提交持续集成配置**
 
 ~~~bash
 git add .github/workflows/ci.yml
 git commit -m "ci: verify backend frontend and deployment"
 ~~~
 
-## Task 12: Run the Phase 1 Completion Gate
+## 任务 12：运行阶段 1 完成门禁
 
-**Files:**
-- Verify only; no source file changes are expected.
+**文件：**
+- 仅进行验证；预期不修改源文件。
 
-- [ ] **Step 1: Verify the repository layout**
+- [ ] **步骤 1：验证仓库布局**
 
 ~~~bash
 ./scripts/verify-layout.sh
 ~~~
 
-Expected: <code>repository layout verified</code>.
+预期结果：输出 <code>repository layout verified</code>。
 
-- [ ] **Step 2: Run all non-container checks**
+- [ ] **步骤 2：运行全部非容器检查**
 
 ~~~bash
 make verify
 ~~~
 
-Expected: backend tests, frontend tests, type checking, backend package, frontend production build, module boundary verification, module documentation generation, Flyway migrations, and PostgreSQL integration tests pass.
+预期结果：后端测试、前端测试、类型检查、后端打包、前端生产构建、模块边界验证、模块文档生成、Flyway 迁移和 PostgreSQL 集成测试全部通过。
 
-- [ ] **Step 3: Verify the container deployment**
+- [ ] **步骤 3：验证容器部署**
 
 ~~~bash
 make compose-smoke
 ~~~
 
-Expected: <code>compose smoke passed</code>; the temporary test volume is removed.
+预期结果：输出 <code>compose smoke passed</code>；临时测试 volume 已删除。
 
-- [ ] **Step 4: Verify the browser workflow**
+- [ ] **步骤 4：验证浏览器工作流**
 
 ~~~bash
 make e2e-smoke
 ~~~
 
-Expected: Playwright confirms the page contains “系统状态”, “系统运行正常”, “PostgreSQL 已连接”, and the generic “管理员” placeholder.
+预期结果：Playwright 确认页面包含“系统状态”“系统运行正常”“PostgreSQL 已连接”和通用的“管理员”占位文本。
 
-- [ ] **Step 5: Verify Git hygiene**
+- [ ] **步骤 5：验证 Git 整洁性**
 
 ~~~bash
 git diff --check
@@ -2641,26 +2641,26 @@ git status --short
 git log --oneline --decorate -12
 ~~~
 
-Expected: <code>git diff --check</code> has no output, <code>git status --short</code> has no output, and the log shows the focused commits from Tasks 1–11.
+预期结果：<code>git diff --check</code> 无输出，<code>git status --short</code> 无输出，且日志显示任务 1–11 对应的聚焦提交。
 
-- [ ] **Step 6: Record the phase result in the delivery roadmap**
+- [ ] **步骤 6：在交付路线图中记录阶段结果**
 
-Edit <code>docs/superpowers/plans/2026-07-19-delivery-roadmap.md</code> only after all preceding commands pass. Check the two Phase 1 boxes and append the verified commit IDs and command results directly beneath them. Commit that documentation-only change:
+仅在前述命令全部通过后，才编辑 <code>docs/superpowers/plans/2026-07-19-delivery-roadmap.md</code>。勾选阶段 1 的两个复选框，并在其下方直接追加已验证的 commit ID 和命令结果。提交这项仅涉及文档的变更：
 
 ~~~bash
 git add docs/superpowers/plans/2026-07-19-delivery-roadmap.md
 git commit -m "docs: record foundation phase completion"
 ~~~
 
-Expected: Phase 1 is marked complete only after the executable evidence exists.
+预期结果：仅在具备可执行证据后，阶段 1 才被标记为完成。
 
-## Plan Self-Review Checklist
+## 计划自审清单
 
-- [ ] Phase 1 stays within engineering-foundation scope and does not implement identity, catalog, inventory, reminders, or reports.
-- [ ] Every source change is preceded by a failing test or is an explicit build/configuration scaffold.
-- [ ] MyBatis-Plus handles simple persistence while explicit XML SQL remains available for later stock locking and reports.
-- [ ] PostgreSQL Testcontainers, not H2, verifies Flyway and Mapper behavior.
-- [ ] Spring Modulith verifies module boundaries and generates module canvases.
-- [ ] The frontend uses Element Plus and a generic “管理员” placeholder.
-- [ ] Local, Compose, Playwright, and CI commands use the same scripts and expected ports.
-- [ ] No task contains an unresolved placeholder, unspecified file, or unverified command.
+- [ ] 阶段 1 严格处于工程基础范围内，不实现身份、目录、库存、提醒或报表功能。
+- [ ] 每项源代码变更之前都有失败测试，或该变更属于明确的构建/配置脚手架。
+- [ ] MyBatis-Plus 处理简单持久化，同时保留显式 XML SQL，以支持后续库存锁定和报表功能。
+- [ ] 使用 PostgreSQL Testcontainers 而非 H2 验证 Flyway 和 Mapper 行为。
+- [ ] Spring Modulith 验证模块边界并生成模块画布。
+- [ ] 前端使用 Element Plus 和通用的“管理员”占位文本。
+- [ ] 本地、Compose、Playwright 和 CI 命令使用相同脚本和预期端口。
+- [ ] 所有任务均不包含未解决的占位符、未指定的文件或未经验证的命令。
