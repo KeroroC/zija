@@ -1,0 +1,62 @@
+name: zija
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${ZIJA_POSTGRES_DB:-zija}
+      POSTGRES_USER: ${ZIJA_POSTGRES_USER:-zija}
+      POSTGRES_PASSWORD: ${ZIJA_POSTGRES_PASSWORD:?set ZIJA_POSTGRES_PASSWORD}
+    ports:
+      - "${ZIJA_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${ZIJA_POSTGRES_USER:-zija} -d ${ZIJA_POSTGRES_DB:-zija}
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: deploy/app/Dockerfile
+    environment:
+      ZIJA_DB_URL: jdbc:postgresql://postgres:5432/${ZIJA_POSTGRES_DB:-zija}
+      ZIJA_DB_USERNAME: ${ZIJA_POSTGRES_USER:-zija}
+      ZIJA_DB_PASSWORD: ${ZIJA_POSTGRES_PASSWORD:?set ZIJA_POSTGRES_PASSWORD}
+      ZIJA_VERSION: ${ZIJA_VERSION:-dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - http://localhost:8080/actuator/health/readiness
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web/Dockerfile
+    ports:
+      - "${ZIJA_HTTP_PORT:-8088}:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O - http://localhost/healthz | grep -q ok
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
