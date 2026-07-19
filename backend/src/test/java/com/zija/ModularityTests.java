@@ -1,0 +1,18 @@
+package com.zija;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.modulith.core.ApplicationModules;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class ModularityTests {
+
+    private final ApplicationModules modules =
+            ApplicationModules.of(ZijaApplication.class);
+
+    @Test
+    void systemModuleExistsAndDependenciesAreValid() {
+        assertThat(modules.getModuleByName("system")).isPresent();
+        modules.verify();
+    }
+}
