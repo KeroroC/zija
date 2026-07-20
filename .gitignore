@@ -30,3 +30,6 @@ backups/
 
 # Specs and plans
 docs/
+
+# workbuddy
+.workbuddy/
