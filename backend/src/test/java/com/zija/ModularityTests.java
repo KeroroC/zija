@@ -15,4 +15,11 @@ class ModularityTests {
         assertThat(modules.getModuleByName("system")).isPresent();
         modules.verify();
     }
+
+    @Test
+    void identityAndHouseholdModulesExist() {
+        assertThat(modules.getModuleByName("identity")).isPresent();
+        assertThat(modules.getModuleByName("household")).isPresent();
+        modules.verify();
+    }
 }
