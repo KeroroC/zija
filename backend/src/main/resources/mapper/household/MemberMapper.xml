@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.household.internal.persistence.MemberMapper">
+
+    <select id="selectByHousehold" resultType="com.zija.household.internal.persistence.MemberEntity">
+        SELECT id, household_id, account_id, role, status, created_at, updated_at, version
+        FROM member WHERE household_id = #{householdId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler} ORDER BY created_at
+    </select>
+
+    <select id="selectByAccount" resultType="com.zija.household.internal.persistence.MemberEntity">
+        SELECT id, household_id, account_id, role, status, created_at, updated_at, version
+        FROM member WHERE account_id = #{accountId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
+    </select>
+
+    <update id="updateRole">
+        UPDATE member SET role = #{role}, updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE id = #{id, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
+          AND version = #{version}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE member SET status = #{status}, updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE id = #{id, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
+          AND version = #{version}
+    </update>
+
+    <select id="selectOwner" resultType="com.zija.household.internal.persistence.MemberEntity">
+        SELECT id, household_id, account_id, role, status, created_at, updated_at, version
+        FROM member WHERE household_id = #{householdId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler} AND role = 'OWNER'
+    </select>
+</mapper>
