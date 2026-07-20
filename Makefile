@@ -1,6 +1,6 @@
 ENV_FILE ?= .env
 
-.PHONY: verify-layout backend-test backend-build frontend-test frontend-build verify dev-db dev-backend dev-frontend compose-smoke e2e-smoke clean
+.PHONY: verify-layout backend-test backend-build frontend-test frontend-build verify dev-db dev-backend dev-frontend compose-smoke e2e-smoke recover-owner clean
 
 verify-layout:
 	./scripts/verify-layout.sh
@@ -34,6 +34,12 @@ compose-smoke:
 
 e2e-smoke:
 	./scripts/e2e-smoke.sh
+
+## 生成所有者恢复链接（在运行中的容器内执行非 Web 命令）
+recover-owner:
+	docker compose exec app java -jar /app/zija.jar \
+		--spring.main.web-application-type=none \
+		--zija.command=recover-owner
 
 clean:
 	cd backend && ./mvnw -q clean

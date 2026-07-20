@@ -19,7 +19,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @SpringBootTest(properties = {
         "spring.datasource.hikari.connection-timeout=1000",
-        "spring.datasource.hikari.validation-timeout=1000"
+        "spring.datasource.hikari.validation-timeout=1000",
+        "zija.session.jdbc.enabled=false"
 })
 @AutoConfigureMockMvc
 class SystemReadinessIntegrationTest {
