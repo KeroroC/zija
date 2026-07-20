@@ -2,6 +2,7 @@ package com.zija.system.internal;
 
 import com.zija.ZijaRequestIdFilter;
 import com.zija.ZijaSecurityConfiguration;
+import com.zija.ZijaSessionInvalidator;
 import com.zija.system.SystemApi;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
@@ -40,6 +41,9 @@ class SystemControllerTest {
 
     @MockitoBean
     private SystemApi systemApi;
+
+    @MockitoBean
+    private ZijaSessionInvalidator sessionInvalidator;
 
     @Test
     void returnsPublicSystemInformation() throws Exception {

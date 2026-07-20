@@ -1,5 +1,6 @@
 package com.zija.identity.internal;
 
+import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
 import com.zija.identity.internal.persistence.AccountEntity;
 import com.zija.identity.internal.persistence.AccountMapper;
@@ -8,9 +9,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 class IdentityService implements IdentityApi {
@@ -18,15 +22,18 @@ class IdentityService implements IdentityApi {
     private final AccountMapper accountMapper;
     private final PasswordEncoder passwordEncoder;
     private final SystemApi systemApi;
+    private final ZijaSessionInvalidator sessionInvalidator;
 
     IdentityService(
             AccountMapper accountMapper,
             PasswordEncoder passwordEncoder,
-            SystemApi systemApi
+            SystemApi systemApi,
+            ZijaSessionInvalidator sessionInvalidator
     ) {
         this.accountMapper = accountMapper;
         this.passwordEncoder = passwordEncoder;
         this.systemApi = systemApi;
+        this.sessionInvalidator = sessionInvalidator;
     }
 
     @Override
@@ -79,6 +86,32 @@ class IdentityService implements IdentityApi {
         if (accountMapper.updatePasswordHash(accountId, newHash, account.getVersion()) != 1) {
             throw new InvalidCredentialsException();
         }
+        sessionInvalidator.invalidateAllForAccount(accountId);
+    }
+
+    @Override
+    @Transactional
+    public void resetPassword(UUID accountId, String newPassword) {
+        var account = accountMapper.selectById(accountId);
+        if (account == null) {
+            throw new InvalidCredentialsException();
+        }
+        var newHash = passwordEncoder.encode(newPassword);
+        if (accountMapper.updatePasswordHash(accountId, newHash, account.getVersion()) != 1) {
+            throw new InvalidCredentialsException();
+        }
+        sessionInvalidator.invalidateAllForAccount(accountId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, AccountInfo> findByIds(Collection<UUID> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        var entities = accountMapper.selectBatchIds(ids);
+        return entities.stream()
+                .collect(Collectors.toMap(AccountEntity::getId, this::toInfo));
     }
 
     @Override

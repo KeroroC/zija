@@ -1,5 +1,7 @@
 package com.zija.identity;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -11,7 +13,11 @@ public interface IdentityApi {
 
     Optional<AccountInfo> findByNormalizedUsername(String normalizedUsername);
 
+    Map<UUID, AccountInfo> findByIds(Collection<UUID> ids);
+
     void changePassword(UUID accountId, ChangePasswordCommand command);
+
+    void resetPassword(UUID accountId, String newPassword);
 
     void disableAccount(UUID accountId);
 

@@ -1,6 +1,7 @@
 package com.zija.household.internal;
 
 import com.zija.ZijaSessionAuthenticationSupport;
+import com.zija.ZijaSessionInvalidator;
 import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,7 @@ class HouseholdControllerTest {
     @MockitoBean MemberService memberService;
     @MockitoBean ZijaSessionAuthenticationSupport sessionAuth;
     @MockitoBean SystemApi systemApi;
+    @MockitoBean ZijaSessionInvalidator sessionInvalidator;
 
     @Test
     void statusIsPublic() throws Exception {

@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.ZijaSessionInvalidator;
 import com.zija.household.HouseholdApi;
 import com.zija.household.internal.persistence.MemberEntity;
 import com.zija.household.internal.persistence.MemberMapper;
@@ -16,11 +17,14 @@ class MemberService {
     private final MemberMapper memberMapper;
     private final IdentityApi identityApi;
     private final SystemApi systemApi;
+    private final ZijaSessionInvalidator sessionInvalidator;
 
-    MemberService(MemberMapper memberMapper, IdentityApi identityApi, SystemApi systemApi) {
+    MemberService(MemberMapper memberMapper, IdentityApi identityApi, SystemApi systemApi,
+                  ZijaSessionInvalidator sessionInvalidator) {
         this.memberMapper = memberMapper;
         this.identityApi = identityApi;
         this.systemApi = systemApi;
+        this.sessionInvalidator = sessionInvalidator;
     }
 
     @Transactional
@@ -62,6 +66,7 @@ class MemberService {
         memberMapper.updateStatus(targetMemberId, newStatus, target.getVersion());
         if ("DEACTIVATED".equals(newStatus)) {
             identityApi.disableAccount(target.getAccountId());
+            sessionInvalidator.invalidateAllForAccount(target.getAccountId());
         } else {
             identityApi.activateAccount(target.getAccountId());
         }
@@ -87,6 +92,8 @@ class MemberService {
         identityApi.disableAccount(target.getAccountId());
         identityApi.activateAccount(currentOwner.getAccountId());
         identityApi.activateAccount(target.getAccountId());
+        sessionInvalidator.invalidateAllForAccount(currentOwner.getAccountId());
+        sessionInvalidator.invalidateAllForAccount(target.getAccountId());
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 "OWNERSHIP_TRANSFERRED", "SUCCESS", household,
                 currentOwnerAccountId, target.getAccountId(), null, null,

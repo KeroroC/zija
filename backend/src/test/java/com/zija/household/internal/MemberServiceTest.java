@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.ZijaSessionInvalidator;
 import com.zija.household.internal.persistence.MemberEntity;
 import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.identity.IdentityApi;
@@ -19,7 +20,8 @@ class MemberServiceTest {
         var mapper = mock(MemberMapper.class);
         var owner = member("OWNER", "ACTIVE");
         when(mapper.selectById(owner.getId())).thenReturn(owner);
-        var service = new MemberService(mapper, mock(IdentityApi.class), mock(SystemApi.class));
+        var service = new MemberService(mapper, mock(IdentityApi.class), mock(SystemApi.class),
+                mock(ZijaSessionInvalidator.class));
 
         assertThatThrownBy(() -> service.updateStatus(UUID.randomUUID(),
                 owner.getId(), "DEACTIVATED"))
@@ -31,7 +33,8 @@ class MemberServiceTest {
         var mapper = mock(MemberMapper.class);
         var self = member("ADMIN", "ACTIVE");
         when(mapper.selectById(self.getId())).thenReturn(self);
-        var service = new MemberService(mapper, mock(IdentityApi.class), mock(SystemApi.class));
+        var service = new MemberService(mapper, mock(IdentityApi.class), mock(SystemApi.class),
+                mock(ZijaSessionInvalidator.class));
 
         assertThatThrownBy(() -> service.updateStatus(self.getAccountId(),
                 self.getId(), "DEACTIVATED"))
@@ -44,7 +47,8 @@ class MemberServiceTest {
         var target = member("MEMBER", "ACTIVE");
         when(mapper.selectById(target.getId())).thenReturn(target);
         when(mapper.updateRole(any(), any(), any())).thenReturn(1);
-        var service = new MemberService(mapper, mock(IdentityApi.class), mock(SystemApi.class));
+        var service = new MemberService(mapper, mock(IdentityApi.class), mock(SystemApi.class),
+                mock(ZijaSessionInvalidator.class));
 
         service.updateRole(UUID.randomUUID(), target.getId(), "ADMIN");
         verify(mapper).updateRole(target.getId(), "ADMIN", target.getVersion());
@@ -55,7 +59,8 @@ class MemberServiceTest {
         var mapper = mock(MemberMapper.class);
         var target = member("MEMBER", "ACTIVE");
         when(mapper.selectById(target.getId())).thenReturn(target);
-        var service = new MemberService(mapper, mock(IdentityApi.class), mock(SystemApi.class));
+        var service = new MemberService(mapper, mock(IdentityApi.class), mock(SystemApi.class),
+                mock(ZijaSessionInvalidator.class));
 
         assertThatThrownBy(() -> service.updateRole(UUID.randomUUID(),
                 target.getId(), "OWNER"))

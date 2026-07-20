@@ -2,6 +2,7 @@ package com.zija.identity.internal;
 
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionAuthenticationSupport;
+import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
 import com.zija.identity.internal.auth.LoginRequest;
 import com.zija.identity.internal.persistence.AccountMapper;
@@ -40,6 +41,7 @@ class IdentityControllerTest {
     @MockitoBean AuthenticationManager authenticationManager;
     @MockitoBean ZijaSessionAuthenticationSupport sessionAuthSupport;
     @MockitoBean SystemApi systemApi;
+    @MockitoBean ZijaSessionInvalidator sessionInvalidator;
 
     @Test
     void loginReturnsSessionAndAccountIdentity() throws Exception {

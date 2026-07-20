@@ -1,5 +1,6 @@
 package com.zija.identity.internal;
 
+import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
 import com.zija.identity.internal.persistence.AccountEntity;
 import com.zija.identity.internal.persistence.AccountMapper;
@@ -20,6 +21,7 @@ class IdentityServiceTest {
     private AccountMapper accountMapper;
     private PasswordEncoder passwordEncoder;
     private SystemApi systemApi;
+    private ZijaSessionInvalidator sessionInvalidator;
     private IdentityService service;
 
     @BeforeEach
@@ -27,7 +29,8 @@ class IdentityServiceTest {
         accountMapper = mock(AccountMapper.class);
         passwordEncoder = mock(PasswordEncoder.class);
         systemApi = mock(SystemApi.class);
-        service = new IdentityService(accountMapper, passwordEncoder, systemApi);
+        sessionInvalidator = mock(ZijaSessionInvalidator.class);
+        service = new IdentityService(accountMapper, passwordEncoder, systemApi, sessionInvalidator);
     }
 
     @Test

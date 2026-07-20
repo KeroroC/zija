@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.ZijaSessionInvalidator;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
 import com.zija.identity.IdentityApi;
@@ -20,14 +21,16 @@ class OwnerRecoveryService {
     private final OwnerRecoveryTokenMapper tokenMapper;
     private final IdentityApi identityApi;
     private final SystemApi systemApi;
+    private final ZijaSessionInvalidator sessionInvalidator;
     private final SecureRandom random = new SecureRandom();
     private final Base64.Encoder base64Url = Base64.getUrlEncoder().withoutPadding();
 
     OwnerRecoveryService(OwnerRecoveryTokenMapper tokenMapper, IdentityApi identityApi,
-                        SystemApi systemApi) {
+                        SystemApi systemApi, ZijaSessionInvalidator sessionInvalidator) {
         this.tokenMapper = tokenMapper;
         this.identityApi = identityApi;
         this.systemApi = systemApi;
+        this.sessionInvalidator = sessionInvalidator;
     }
 
     public record GenerateResult(UUID id, String rawToken, OffsetDateTime expiresAt) {
@@ -63,10 +66,10 @@ class OwnerRecoveryService {
             throw new InvalidInvitationException();
         }
         tokenMapper.markConsumed(token.getId());
-        identityApi.changePassword(token.getAccountId(),
-                new IdentityApi.ChangePasswordCommand(null, newPassword));
+        identityApi.resetPassword(token.getAccountId(), newPassword);
         identityApi.disableAccount(token.getAccountId());
         identityApi.activateAccount(token.getAccountId());
+        sessionInvalidator.invalidateAllForAccount(token.getAccountId());
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 "OWNER_RECOVERY", "SUCCESS", token.getHouseholdId(),
                 token.getAccountId(), token.getAccountId(), null, null, null));

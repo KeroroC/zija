@@ -1,10 +1,12 @@
 package com.zija.system.internal;
 
+import com.zija.ZijaSessionInvalidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -29,6 +31,9 @@ class SystemReadinessIntegrationTest {
 
     @Autowired
     private MockMvc mvc;
+
+    @MockitoBean
+    private ZijaSessionInvalidator sessionInvalidator;
 
     @Test
     void reportsOutOfServiceWhenDatabaseIsUnavailable() throws Exception {

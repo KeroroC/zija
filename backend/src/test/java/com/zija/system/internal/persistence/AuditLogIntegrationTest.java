@@ -1,11 +1,13 @@
 package com.zija.system.internal.persistence;
 
+import com.zija.ZijaSessionInvalidator;
 import com.zija.system.internal.AuditEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -27,6 +29,9 @@ class AuditLogIntegrationTest {
 
     @Autowired
     AuditLogMapper mapper;
+
+    @MockitoBean
+    ZijaSessionInvalidator sessionInvalidator;
 
     @Test
     @Transactional

@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.ZijaSessionInvalidator;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
 import com.zija.identity.IdentityApi;
@@ -23,7 +24,8 @@ class OwnerRecoveryServiceTest {
     void generateInvalidatesPreviousTokens() {
         var mapper = mock(OwnerRecoveryTokenMapper.class);
         var identityApi = mock(IdentityApi.class);
-        var service = new OwnerRecoveryService(mapper, identityApi, mock(SystemApi.class));
+        var service = new OwnerRecoveryService(mapper, identityApi, mock(SystemApi.class),
+                mock(ZijaSessionInvalidator.class));
 
         var result = service.generate(UUID.randomUUID(), UUID.randomUUID());
 
@@ -39,11 +41,12 @@ class OwnerRecoveryServiceTest {
         var token = token(false, future());
         when(mapper.selectByDigestForUpdate(any())).thenReturn(Optional.of(token));
         when(mapper.markConsumed(any())).thenReturn(1);
-        var service = new OwnerRecoveryService(mapper, identityApi, mock(SystemApi.class));
+        var service = new OwnerRecoveryService(mapper, identityApi, mock(SystemApi.class),
+                mock(ZijaSessionInvalidator.class));
 
         service.resetPassword("raw", "NewPass1");
 
-        verify(identityApi).changePassword(eq(token.getAccountId()), any());
+        verify(identityApi).resetPassword(eq(token.getAccountId()), eq("NewPass1"));
     }
 
     @Test
@@ -51,7 +54,8 @@ class OwnerRecoveryServiceTest {
         var mapper = mock(OwnerRecoveryTokenMapper.class);
         var token = token(true, past());
         when(mapper.selectByDigestForUpdate(any())).thenReturn(Optional.of(token));
-        var service = new OwnerRecoveryService(mapper, mock(IdentityApi.class), mock(SystemApi.class));
+        var service = new OwnerRecoveryService(mapper, mock(IdentityApi.class), mock(SystemApi.class),
+                mock(ZijaSessionInvalidator.class));
 
         assertThatThrownBy(() -> service.resetPassword("raw", "NewPass1"))
                 .isInstanceOf(InvalidInvitationException.class);

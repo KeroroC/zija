@@ -3,7 +3,9 @@ package com.zija.household.internal;
 import com.zija.ZijaPrincipal;
 import com.zija.household.RequireAdmin;
 import com.zija.household.RequireMember;
+import com.zija.household.internal.persistence.MemberEntity;
 import com.zija.household.internal.persistence.MemberMapper;
+import com.zija.identity.IdentityApi;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,12 +20,14 @@ class MemberController {
     private final HouseholdService householdService;
     private final MemberService memberService;
     private final MemberMapper memberMapper;
+    private final IdentityApi identityApi;
 
     MemberController(HouseholdService householdService, MemberService memberService,
-                    MemberMapper memberMapper) {
+                    MemberMapper memberMapper, IdentityApi identityApi) {
         this.householdService = householdService;
         this.memberService = memberService;
         this.memberMapper = memberMapper;
+        this.identityApi = identityApi;
     }
 
     public record MemberResponse(
@@ -43,9 +47,23 @@ class MemberController {
         var principal = (ZijaPrincipal) SecurityContextHolder
                 .getContext().getAuthentication().getPrincipal();
         var member = householdService.requireActiveMember(principal.getAccountId());
-        return memberMapper.selectByHousehold(member.householdId()).stream()
-                .map(m -> new MemberResponse(m.getId(), m.getAccountId(),
-                        null, null, m.getRole(), m.getStatus()))
+        var members = memberMapper.selectByHousehold(member.householdId());
+        if (members.isEmpty()) {
+            return List.of();
+        }
+
+        var accountIds = members.stream().map(MemberEntity::getAccountId).toList();
+        var accounts = identityApi.findByIds(accountIds);
+
+        return members.stream()
+                .map(m -> {
+                    var account = accounts.get(m.getAccountId());
+                    return new MemberResponse(
+                            m.getId(), m.getAccountId(),
+                            account != null ? account.username() : null,
+                            account != null ? account.displayName() : null,
+                            m.getRole(), m.getStatus());
+                })
                 .toList();
     }
 
