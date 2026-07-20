@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.identity.internal.persistence.AccountMapper">
+
+    <select id="selectByNormalizedUsername" resultType="com.zija.identity.internal.persistence.AccountEntity">
+        SELECT id, username, username_normalized, password_hash, display_name,
+               email, status, created_at, updated_at, version
+        FROM account
+        WHERE username_normalized = #{normalizedUsername}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE account
+        SET status = #{status}, updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE id = #{id, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
+          AND version = #{version}
+    </update>
+
+    <update id="updatePasswordHash">
+        UPDATE account
+        SET password_hash = #{passwordHash}, updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE id = #{id, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
+          AND version = #{version}
+    </update>
+</mapper>
