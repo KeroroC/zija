@@ -13,7 +13,7 @@ FROM eclipse-temurin:25-jre-noble
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* && groupadd --system zija && useradd --system --gid zija --home-dir /app zija
 
 WORKDIR /app
-COPY --from=build --chown=zija:zija /workspace/backend/target/zija-backend-0.1.0-SNAPSHOT.jar /app/zija.jar
+COPY --from=build --chown=zija:zija /workspace/backend/target/*.jar /app/zija.jar
 
 USER zija
 EXPOSE 8080
