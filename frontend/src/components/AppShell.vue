@@ -11,6 +11,8 @@
         :default-active="$route.path"
       >
         <el-menu-item index="/">首页</el-menu-item>
+        <el-menu-item v-if="session.authenticated" index="/members">成员管理</el-menu-item>
+        <el-menu-item v-if="session.authenticated" index="/profile">个人资料</el-menu-item>
         <el-menu-item index="/items" disabled>物品资料</el-menu-item>
         <el-menu-item index="/inventory" disabled>库存管理</el-menu-item>
         <el-menu-item index="/locations" disabled>位置管理</el-menu-item>
@@ -23,7 +25,16 @@
     <el-container>
       <el-header class="app-header">
         <span class="header-context">家庭：我的家</span>
-        <el-tag effect="plain" type="success">管理员</el-tag>
+        <el-tag v-if="session.authenticated" effect="plain" type="success">
+          {{ roleLabel }}
+        </el-tag>
+        <el-button
+          v-if="session.authenticated"
+          size="small"
+          @click="onLogout"
+        >
+          登出
+        </el-button>
       </el-header>
       <el-main class="app-main">
         <router-view />
@@ -31,3 +42,30 @@
     </el-container>
   </el-container>
 </template>
+
+<script setup lang="ts">
+import { computed } from "vue";
+import { useRouter } from "vue-router";
+import { useSessionStore } from "../stores/session";
+
+const router = useRouter();
+const session = useSessionStore();
+
+const roleLabel = computed(() => {
+  switch (session.role) {
+    case "OWNER":
+      return "所有者";
+    case "ADMIN":
+      return "管理员";
+    case "MEMBER":
+      return "成员";
+    default:
+      return "访客";
+  }
+});
+
+async function onLogout() {
+  await session.logout();
+  router.push({ name: "login" });
+}
+</script>
