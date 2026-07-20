@@ -1,0 +1,9 @@
+package com.zija.identity.internal.auth;
+
+import jakarta.validation.constraints.NotBlank;
+
+public record ChangePasswordRequest(
+        @NotBlank String currentPassword,
+        @NotBlank String newPassword
+) {
+}
