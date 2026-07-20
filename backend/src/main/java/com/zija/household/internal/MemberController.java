@@ -1,0 +1,61 @@
+package com.zija.household.internal;
+
+import com.zija.ZijaPrincipal;
+import com.zija.household.internal.persistence.MemberMapper;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/v1/members")
+class MemberController {
+
+    private final HouseholdService householdService;
+    private final MemberService memberService;
+    private final MemberMapper memberMapper;
+
+    MemberController(HouseholdService householdService, MemberService memberService,
+                    MemberMapper memberMapper) {
+        this.householdService = householdService;
+        this.memberService = memberService;
+        this.memberMapper = memberMapper;
+    }
+
+    public record MemberResponse(
+            UUID id, UUID accountId, String username, String displayName,
+            String role, String status) {
+    }
+
+    public record UpdateRoleRequest(String role) {
+    }
+
+    public record UpdateStatusRequest(String status) {
+    }
+
+    @GetMapping
+    List<MemberResponse> list() {
+        var principal = (ZijaPrincipal) SecurityContextHolder
+                .getContext().getAuthentication().getPrincipal();
+        var member = householdService.requireActiveMember(principal.getAccountId());
+        return memberMapper.selectByHousehold(member.householdId()).stream()
+                .map(m -> new MemberResponse(m.getId(), m.getAccountId(),
+                        null, null, m.getRole(), m.getStatus()))
+                .toList();
+    }
+
+    @PutMapping("/{id}/role")
+    void updateRole(@PathVariable UUID id, @RequestBody UpdateRoleRequest request) {
+        var principal = (ZijaPrincipal) SecurityContextHolder
+                .getContext().getAuthentication().getPrincipal();
+        memberService.updateRole(principal.getAccountId(), id, request.role());
+    }
+
+    @PutMapping("/{id}/status")
+    void updateStatus(@PathVariable UUID id, @RequestBody UpdateStatusRequest request) {
+        var principal = (ZijaPrincipal) SecurityContextHolder
+                .getContext().getAuthentication().getPrincipal();
+        memberService.updateStatus(principal.getAccountId(), id, request.status());
+    }
+}
