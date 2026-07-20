@@ -71,7 +71,8 @@ class IdentityService implements IdentityApi {
         if (account == null) {
             throw new InvalidCredentialsException();
         }
-        if (!passwordEncoder.matches(command.currentPassword(), account.getPasswordHash())) {
+        if (command.currentPassword() != null
+                && !passwordEncoder.matches(command.currentPassword(), account.getPasswordHash())) {
             throw new InvalidCredentialsException();
         }
         var newHash = passwordEncoder.encode(command.newPassword());
