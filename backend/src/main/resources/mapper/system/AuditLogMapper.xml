@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.system.internal.persistence.AuditLogMapper">
+
+    <insert id="insert" parameterType="com.zija.system.internal.AuditEvent">
+        INSERT INTO audit_log (
+            id, household_id, actor_account_id, subject_account_id,
+            action, outcome, detail, ip_address, request_id, created_at
+        ) VALUES (
+            gen_random_uuid(),
+            #{householdId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler},
+            #{actorAccountId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler},
+            #{subjectAccountId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler},
+            #{action},
+            #{outcome},
+            #{detail, typeHandler=com.zija.system.internal.persistence.JsonbTypeHandler},
+            #{ipAddress},
+            #{requestId},
+            CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <select id="findByActor" resultMap="auditLogResultMap">
+        SELECT id, household_id, actor_account_id, subject_account_id,
+               action, outcome, detail, ip_address, request_id, created_at
+        FROM audit_log
+        WHERE actor_account_id = #{actorAccountId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
+        ORDER BY created_at DESC
+    </select>
+
+    <resultMap id="auditLogResultMap" type="com.zija.system.internal.persistence.AuditLogEntity">
+        <id property="id" column="id"
+            typeHandler="com.zija.system.internal.persistence.PostgresUuidTypeHandler" />
+        <result property="householdId" column="household_id"
+                typeHandler="com.zija.system.internal.persistence.PostgresUuidTypeHandler" />
+        <result property="actorAccountId" column="actor_account_id"
+                typeHandler="com.zija.system.internal.persistence.PostgresUuidTypeHandler" />
+        <result property="subjectAccountId" column="subject_account_id"
+                typeHandler="com.zija.system.internal.persistence.PostgresUuidTypeHandler" />
+        <result property="action" column="action" />
+        <result property="outcome" column="outcome" />
+        <result property="detail" column="detail"
+                typeHandler="com.zija.system.internal.persistence.JsonbTypeHandler" />
+        <result property="ipAddress" column="ip_address" />
+        <result property="requestId" column="request_id" />
+        <result property="createdAt" column="created_at" />
+    </resultMap>
+</mapper>

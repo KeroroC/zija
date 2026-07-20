@@ -11,13 +11,16 @@ class SystemInfoService implements SystemApi {
 
     private final SystemInstallationMapper installationMapper;
     private final Environment environment;
+    private final AuditService auditService;
 
     SystemInfoService(
             SystemInstallationMapper installationMapper,
-            Environment environment
+            Environment environment,
+            AuditService auditService
     ) {
         this.installationMapper = installationMapper;
         this.environment = environment;
+        this.auditService = auditService;
     }
 
     @Override
@@ -25,11 +28,8 @@ class SystemInfoService implements SystemApi {
     public SystemSnapshot current() {
         var installation = installationMapper.selectById((short) 1);
         if (installation == null) {
-            throw new SystemStateUnavailableException(
-                    "installation missing"
-            );
+            throw new SystemStateUnavailableException("installation missing");
         }
-
         return new SystemSnapshot(
                 environment.getProperty("spring.application.name", "zija"),
                 environment.getProperty("info.app.version", "dev"),
@@ -37,5 +37,10 @@ class SystemInfoService implements SystemApi {
                 installation.getInstallationId(),
                 installationMapper.selectDatabaseTime()
         );
+    }
+
+    @Override
+    public void recordAudit(SystemApi.AuditEvent event) {
+        auditService.recordAudit(event);
     }
 }
