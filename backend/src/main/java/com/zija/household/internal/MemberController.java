@@ -1,6 +1,8 @@
 package com.zija.household.internal;
 
 import com.zija.ZijaPrincipal;
+import com.zija.household.RequireAdmin;
+import com.zija.household.RequireMember;
 import com.zija.household.internal.persistence.MemberMapper;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -10,6 +12,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/members")
+@RequireAdmin
 class MemberController {
 
     private final HouseholdService householdService;
@@ -35,6 +38,7 @@ class MemberController {
     }
 
     @GetMapping
+    @RequireMember
     List<MemberResponse> list() {
         var principal = (ZijaPrincipal) SecurityContextHolder
                 .getContext().getAuthentication().getPrincipal();
