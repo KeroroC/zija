@@ -46,6 +46,7 @@ public class ZijaSecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/v1/owner-recovery/inspect").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/owner-recovery/reset-password").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/system/info").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/v3/api-docs", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository())
