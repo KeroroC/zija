@@ -16,9 +16,21 @@ spring:
       enabled: true
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  session:
+    jdbc:
+      initialize-schema: never
+    timeout: 24h
 
 server:
   shutdown: graceful
+  forward-headers-strategy: native
+  servlet:
+    session:
+      timeout: 24h
+      cookie:
+        name: ZIJA_SESSION
+        http-only: true
+        same-site: lax
 
 info:
   app:
