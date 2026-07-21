@@ -84,4 +84,21 @@ describe("OwnerRecoveryPage", () => {
     expect(pushMock).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
+  it("clears a malformed token and shows the invalid-link message", async () => {
+    window.history.replaceState(null, "", "/owner-recovery#token=%E0%A4%A");
+
+    const wrapper = mount(OwnerRecoveryPage, {
+      global: {
+        plugins: [ElementPlus]
+      }
+    });
+    await flushPromises();
+
+    expect(window.location.hash).toBe("");
+    expect(wrapper.text()).toContain("恢复链接无效或已过期。");
+    expect(initializeCsrfMock).not.toHaveBeenCalled();
+    expect(inspectMock).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });

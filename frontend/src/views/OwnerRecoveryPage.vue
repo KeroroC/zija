@@ -49,8 +49,13 @@ onMounted(async () => {
     info.value = { valid: false };
     return;
   }
-  token.value = decodeURIComponent(match[1]);
   window.history.replaceState(null, "", window.location.pathname);
+  try {
+    token.value = decodeURIComponent(match[1]);
+  } catch {
+    info.value = { valid: false };
+    return;
+  }
 
   try {
     await authApi.initializeCsrf();
