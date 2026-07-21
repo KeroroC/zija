@@ -49,7 +49,8 @@ class MemberService {
                 || (!"ADMIN".equals(target.getRole()) && !"MEMBER".equals(target.getRole()))) {
             throw new InsufficientRoleException();
         }
-        memberMapper.updateRole(targetMemberId, newRole, target.getVersion());
+        requireSingleMemberUpdate(memberMapper.updateRole(
+                targetMemberId, newRole, target.getVersion()));
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 "ROLE_CHANGED", "SUCCESS", target.getHouseholdId(),
                 actorAccountId, target.getAccountId(), null, null,
@@ -73,7 +74,8 @@ class MemberService {
         if (!ownerManagingAssignableRole && !adminManagingMember) {
             throw new InsufficientRoleException();
         }
-        memberMapper.updateStatus(targetMemberId, newStatus, target.getVersion());
+        requireSingleMemberUpdate(memberMapper.updateStatus(
+                targetMemberId, newStatus, target.getVersion()));
         if ("DEACTIVATED".equals(newStatus)) {
             identityApi.disableAccount(target.getAccountId());
             sessionInvalidator.invalidateAllForAccount(target.getAccountId());
@@ -98,8 +100,10 @@ class MemberService {
         if (!"OWNER".equals(currentOwner.getRole())) {
             throw new InsufficientRoleException();
         }
-        memberMapper.updateRole(currentOwner.getId(), "ADMIN", currentOwner.getVersion());
-        memberMapper.updateRole(targetMemberId, "OWNER", target.getVersion());
+        requireSingleMemberUpdate(memberMapper.updateRole(
+                currentOwner.getId(), "ADMIN", currentOwner.getVersion()));
+        requireSingleMemberUpdate(memberMapper.updateRole(
+                targetMemberId, "OWNER", target.getVersion()));
         identityApi.disableAccount(currentOwner.getAccountId());
         identityApi.disableAccount(target.getAccountId());
         identityApi.activateAccount(currentOwner.getAccountId());
@@ -119,6 +123,12 @@ class MemberService {
             throw new InvalidCredentialsException();
         }
         return member;
+    }
+
+    private void requireSingleMemberUpdate(int updatedRows) {
+        if (updatedRows != 1) {
+            throw new MemberConcurrentUpdateException();
+        }
     }
 
     private MemberEntity requireActiveActor(UUID accountId, UUID householdId) {

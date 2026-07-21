@@ -13,7 +13,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class MemberServiceTest {
@@ -54,6 +53,7 @@ class MemberServiceTest {
         var target = member(householdId, "ADMIN", "ACTIVE");
         when(mapper.selectByAccount(actor.getAccountId())).thenReturn(Optional.of(actor));
         when(mapper.selectById(target.getId())).thenReturn(target);
+        when(mapper.updateStatus(target.getId(), "DEACTIVATED", target.getVersion())).thenReturn(1);
         var service = service(mapper);
 
         service.updateStatus(actor.getAccountId(), target.getId(), "DEACTIVATED");
@@ -70,11 +70,33 @@ class MemberServiceTest {
         var target = member(householdId, "MEMBER", "ACTIVE");
         when(mapper.selectByAccount(actor.getAccountId())).thenReturn(Optional.of(actor));
         when(mapper.selectById(target.getId())).thenReturn(target);
+        when(mapper.updateStatus(target.getId(), "DEACTIVATED", target.getVersion())).thenReturn(1);
         var service = service(mapper);
 
         service.updateStatus(actor.getAccountId(), target.getId(), "DEACTIVATED");
 
         verify(mapper).updateStatus(target.getId(), "DEACTIVATED", target.getVersion());
+    }
+
+    @Test
+    void statusUpdateConflictStopsAccountAndAuditSideEffects() {
+        var mapper = mock(MemberMapper.class);
+        var identityApi = mock(IdentityApi.class);
+        var systemApi = mock(SystemApi.class);
+        var sessionInvalidator = mock(ZijaSessionInvalidator.class);
+        var householdId = UUID.randomUUID();
+        var actor = member(householdId, "OWNER", "ACTIVE");
+        var target = member(householdId, "MEMBER", "ACTIVE");
+        when(mapper.selectByAccount(actor.getAccountId())).thenReturn(Optional.of(actor));
+        when(mapper.selectById(target.getId())).thenReturn(target);
+        when(mapper.updateStatus(target.getId(), "DEACTIVATED", target.getVersion())).thenReturn(0);
+        var service = new MemberService(mapper, identityApi, systemApi, sessionInvalidator);
+
+        assertThatThrownBy(() -> service.updateStatus(
+                actor.getAccountId(), target.getId(), "DEACTIVATED"))
+                .isInstanceOf(MemberConcurrentUpdateException.class)
+                .hasMessage("member was modified concurrently");
+        verifyNoInteractions(identityApi, systemApi, sessionInvalidator);
     }
 
     @Test
@@ -114,13 +136,32 @@ class MemberServiceTest {
         var target = member(householdId, "MEMBER", "ACTIVE");
         when(mapper.selectByAccount(actor.getAccountId())).thenReturn(Optional.of(actor));
         when(mapper.selectById(target.getId())).thenReturn(target);
-        when(mapper.updateRole(any(), any(), any())).thenReturn(1);
+        when(mapper.updateRole(target.getId(), "ADMIN", target.getVersion())).thenReturn(1);
         var service = new MemberService(mapper, mock(IdentityApi.class), mock(SystemApi.class),
                 mock(ZijaSessionInvalidator.class));
 
         service.updateRole(actor.getAccountId(), target.getId(), "ADMIN");
         verify(mapper).updateRole(target.getId(), "ADMIN", target.getVersion());
         verify(mapper).selectByAccount(actor.getAccountId());
+    }
+
+    @Test
+    void roleUpdateConflictDoesNotRecordSuccessAudit() {
+        var mapper = mock(MemberMapper.class);
+        var systemApi = mock(SystemApi.class);
+        var householdId = UUID.randomUUID();
+        var actor = member(householdId, "OWNER", "ACTIVE");
+        var target = member(householdId, "MEMBER", "ACTIVE");
+        when(mapper.selectByAccount(actor.getAccountId())).thenReturn(Optional.of(actor));
+        when(mapper.selectById(target.getId())).thenReturn(target);
+        when(mapper.updateRole(target.getId(), "ADMIN", target.getVersion())).thenReturn(0);
+        var service = new MemberService(mapper, mock(IdentityApi.class), systemApi,
+                mock(ZijaSessionInvalidator.class));
+
+        assertThatThrownBy(() -> service.updateRole(actor.getAccountId(), target.getId(), "ADMIN"))
+                .isInstanceOf(MemberConcurrentUpdateException.class)
+                .hasMessage("member was modified concurrently");
+        verifyNoInteractions(systemApi);
     }
 
     @ParameterizedTest
@@ -208,12 +249,56 @@ class MemberServiceTest {
         var target = member(householdId, "MEMBER", "ACTIVE");
         when(mapper.selectByAccount(owner.getAccountId())).thenReturn(Optional.of(owner));
         when(mapper.selectById(target.getId())).thenReturn(target);
+        when(mapper.updateRole(owner.getId(), "ADMIN", owner.getVersion())).thenReturn(1);
+        when(mapper.updateRole(target.getId(), "OWNER", target.getVersion())).thenReturn(1);
         var service = service(mapper);
 
         service.transferOwnership(owner.getAccountId(), target.getId());
 
         verify(mapper).updateRole(owner.getId(), "ADMIN", owner.getVersion());
         verify(mapper).updateRole(target.getId(), "OWNER", target.getVersion());
+    }
+
+    @Test
+    void ownershipTransferStopsWhenCurrentOwnerUpdateConflicts() {
+        var mapper = mock(MemberMapper.class);
+        var identityApi = mock(IdentityApi.class);
+        var systemApi = mock(SystemApi.class);
+        var sessionInvalidator = mock(ZijaSessionInvalidator.class);
+        var householdId = UUID.randomUUID();
+        var owner = member(householdId, "OWNER", "ACTIVE");
+        var target = member(householdId, "MEMBER", "ACTIVE");
+        when(mapper.selectByAccount(owner.getAccountId())).thenReturn(Optional.of(owner));
+        when(mapper.selectById(target.getId())).thenReturn(target);
+        when(mapper.updateRole(owner.getId(), "ADMIN", owner.getVersion())).thenReturn(0);
+        var service = new MemberService(mapper, identityApi, systemApi, sessionInvalidator);
+
+        assertThatThrownBy(() -> service.transferOwnership(owner.getAccountId(), target.getId()))
+                .isInstanceOf(MemberConcurrentUpdateException.class)
+                .hasMessage("member was modified concurrently");
+        verify(mapper, never()).updateRole(target.getId(), "OWNER", target.getVersion());
+        verifyNoInteractions(identityApi, systemApi, sessionInvalidator);
+    }
+
+    @Test
+    void ownershipTransferStopsWhenTargetUpdateConflicts() {
+        var mapper = mock(MemberMapper.class);
+        var identityApi = mock(IdentityApi.class);
+        var systemApi = mock(SystemApi.class);
+        var sessionInvalidator = mock(ZijaSessionInvalidator.class);
+        var householdId = UUID.randomUUID();
+        var owner = member(householdId, "OWNER", "ACTIVE");
+        var target = member(householdId, "MEMBER", "ACTIVE");
+        when(mapper.selectByAccount(owner.getAccountId())).thenReturn(Optional.of(owner));
+        when(mapper.selectById(target.getId())).thenReturn(target);
+        when(mapper.updateRole(owner.getId(), "ADMIN", owner.getVersion())).thenReturn(1);
+        when(mapper.updateRole(target.getId(), "OWNER", target.getVersion())).thenReturn(0);
+        var service = new MemberService(mapper, identityApi, systemApi, sessionInvalidator);
+
+        assertThatThrownBy(() -> service.transferOwnership(owner.getAccountId(), target.getId()))
+                .isInstanceOf(MemberConcurrentUpdateException.class)
+                .hasMessage("member was modified concurrently");
+        verifyNoInteractions(identityApi, systemApi, sessionInvalidator);
     }
 
     @Test
