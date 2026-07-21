@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,6 +19,8 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.UUID;
 
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -138,5 +141,34 @@ class HouseholdControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.fieldErrors.password").exists());
+    }
+
+    @Test
+    void bootstrapReturnsCreatedAuthenticatedSession() throws Exception {
+        var accountId = UUID.randomUUID();
+        var principal = new ZijaPrincipal(
+                accountId, "owner", "所有者", "{bcrypt}x", true);
+        var authentication = mock(Authentication.class);
+        when(authentication.getPrincipal()).thenReturn(principal);
+        when(householdService.bootstrap(any())).thenReturn(
+                new HouseholdApi.HouseholdInfo(UUID.randomUUID(), "知家", "Asia/Shanghai"));
+        when(sessionAuth.authenticate(any(), any(), any(), any()))
+                .thenReturn(authentication);
+
+        mockMvc.perform(post("/api/v1/household/bootstrap")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "householdName": "知家",
+                                  "username": "owner",
+                                  "password": "Passw0rd!",
+                                  "displayName": "所有者"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.authenticated").value(true))
+                .andExpect(jsonPath("$.accountId").value(accountId.toString()))
+                .andExpect(jsonPath("$.username").value("owner"));
     }
 }

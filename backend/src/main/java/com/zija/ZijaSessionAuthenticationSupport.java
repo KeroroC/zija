@@ -11,7 +11,6 @@ import org.springframework.security.web.authentication.session.ChangeSessionIdAu
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.stereotype.Component;
 
@@ -48,6 +47,7 @@ public class ZijaSessionAuthenticationSupport {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
+        regenerateCsrfToken(request, response);
 
         return authentication;
     }
@@ -57,9 +57,6 @@ public class ZijaSessionAuthenticationSupport {
             HttpServletResponse response
     ) {
         csrfTokenRepository.saveToken(null, request, response);
-        CsrfToken newToken = csrfTokenRepository.loadToken(request);
-        if (newToken != null) {
-            csrfTokenRepository.saveToken(newToken, request, response);
-        }
+        csrfTokenRepository.loadDeferredToken(request, response).get();
     }
 }

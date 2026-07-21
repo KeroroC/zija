@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -17,6 +18,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -69,5 +72,32 @@ class InvitationControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.fieldErrors.password").exists());
+    }
+
+    @Test
+    void redeemReturnsCreatedAuthenticatedSession() throws Exception {
+        var accountId = UUID.randomUUID();
+        var principal = new ZijaPrincipal(
+                accountId, "member", "成员", "{bcrypt}x", true);
+        var authentication = mock(Authentication.class);
+        when(authentication.getPrincipal()).thenReturn(principal);
+        when(sessionAuth.authenticate(any(), any(), any(), any()))
+                .thenReturn(authentication);
+
+        mockMvc.perform(post("/api/v1/invitations/redeem")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "token": "secret",
+                                  "username": "member",
+                                  "password": "Passw0rd!",
+                                  "displayName": "成员"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.authenticated").value(true))
+                .andExpect(jsonPath("$.accountId").value(accountId.toString()))
+                .andExpect(jsonPath("$.username").value("member"));
     }
 }

@@ -17,10 +17,8 @@ import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.password.StandardPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
-import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
-import org.springframework.security.web.csrf.CsrfTokenRequestHandler;
-import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -49,8 +47,8 @@ public class ZijaSecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/v3/api-docs", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
-                .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository())
-                        .csrfTokenRequestHandler(csrfTokenRequestHandler()))
+                .csrf(csrf -> csrf.spa()
+                        .csrfTokenRepository(csrfTokenRepository()))
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                         .sessionFixation(fixation -> fixation.changeSessionId()))
@@ -91,16 +89,6 @@ public class ZijaSecurityConfiguration {
 
     @Bean
     CsrfTokenRepository csrfTokenRepository() {
-        var repo = new HttpSessionCsrfTokenRepository();
-        repo.setHeaderName("X-XSRF-TOKEN");
-        repo.setParameterName("_csrf");
-        return repo;
-    }
-
-    @Bean
-    CsrfTokenRequestHandler csrfTokenRequestHandler() {
-        var handler = new CsrfTokenRequestAttributeHandler();
-        handler.setCsrfRequestAttributeName(null);
-        return handler::handle;
+        return CookieCsrfTokenRepository.withHttpOnlyFalse();
     }
 }

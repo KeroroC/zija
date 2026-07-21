@@ -7,6 +7,7 @@ import com.zija.household.HouseholdApi;
 import com.zija.household.RequireAdmin;
 import com.zija.household.internal.persistence.InvitationEntity;
 import com.zija.identity.IdentityApi;
+import com.zija.identity.SessionInfo;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -16,6 +17,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
@@ -98,15 +100,18 @@ class InvitationController {
     }
 
     @PostMapping("/redeem")
-    void redeem(@Valid @RequestBody RedeemRequest request,
-                HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+    @ResponseStatus(HttpStatus.CREATED)
+    SessionInfo redeem(@Valid @RequestBody RedeemRequest request,
+                       HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         invitationService.redeem(request.token(),
                 new InvitationService.RedeemCommand(
                         request.username(), request.password(),
                         request.displayName(), request.email()),
                 identityApi, memberService);
-        sessionAuth.authenticate(request.username().trim().toLowerCase(),
+        var authentication = sessionAuth.authenticate(request.username().trim().toLowerCase(),
                 request.password(), httpRequest, httpResponse);
-        sessionAuth.regenerateCsrfToken(httpRequest, httpResponse);
+        var principal = (ZijaPrincipal) authentication.getPrincipal();
+        return new SessionInfo(true, principal.getAccountId(),
+                principal.getUsername(), principal.getDisplayName());
     }
 }

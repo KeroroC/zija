@@ -1,6 +1,7 @@
 package com.zija.household.internal;
 
 import com.zija.ZijaSessionInvalidator;
+import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,8 +11,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -25,6 +28,7 @@ class OwnerRecoveryControllerTest {
     @MockitoBean OwnerRecoveryService recoveryService;
     @MockitoBean SystemApi systemApi;
     @MockitoBean ZijaSessionInvalidator sessionInvalidator;
+    @MockitoBean ZijaSessionAuthenticationSupport sessionAuth;
 
     @Test
     void resetRejectsShortPassword() throws Exception {
@@ -65,5 +69,18 @@ class OwnerRecoveryControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.fieldErrors.newPassword").exists());
+    }
+
+    @Test
+    void successfulResetRotatesCsrfToken() throws Exception {
+        mockMvc.perform(post("/api/v1/owner-recovery/reset-password")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"token":"secret","newPassword":"new-password"}
+                                """))
+                .andExpect(status().isOk());
+
+        verify(sessionAuth).regenerateCsrfToken(any(), any());
     }
 }

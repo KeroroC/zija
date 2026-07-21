@@ -1,4 +1,4 @@
-package com.zija.identity.internal.auth;
+package com.zija.identity;
 
 import java.util.UUID;
 

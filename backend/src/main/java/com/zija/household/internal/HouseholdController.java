@@ -5,6 +5,7 @@ import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.Utf8ByteLength;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireOwner;
+import com.zija.identity.SessionInfo;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -13,6 +14,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -69,21 +71,23 @@ class HouseholdController {
     }
 
     @PostMapping("/bootstrap")
-    HouseholdApi.HouseholdInfo bootstrap(
+    @ResponseStatus(HttpStatus.CREATED)
+    SessionInfo bootstrap(
             @Valid @RequestBody BootstrapRequest request,
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse
     ) {
-        var household = householdService.bootstrap(new HouseholdService.BootstrapCommand(
+        householdService.bootstrap(new HouseholdService.BootstrapCommand(
                 request.householdName(), request.username(), request.password(),
                 request.displayName(), request.email()));
 
-        sessionAuth.authenticate(
+        var authentication = sessionAuth.authenticate(
                 request.username().trim().toLowerCase(),
                 request.password(), httpRequest, httpResponse);
-        sessionAuth.regenerateCsrfToken(httpRequest, httpResponse);
+        var principal = (ZijaPrincipal) authentication.getPrincipal();
 
-        return household;
+        return new SessionInfo(true, principal.getAccountId(),
+                principal.getUsername(), principal.getDisplayName());
     }
 
     @GetMapping("/me")
