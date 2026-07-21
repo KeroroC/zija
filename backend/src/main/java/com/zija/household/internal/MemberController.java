@@ -3,6 +3,7 @@ package com.zija.household.internal;
 import com.zija.ZijaPrincipal;
 import com.zija.household.RequireAdmin;
 import com.zija.household.RequireMember;
+import com.zija.household.RequireOwner;
 import com.zija.household.internal.persistence.MemberEntity;
 import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.identity.IdentityApi;
@@ -14,7 +15,6 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/members")
-@RequireAdmin
 class MemberController {
 
     private final HouseholdService householdService;
@@ -68,6 +68,7 @@ class MemberController {
     }
 
     @PutMapping("/{id}/role")
+    @RequireOwner
     void updateRole(@PathVariable UUID id, @RequestBody UpdateRoleRequest request) {
         var principal = (ZijaPrincipal) SecurityContextHolder
                 .getContext().getAuthentication().getPrincipal();
@@ -75,6 +76,7 @@ class MemberController {
     }
 
     @PutMapping("/{id}/status")
+    @RequireAdmin
     void updateStatus(@PathVariable UUID id, @RequestBody UpdateStatusRequest request) {
         var principal = (ZijaPrincipal) SecurityContextHolder
                 .getContext().getAuthentication().getPrincipal();

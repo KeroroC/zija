@@ -19,10 +19,16 @@ public interface HouseholdApi {
     boolean hasAtLeastRole(UUID accountId, MemberRole requiredRole);
 
     enum MemberRole {
-        OWNER, ADMIN, MEMBER;
+        OWNER(3), ADMIN(2), MEMBER(1);
+
+        private final int authorityLevel;
+
+        MemberRole(int authorityLevel) {
+            this.authorityLevel = authorityLevel;
+        }
 
         public boolean isAtLeast(MemberRole other) {
-            return this.ordinal() >= other.ordinal();
+            return authorityLevel >= other.authorityLevel;
         }
     }
 

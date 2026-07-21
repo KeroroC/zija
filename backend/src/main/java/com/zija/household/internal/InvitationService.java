@@ -3,6 +3,7 @@ package com.zija.household.internal;
 import com.zija.household.HouseholdApi;
 import com.zija.household.internal.persistence.InvitationEntity;
 import com.zija.household.internal.persistence.InvitationMapper;
+import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.identity.IdentityApi;
 import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;
@@ -19,12 +20,14 @@ import java.util.UUID;
 class InvitationService {
 
     private final InvitationMapper invitationMapper;
+    private final MemberMapper memberMapper;
     private final SystemApi systemApi;
     private final SecureRandom random = new SecureRandom();
     private final Base64.Encoder base64Url = Base64.getUrlEncoder().withoutPadding();
 
-    InvitationService(InvitationMapper invitationMapper, SystemApi systemApi) {
+    InvitationService(InvitationMapper invitationMapper, MemberMapper memberMapper, SystemApi systemApi) {
         this.invitationMapper = invitationMapper;
+        this.memberMapper = memberMapper;
         this.systemApi = systemApi;
     }
 
@@ -39,6 +42,22 @@ class InvitationService {
     @Transactional
     public CreateResult create(UUID householdId, UUID createdBy,
                                 HouseholdApi.MemberRole role, int expiresInHours) {
+        if (role != HouseholdApi.MemberRole.ADMIN && role != HouseholdApi.MemberRole.MEMBER) {
+            throw new IllegalArgumentException("role must be ADMIN or MEMBER");
+        }
+        var creator = memberMapper.selectByAccount(createdBy)
+                .orElseThrow(InsufficientRoleException::new);
+        if (!"ACTIVE".equals(creator.getStatus())
+                || !householdId.equals(creator.getHouseholdId())) {
+            throw new InsufficientRoleException();
+        }
+        var ownerInvitation = "OWNER".equals(creator.getRole());
+        var adminMemberInvitation = "ADMIN".equals(creator.getRole())
+                && role == HouseholdApi.MemberRole.MEMBER;
+        if (!ownerInvitation && !adminMemberInvitation) {
+            throw new InsufficientRoleException();
+        }
+
         var rawBytes = new byte[32];
         random.nextBytes(rawBytes);
         var rawToken = base64Url.encodeToString(rawBytes);

@@ -40,11 +40,13 @@ class MemberService {
 
     @Transactional
     public void updateRole(UUID actorAccountId, UUID targetMemberId, String newRole) {
-        if ("OWNER".equals(newRole)) {
-            throw new IllegalArgumentException("use transfer-ownership");
+        if (!"ADMIN".equals(newRole) && !"MEMBER".equals(newRole)) {
+            throw new IllegalArgumentException("role must be ADMIN or MEMBER");
         }
         var target = requireMember(targetMemberId);
-        if (target.getRole().equals("OWNER")) {
+        var actor = requireActiveActor(actorAccountId, target.getHouseholdId());
+        if (!"OWNER".equals(actor.getRole())
+                || (!"ADMIN".equals(target.getRole()) && !"MEMBER".equals(target.getRole()))) {
             throw new InsufficientRoleException();
         }
         memberMapper.updateRole(targetMemberId, newRole, target.getVersion());
@@ -56,11 +58,19 @@ class MemberService {
 
     @Transactional
     public void updateStatus(UUID actorAccountId, UUID targetMemberId, String newStatus) {
+        if (!"ACTIVE".equals(newStatus) && !"DEACTIVATED".equals(newStatus)) {
+            throw new IllegalArgumentException("status must be ACTIVE or DEACTIVATED");
+        }
         var target = requireMember(targetMemberId);
+        var actor = requireActiveActor(actorAccountId, target.getHouseholdId());
         if (actorAccountId.equals(target.getAccountId())) {
             throw new IllegalStateException("cannot change own status");
         }
-        if ("OWNER".equals(target.getRole())) {
+        var ownerManagingAssignableRole = "OWNER".equals(actor.getRole())
+                && ("ADMIN".equals(target.getRole()) || "MEMBER".equals(target.getRole()));
+        var adminManagingMember = "ADMIN".equals(actor.getRole())
+                && "MEMBER".equals(target.getRole());
+        if (!ownerManagingAssignableRole && !adminManagingMember) {
             throw new InsufficientRoleException();
         }
         memberMapper.updateStatus(targetMemberId, newStatus, target.getVersion());
@@ -84,8 +94,10 @@ class MemberService {
             throw new InsufficientRoleException();
         }
         var household = target.getHouseholdId();
-        var currentOwner = memberMapper.selectOwner(household)
-                .orElseThrow(IllegalStateException::new);
+        var currentOwner = requireActiveActor(currentOwnerAccountId, household);
+        if (!"OWNER".equals(currentOwner.getRole())) {
+            throw new InsufficientRoleException();
+        }
         memberMapper.updateRole(currentOwner.getId(), "ADMIN", currentOwner.getVersion());
         memberMapper.updateRole(targetMemberId, "OWNER", target.getVersion());
         identityApi.disableAccount(currentOwner.getAccountId());
@@ -107,5 +119,15 @@ class MemberService {
             throw new InvalidCredentialsException();
         }
         return member;
+    }
+
+    private MemberEntity requireActiveActor(UUID accountId, UUID householdId) {
+        var actor = memberMapper.selectByAccount(accountId)
+                .orElseThrow(InsufficientRoleException::new);
+        if (!"ACTIVE".equals(actor.getStatus())
+                || !householdId.equals(actor.getHouseholdId())) {
+            throw new InsufficientRoleException();
+        }
+        return actor;
     }
 }
