@@ -36,7 +36,7 @@ class OwnerRecoveryCommand implements org.springframework.boot.CommandLineRunner
             return;
         }
         var result = recoveryService.generate(household.getId(), owner.getAccountId());
-        System.out.println("Recovery link: /owner-recovery?token=" + result.rawToken());
+        System.out.println("Recovery link: /owner-recovery#token=" + result.rawToken());
         System.out.println("Expires at: " + result.expiresAt());
     }
 }
