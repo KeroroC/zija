@@ -6,6 +6,7 @@ import LoginPage from "../views/LoginPage.vue";
 import InvitationRedeemPage from "../views/InvitationRedeemPage.vue";
 import MembersPage from "../views/MembersPage.vue";
 import ProfilePage from "../views/ProfilePage.vue";
+import OwnerRecoveryPage from "../views/OwnerRecoveryPage.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -15,7 +16,8 @@ export const router = createRouter({
     { path: "/login", name: "login", component: LoginPage },
     { path: "/invitation/redeem", name: "invitation-redeem", component: InvitationRedeemPage },
     { path: "/members", name: "members", component: MembersPage },
-    { path: "/profile", name: "profile", component: ProfilePage }
+    { path: "/profile", name: "profile", component: ProfilePage },
+    { path: "/owner-recovery", name: "owner-recovery", component: OwnerRecoveryPage }
   ]
 });
 

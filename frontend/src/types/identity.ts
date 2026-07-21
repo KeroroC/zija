@@ -60,3 +60,13 @@ export interface ChangePasswordRequest {
   currentPassword: string;
   newPassword: string;
 }
+
+export interface OwnerRecoveryInspect {
+  valid: boolean;
+  ownerDisplayName?: string;
+}
+
+export interface OwnerRecoveryResetRequest {
+  token: string;
+  newPassword: string;
+}
