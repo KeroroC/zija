@@ -50,4 +50,24 @@ class InvitationControllerTest {
                 .andExpect(jsonPath("$.fieldErrors.role").exists())
                 .andExpect(jsonPath("$.fieldErrors.expiresInHours").exists());
     }
+
+    @Test
+    void redeemRejectsPasswordLongerThanBcryptByteLimit() throws Exception {
+        var password = "密".repeat(25);
+
+        mockMvc.perform(post("/api/v1/invitations/redeem")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "token": "secret",
+                                  "username": "member",
+                                  "password": "%s",
+                                  "displayName": "成员"
+                                }
+                                """.formatted(password)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.password").exists());
+    }
 }

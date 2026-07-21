@@ -51,4 +51,19 @@ class OwnerRecoveryControllerTest {
                 .andExpect(jsonPath("$.errorCode").value("HOUSEHOLD_TOKEN_INVALID"))
                 .andExpect(jsonPath("$.requestId").value("recovery-invalid"));
     }
+
+    @Test
+    void resetRejectsPasswordLongerThanBcryptByteLimit() throws Exception {
+        var password = "密".repeat(25);
+
+        mockMvc.perform(post("/api/v1/owner-recovery/reset-password")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"token":"secret","newPassword":"%s"}
+                                """.formatted(password)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.newPassword").exists());
+    }
 }

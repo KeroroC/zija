@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.Utf8ByteLength;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -26,7 +27,7 @@ class OwnerRecoveryController {
 
     public record ResetPasswordRequest(
             @NotBlank @Size(max = 200) String token,
-            @NotBlank @Size(min = 8, max = 200) String newPassword) {
+            @NotBlank @Size(min = 8, max = 72) @Utf8ByteLength(max = 72) String newPassword) {
     }
 
     @PostMapping("/inspect")

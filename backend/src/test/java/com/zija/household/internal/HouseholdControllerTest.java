@@ -94,4 +94,49 @@ class HouseholdControllerTest {
                 .andExpect(jsonPath("$.requestId").value("transfer-validation"))
                 .andExpect(jsonPath("$.fieldErrors.targetMemberId").exists());
     }
+
+    @Test
+    void bootstrapRejectsMalformedJsonWithStableProblemDetails() throws Exception {
+        mockMvc.perform(post("/api/v1/household/bootstrap")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .header("X-Request-Id", "malformed-json")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.requestId").value("malformed-json"))
+                .andExpect(jsonPath("$.fieldErrors.request").exists());
+    }
+
+    @Test
+    void bootstrapRejectsMissingBodyWithStableProblemDetails() throws Exception {
+        mockMvc.perform(post("/api/v1/household/bootstrap")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .header("X-Request-Id", "missing-body")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.requestId").value("missing-body"))
+                .andExpect(jsonPath("$.fieldErrors.request").exists());
+    }
+
+    @Test
+    void bootstrapRejectsPasswordLongerThanBcryptByteLimit() throws Exception {
+        var password = "密".repeat(25);
+
+        mockMvc.perform(post("/api/v1/household/bootstrap")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "householdName": "知家",
+                                  "username": "owner",
+                                  "password": "%s",
+                                  "displayName": "所有者"
+                                }
+                                """.formatted(password)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.password").exists());
+    }
 }

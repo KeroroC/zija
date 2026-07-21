@@ -4,6 +4,7 @@ import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
+import com.zija.identity.internal.auth.ChangePasswordRequest;
 import com.zija.identity.internal.auth.LoginRequest;
 import com.zija.identity.internal.persistence.AccountMapper;
 import com.zija.system.SystemApi;
@@ -24,9 +25,11 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -84,5 +87,61 @@ class IdentityControllerTest {
     void getSessionReturnsNotAuthenticatedWithoutSession() throws Exception {
         mockMvc.perform(get("/api/v1/auth/session"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void loginRejectsUsernameLongerThanStorageLimit() throws Exception {
+        var principal = new ZijaPrincipal(
+                UUID.randomUUID(), "owner", "所有者", "{bcrypt}x", true);
+        var auth = mock(Authentication.class);
+        when(auth.getPrincipal()).thenReturn(principal);
+        when(sessionAuthSupport.authenticate(any(), any(), any(), any())).thenReturn(auth);
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .header("X-Request-Id", "login-validation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("x".repeat(51), "Passw0rd!"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.requestId").value("login-validation"))
+                .andExpect(jsonPath("$.fieldErrors.username").exists());
+    }
+
+    @Test
+    void changePasswordRejectsShortNewPassword() throws Exception {
+        var principal = new ZijaPrincipal(
+                UUID.randomUUID(), "owner", "所有者", "{bcrypt}x", true);
+
+        mockMvc.perform(put("/api/v1/auth/password")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new ChangePasswordRequest("OldPass1", "short"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.newPassword").exists());
+
+        verifyNoInteractions(identityService);
+    }
+
+    @Test
+    void changePasswordRejectsNewPasswordLongerThanBcryptByteLimit() throws Exception {
+        var principal = new ZijaPrincipal(
+                UUID.randomUUID(), "owner", "所有者", "{bcrypt}x", true);
+
+        mockMvc.perform(put("/api/v1/auth/password")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new ChangePasswordRequest("OldPass1", "密".repeat(25)))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.newPassword").exists());
+
+        verifyNoInteractions(identityService);
     }
 }

@@ -2,6 +2,7 @@ package com.zija.household.internal;
 
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionAuthenticationSupport;
+import com.zija.Utf8ByteLength;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireOwner;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,7 +45,7 @@ class HouseholdController {
     public record BootstrapRequest(
             @NotBlank @Size(max = 100) String householdName,
             @NotBlank @Size(max = 50) String username,
-            @NotBlank @Size(min = 8, max = 200) String password,
+            @NotBlank @Size(min = 8, max = 72) @Utf8ByteLength(max = 72) String password,
             @NotBlank @Size(max = 100) String displayName,
             @Email @Size(max = 255) String email
     ) {

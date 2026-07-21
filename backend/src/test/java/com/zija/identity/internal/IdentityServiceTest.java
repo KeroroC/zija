@@ -89,4 +89,23 @@ class IdentityServiceTest {
                 new IdentityApi.ChangePasswordCommand("wrong", "newpass")))
                 .isInstanceOf(InvalidCredentialsException.class);
     }
+
+    @Test
+    void changePasswordRejectsMissingCurrentPassword() {
+        var account = new AccountEntity();
+        account.setId(java.util.UUID.randomUUID());
+        account.setVersion(0);
+        account.setPasswordHash("{bcrypt}hash");
+        when(accountMapper.selectById(account.getId())).thenReturn(account);
+        when(passwordEncoder.encode("NewPass2")).thenReturn("{bcrypt}newhash");
+        when(accountMapper.updatePasswordHash(
+                account.getId(), "{bcrypt}newhash", 0)).thenReturn(1);
+
+        assertThatThrownBy(() -> service.changePassword(account.getId(),
+                new IdentityApi.ChangePasswordCommand(null, "NewPass2")))
+                .isInstanceOf(InvalidCredentialsException.class);
+
+        verifyNoInteractions(passwordEncoder);
+        verify(accountMapper, never()).updatePasswordHash(any(), any(), any());
+    }
 }

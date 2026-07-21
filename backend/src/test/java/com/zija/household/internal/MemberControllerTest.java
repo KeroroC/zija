@@ -74,6 +74,20 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.requestId").value("member-access-denied"));
     }
 
+    @Test
+    void updateRoleRejectsInvalidMemberIdWithStableProblemDetails() throws Exception {
+        mockMvc.perform(put("/api/v1/members/{id}/role", "not-a-uuid")
+                        .with(SecurityMockMvcRequestPostProcessors.user(owner()))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .header("X-Request-Id", "member-id-validation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"MEMBER\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.requestId").value("member-id-validation"))
+                .andExpect(jsonPath("$.fieldErrors.id").exists());
+    }
+
     private ZijaPrincipal owner() {
         var accountId = UUID.randomUUID();
         when(householdService.hasAtLeastRole(accountId, HouseholdApi.MemberRole.OWNER))

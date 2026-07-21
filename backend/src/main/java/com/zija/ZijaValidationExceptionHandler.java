@@ -3,11 +3,13 @@ package com.zija;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -25,6 +27,26 @@ public class ZijaValidationExceptionHandler {
         exception.getBindingResult().getFieldErrors().forEach(error ->
                 fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage()));
 
+        return problem(request, fieldErrors);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail handleUnreadableBody(HttpServletRequest request) {
+        return problem(request, Map.of("request", "请求体格式错误"));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ProblemDetail handleTypeMismatch(
+            MethodArgumentTypeMismatchException exception,
+            HttpServletRequest request
+    ) {
+        return problem(request, Map.of(exception.getName(), "格式不正确"));
+    }
+
+    private ProblemDetail problem(
+            HttpServletRequest request,
+            Map<String, String> fieldErrors
+    ) {
         var problem = ProblemDetail.forStatusAndDetail(
                 HttpStatus.BAD_REQUEST, "请求字段校验失败");
         problem.setTitle("请求字段校验失败");
