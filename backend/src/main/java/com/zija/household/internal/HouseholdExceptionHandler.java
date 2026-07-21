@@ -8,7 +8,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = {HouseholdController.class})
+@RestControllerAdvice(basePackageClasses = HouseholdController.class)
 class HouseholdExceptionHandler {
 
     @ExceptionHandler(HouseholdAlreadyInitializedException.class)
@@ -19,6 +19,12 @@ class HouseholdExceptionHandler {
     @ExceptionHandler(InvalidCredentialsException.class)
     ProblemDetail handleInvalidCredentials(HttpServletRequest request) {
         return problem(request, HttpStatus.UNAUTHORIZED, "未认证或账户未激活", "HOUSEHOLD_MEMBER_NOT_ACTIVE");
+    }
+
+    @ExceptionHandler(MemberConcurrentUpdateException.class)
+    ProblemDetail handleMemberConcurrentUpdate(HttpServletRequest request) {
+        return problem(request, HttpStatus.CONFLICT,
+                "成员信息已被其他请求修改", "HOUSEHOLD_MEMBER_CONCURRENT_UPDATE");
     }
 
     private ProblemDetail problem(HttpServletRequest request, HttpStatus status,
