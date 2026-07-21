@@ -101,4 +101,46 @@ describe("OwnerRecoveryPage", () => {
     expect(inspectMock).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
+  it.each([
+    ["a fragment without a token", "#source=internal"],
+    ["an empty token", "#token="]
+  ])("clears %s and shows the invalid-link message", async (_, hash) => {
+    window.history.replaceState(null, "", `/owner-recovery${hash}`);
+
+    const wrapper = mount(OwnerRecoveryPage, {
+      global: {
+        plugins: [ElementPlus]
+      }
+    });
+    await flushPromises();
+
+    expect(window.location.hash).toBe("");
+    expect(wrapper.text()).toContain("恢复链接无效或已过期。");
+    expect(initializeCsrfMock).not.toHaveBeenCalled();
+    expect(inspectMock).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("shows the invalid-link state without exposing reset errors", async () => {
+    resetPasswordMock.mockRejectedValue(new Error("internal recovery token failure"));
+
+    const wrapper = mount(OwnerRecoveryPage, {
+      global: {
+        plugins: [ElementPlus]
+      }
+    });
+    await flushPromises();
+
+    const inputs = wrapper.findAll("input");
+    await inputs[0].setValue("new-password");
+    await inputs[1].setValue("new-password");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("恢复链接无效或已过期。");
+    expect(document.body.textContent).not.toContain("internal recovery token failure");
+    expect(pushMock).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });

@@ -44,12 +44,12 @@ const passwordsMatch = computed(
 
 onMounted(async () => {
   const hash = window.location.hash;
+  window.history.replaceState(null, "", window.location.pathname);
   const match = hash.match(/token=([^&]+)/);
   if (!match) {
     info.value = { valid: false };
     return;
   }
-  window.history.replaceState(null, "", window.location.pathname);
   try {
     token.value = decodeURIComponent(match[1]);
   } catch {
@@ -73,8 +73,8 @@ async function reset() {
     await ownerRecoveryApi.resetPassword({ token: token.value, newPassword: form.newPassword });
     ElMessage.success("密码已重置，请使用新密码登录");
     router.push({ name: "login" });
-  } catch (e) {
-    ElMessage.error((e as Error).message);
+  } catch {
+    info.value = { valid: false };
   } finally {
     loading.value = false;
   }
