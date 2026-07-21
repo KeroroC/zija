@@ -53,6 +53,7 @@ class IdentityController {
     ) {
         var normalized = request.username().trim().toLowerCase(Locale.ROOT);
         var ip = resolveClientIp(httpRequest);
+        rateLimiter.checkAllowed(normalized, ip);
 
         try {
             var authentication = sessionAuth.authenticate(
@@ -68,10 +69,11 @@ class IdentityController {
             return new SessionInfo(true, principal.getAccountId(),
                     principal.getUsername(), principal.getDisplayName());
         } catch (AuthenticationException ex) {
+            LoginRateLimitedException rateLimit = null;
             try {
                 rateLimiter.recordFailure(normalized, ip);
             } catch (LoginRateLimitedException rateEx) {
-                throw rateEx;
+                rateLimit = rateEx;
             }
             systemApi.recordAudit(new SystemApi.AuditEvent(
                     "LOGIN_FAILURE", "FAILURE", null,
@@ -79,6 +81,9 @@ class IdentityController {
                     (String) httpRequest.getAttribute("zija.request-id"),
                     ip, Map.of("username", normalized)
             ));
+            if (rateLimit != null) {
+                throw rateLimit;
+            }
             throw new InvalidCredentialsException();
         }
     }
@@ -138,10 +143,6 @@ class IdentityController {
     }
 
     private String resolveClientIp(HttpServletRequest request) {
-        var forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
         return request.getRemoteAddr();
     }
 }

@@ -24,7 +24,9 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -43,6 +45,7 @@ class IdentityControllerTest {
     @MockitoBean AccountMapper accountMapper;
     @MockitoBean AuthenticationManager authenticationManager;
     @MockitoBean ZijaSessionAuthenticationSupport sessionAuthSupport;
+    @MockitoBean LoginRateLimiter rateLimiter;
     @MockitoBean SystemApi systemApi;
     @MockitoBean ZijaSessionInvalidator sessionInvalidator;
 
@@ -143,5 +146,45 @@ class IdentityControllerTest {
                 .andExpect(jsonPath("$.fieldErrors.newPassword").exists());
 
         verifyNoInteractions(identityService);
+    }
+
+    @Test
+    void blockedLoginIsRejectedBeforeAuthentication() throws Exception {
+        doThrow(new LoginRateLimitedException("rate limited"))
+                .when(rateLimiter).checkAllowed("owner", "203.0.113.10");
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .with(request -> {
+                            request.setRemoteAddr("203.0.113.10");
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("Owner", "Passw0rd!"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_LOGIN_RATE_LIMITED"));
+
+        verifyNoInteractions(sessionAuthSupport);
+    }
+
+    @Test
+    void loginIgnoresUntrustedForwardedForHeader() throws Exception {
+        when(sessionAuthSupport.authenticate(any(), any(), any(), any()))
+                .thenThrow(new BadCredentialsException("bad"));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .with(request -> {
+                            request.setRemoteAddr("203.0.113.10");
+                            return request;
+                        })
+                        .header("X-Forwarded-For", "198.51.100.99")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("ghost", "Passw0rd!"))))
+                .andExpect(status().isUnauthorized());
+
+        verify(rateLimiter).recordFailure("ghost", "203.0.113.10");
     }
 }
