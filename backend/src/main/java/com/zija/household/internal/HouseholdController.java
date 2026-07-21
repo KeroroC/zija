@@ -7,6 +7,10 @@ import com.zija.household.RequireOwner;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -38,8 +42,11 @@ class HouseholdController {
     }
 
     public record BootstrapRequest(
-            String householdName, String username, String password,
-            String displayName, String email
+            @NotBlank @Size(max = 100) String householdName,
+            @NotBlank @Size(max = 50) String username,
+            @NotBlank @Size(min = 8, max = 200) String password,
+            @NotBlank @Size(max = 100) String displayName,
+            @Email @Size(max = 255) String email
     ) {
     }
 
@@ -52,7 +59,7 @@ class HouseholdController {
     ) {
     }
 
-    public record TransferOwnershipRequest(UUID targetMemberId) {
+    public record TransferOwnershipRequest(@NotNull UUID targetMemberId) {
     }
 
     @GetMapping("/status")
@@ -91,7 +98,7 @@ class HouseholdController {
 
     @PostMapping("/transfer-ownership")
     @RequireOwner
-    void transferOwnership(@RequestBody TransferOwnershipRequest request) {
+    void transferOwnership(@Valid @RequestBody TransferOwnershipRequest request) {
         var principal = (ZijaPrincipal) SecurityContextHolder
                 .getContext().getAuthentication().getPrincipal();
         memberService.transferOwnership(principal.getAccountId(), request.targetMemberId());

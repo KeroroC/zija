@@ -27,6 +27,30 @@ class HouseholdExceptionHandler {
                 "成员信息已被其他请求修改", "HOUSEHOLD_MEMBER_CONCURRENT_UPDATE");
     }
 
+    @ExceptionHandler(InsufficientRoleException.class)
+    ProblemDetail handleInsufficientRole(HttpServletRequest request) {
+        return problem(request, HttpStatus.FORBIDDEN,
+                "权限不足", "HOUSEHOLD_INSUFFICIENT_ROLE");
+    }
+
+    @ExceptionHandler(InvalidInvitationException.class)
+    ProblemDetail handleInvalidToken(HttpServletRequest request) {
+        return problem(request, HttpStatus.BAD_REQUEST,
+                "链接无效或已过期", "HOUSEHOLD_TOKEN_INVALID");
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    ProblemDetail handleInvalidArgument(HttpServletRequest request) {
+        return problem(request, HttpStatus.BAD_REQUEST,
+                "请求参数无效", "HOUSEHOLD_REQUEST_INVALID");
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    ProblemDetail handleStateConflict(HttpServletRequest request) {
+        return problem(request, HttpStatus.CONFLICT,
+                "当前状态不允许此操作", "HOUSEHOLD_STATE_CONFLICT");
+    }
+
     private ProblemDetail problem(HttpServletRequest request, HttpStatus status,
                                    String title, String errorCode) {
         var problem = ProblemDetail.forStatusAndDetail(status, title);

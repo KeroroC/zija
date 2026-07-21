@@ -74,4 +74,24 @@ class HouseholdControllerTest {
                         .value("HOUSEHOLD_MEMBER_CONCURRENT_UPDATE"))
                 .andExpect(jsonPath("$.requestId").value("member-concurrent-123"));
     }
+
+    @Test
+    void ownershipTransferRejectsMissingTargetMemberId() throws Exception {
+        var accountId = UUID.randomUUID();
+        var principal = new ZijaPrincipal(
+                accountId, "owner", "所有者", "{bcrypt}x", true);
+        when(householdService.hasAtLeastRole(
+                accountId, HouseholdApi.MemberRole.OWNER)).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/household/transfer-ownership")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .header("X-Request-Id", "transfer-validation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetMemberId\":null}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.requestId").value("transfer-validation"))
+                .andExpect(jsonPath("$.fieldErrors.targetMemberId").exists());
+    }
 }

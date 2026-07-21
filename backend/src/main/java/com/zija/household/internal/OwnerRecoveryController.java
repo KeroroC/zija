@@ -3,6 +3,7 @@ package com.zija.household.internal;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Optional;
@@ -17,13 +18,15 @@ class OwnerRecoveryController {
         this.recoveryService = recoveryService;
     }
 
-    public record InspectRequest(@NotBlank String token) {
+    public record InspectRequest(@NotBlank @Size(max = 200) String token) {
     }
 
     public record InspectResponse(boolean valid, String ownerDisplayName) {
     }
 
-    public record ResetPasswordRequest(@NotBlank String token, @NotBlank String newPassword) {
+    public record ResetPasswordRequest(
+            @NotBlank @Size(max = 200) String token,
+            @NotBlank @Size(min = 8, max = 200) String newPassword) {
     }
 
     @PostMapping("/inspect")

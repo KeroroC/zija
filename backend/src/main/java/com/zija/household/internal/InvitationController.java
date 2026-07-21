@@ -9,7 +9,11 @@ import com.zija.identity.IdentityApi;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -40,10 +44,12 @@ class InvitationController {
         this.sessionAuth = sessionAuth;
     }
 
-    public record CreateInvitationRequest(String role, int expiresInHours) {
+    public record CreateInvitationRequest(
+            @NotBlank @Pattern(regexp = "ADMIN|MEMBER") String role,
+            @Positive int expiresInHours) {
     }
 
-    public record InspectRequest(@NotBlank String token) {
+    public record InspectRequest(@NotBlank @Size(max = 200) String token) {
     }
 
     public record InvitationInfoResponse(
@@ -56,8 +62,11 @@ class InvitationController {
     }
 
     public record RedeemRequest(
-            String token, String username, String password,
-            String displayName, String email) {
+            @NotBlank @Size(max = 200) String token,
+            @NotBlank @Size(max = 50) String username,
+            @NotBlank @Size(min = 8, max = 200) String password,
+            @NotBlank @Size(max = 100) String displayName,
+            @Email @Size(max = 255) String email) {
     }
 
     @PostMapping

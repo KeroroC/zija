@@ -7,6 +7,9 @@ import com.zija.household.RequireOwner;
 import com.zija.household.internal.persistence.MemberEntity;
 import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.identity.IdentityApi;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,10 +38,12 @@ class MemberController {
             String role, String status) {
     }
 
-    public record UpdateRoleRequest(String role) {
+    public record UpdateRoleRequest(
+            @NotBlank @Pattern(regexp = "ADMIN|MEMBER") String role) {
     }
 
-    public record UpdateStatusRequest(String status) {
+    public record UpdateStatusRequest(
+            @NotBlank @Pattern(regexp = "ACTIVE|DEACTIVATED") String status) {
     }
 
     @GetMapping
@@ -69,7 +74,7 @@ class MemberController {
 
     @PutMapping("/{id}/role")
     @RequireOwner
-    void updateRole(@PathVariable UUID id, @RequestBody UpdateRoleRequest request) {
+    void updateRole(@PathVariable UUID id, @Valid @RequestBody UpdateRoleRequest request) {
         var principal = (ZijaPrincipal) SecurityContextHolder
                 .getContext().getAuthentication().getPrincipal();
         memberService.updateRole(principal.getAccountId(), id, request.role());
@@ -77,7 +82,7 @@ class MemberController {
 
     @PutMapping("/{id}/status")
     @RequireAdmin
-    void updateStatus(@PathVariable UUID id, @RequestBody UpdateStatusRequest request) {
+    void updateStatus(@PathVariable UUID id, @Valid @RequestBody UpdateStatusRequest request) {
         var principal = (ZijaPrincipal) SecurityContextHolder
                 .getContext().getAuthentication().getPrincipal();
         memberService.updateStatus(principal.getAccountId(), id, request.status());
