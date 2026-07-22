@@ -2,6 +2,12 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.zija.household.internal.persistence.InvitationMapper">
 
+    <select id="selectByDigest" resultType="com.zija.household.internal.persistence.InvitationEntity">
+        SELECT id, household_id, token_digest, role, expires_at, created_by,
+               consumed_at, consumed_by, created_at
+        FROM invitation WHERE token_digest = #{tokenDigest}
+    </select>
+
     <select id="selectByDigestForUpdate" resultType="com.zija.household.internal.persistence.InvitationEntity">
         SELECT id, household_id, token_digest, role, expires_at, created_by,
                consumed_at, consumed_by, created_at

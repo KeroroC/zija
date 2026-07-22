@@ -2,6 +2,8 @@ package com.zija;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
+import com.zija.system.SystemApi;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -28,9 +30,11 @@ import java.util.Map;
 public class ZijaSecurityConfiguration {
 
     @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            ZijaProblemHandlers problemHandlers
+            ZijaProblemHandlers problemHandlers,
+            SystemApi systemApi
     ) throws Exception {
         return http
                 .authorizeHttpRequests(authorize -> authorize
@@ -63,8 +67,17 @@ public class ZijaSecurityConfiguration {
                         .invalidateHttpSession(true)
                         .clearAuthentication(true)
                         .deleteCookies("ZIJA_SESSION", "XSRF-TOKEN")
-                        .logoutSuccessHandler((request, response, auth) ->
-                                response.setStatus(HttpServletResponse.SC_NO_CONTENT)))
+                        .logoutSuccessHandler((request, response, auth) -> {
+                            if (auth != null && auth.getPrincipal() instanceof ZijaPrincipal principal) {
+                                systemApi.recordAudit(new SystemApi.AuditEvent(
+                                        "LOGOUT", "SUCCESS", null,
+                                        principal.getAccountId(), null,
+                                        (String) request.getAttribute("zija.request-id"),
+                                        request.getRemoteAddr(), null
+                                ));
+                            }
+                            response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+                        }))
                 .build();
     }
 

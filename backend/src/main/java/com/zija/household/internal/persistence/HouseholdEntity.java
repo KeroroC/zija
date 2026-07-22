@@ -1,5 +1,6 @@
 package com.zija.household.internal.persistence;
 
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.Version;
@@ -10,9 +11,11 @@ import java.util.UUID;
 @TableName("household")
 public class HouseholdEntity {
 
+    @TableId(value = "singleton_key", type = IdType.INPUT)
     private Short singletonKey;
-    @TableId
+
     private UUID id;
+
     private String name;
     private String timezone;
     private OffsetDateTime createdAt;

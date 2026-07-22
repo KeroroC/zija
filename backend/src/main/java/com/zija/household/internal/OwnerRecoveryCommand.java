@@ -2,6 +2,7 @@ package com.zija.household.internal;
 
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.household.internal.persistence.MemberMapper;
+import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -9,11 +10,12 @@ import java.util.UUID;
 
 @Component
 @ConditionalOnProperty(name = "zija.command", havingValue = "recover-owner")
-class OwnerRecoveryCommand implements org.springframework.boot.CommandLineRunner {
+class OwnerRecoveryCommand implements org.springframework.boot.CommandLineRunner, ExitCodeGenerator {
 
     private final HouseholdMapper householdMapper;
     private final MemberMapper memberMapper;
     private final OwnerRecoveryService recoveryService;
+    private int exitCode;
 
     OwnerRecoveryCommand(HouseholdMapper householdMapper, MemberMapper memberMapper,
                         OwnerRecoveryService recoveryService) {
@@ -27,16 +29,24 @@ class OwnerRecoveryCommand implements org.springframework.boot.CommandLineRunner
         var household = householdMapper.selectById((short) 1);
         if (household == null) {
             System.err.println("household not initialized");
+            exitCode = 1;
             return;
         }
         var owner = memberMapper.selectOwner(household.getId())
                 .orElse(null);
         if (owner == null) {
             System.err.println("owner not found");
+            exitCode = 1;
             return;
         }
         var result = recoveryService.generate(household.getId(), owner.getAccountId());
         System.out.println("Recovery link: /owner-recovery#token=" + result.rawToken());
         System.out.println("Expires at: " + result.expiresAt());
+        exitCode = 0;
+    }
+
+    @Override
+    public int getExitCode() {
+        return exitCode;
     }
 }

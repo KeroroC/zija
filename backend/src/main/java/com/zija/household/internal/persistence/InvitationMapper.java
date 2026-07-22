@@ -10,6 +10,8 @@ import java.util.UUID;
 @Mapper
 public interface InvitationMapper extends BaseMapper<InvitationEntity> {
 
+    Optional<InvitationEntity> selectByDigest(@Param("tokenDigest") String tokenDigest);
+
     Optional<InvitationEntity> selectByDigestForUpdate(@Param("tokenDigest") String tokenDigest);
 
     int markConsumed(@Param("id") UUID id, @Param("consumedBy") UUID consumedBy);

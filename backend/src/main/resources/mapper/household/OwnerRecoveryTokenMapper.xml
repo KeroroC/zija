@@ -2,6 +2,11 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.zija.household.internal.persistence.OwnerRecoveryTokenMapper">
 
+    <select id="selectByDigest" resultType="com.zija.household.internal.persistence.OwnerRecoveryTokenEntity">
+        SELECT id, household_id, account_id, token_digest, expires_at, consumed_at, created_at
+        FROM owner_recovery_token WHERE token_digest = #{tokenDigest}
+    </select>
+
     <select id="selectByDigestForUpdate" resultType="com.zija.household.internal.persistence.OwnerRecoveryTokenEntity">
         SELECT id, household_id, account_id, token_digest, expires_at, consumed_at, created_at
         FROM owner_recovery_token WHERE token_digest = #{tokenDigest} FOR UPDATE

@@ -1,6 +1,5 @@
 package com.zija.household.internal;
 
-import com.zija.ZijaSessionInvalidator;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
 import com.zija.identity.IdentityApi;
@@ -24,8 +23,7 @@ class OwnerRecoveryServiceTest {
     void generateInvalidatesPreviousTokens() {
         var mapper = mock(OwnerRecoveryTokenMapper.class);
         var identityApi = mock(IdentityApi.class);
-        var service = new OwnerRecoveryService(mapper, identityApi, mock(SystemApi.class),
-                mock(ZijaSessionInvalidator.class));
+        var service = new OwnerRecoveryService(mapper, identityApi, mock(SystemApi.class));
 
         var result = service.generate(UUID.randomUUID(), UUID.randomUUID());
 
@@ -41,8 +39,7 @@ class OwnerRecoveryServiceTest {
         var token = token(false, future());
         when(mapper.selectByDigestForUpdate(any())).thenReturn(Optional.of(token));
         when(mapper.markConsumed(any())).thenReturn(1);
-        var service = new OwnerRecoveryService(mapper, identityApi, mock(SystemApi.class),
-                mock(ZijaSessionInvalidator.class));
+        var service = new OwnerRecoveryService(mapper, identityApi, mock(SystemApi.class));
 
         service.resetPassword("raw", "NewPass1");
 
@@ -54,8 +51,7 @@ class OwnerRecoveryServiceTest {
         var mapper = mock(OwnerRecoveryTokenMapper.class);
         var token = token(true, past());
         when(mapper.selectByDigestForUpdate(any())).thenReturn(Optional.of(token));
-        var service = new OwnerRecoveryService(mapper, mock(IdentityApi.class), mock(SystemApi.class),
-                mock(ZijaSessionInvalidator.class));
+        var service = new OwnerRecoveryService(mapper, mock(IdentityApi.class), mock(SystemApi.class));
 
         assertThatThrownBy(() -> service.resetPassword("raw", "NewPass1"))
                 .isInstanceOf(InvalidInvitationException.class);

@@ -97,12 +97,16 @@ class InvitationService {
         invitationMapper.markConsumed(invitation.getId(), account.id());
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
+                "MEMBER_JOINED", "SUCCESS", invitation.getHouseholdId(),
+                account.id(), account.id(), null, null, null));
+        systemApi.recordAudit(new SystemApi.AuditEvent(
                 "INVITATION_REDEEMED", "SUCCESS", invitation.getHouseholdId(),
                 account.id(), account.id(), null, null, null));
     }
 
+    @Transactional(readOnly = true)
     public Optional<InvitationEntity> inspect(String rawToken) {
-        return invitationMapper.selectByDigestForUpdate(sha256Hex(rawToken))
+        return invitationMapper.selectByDigest(sha256Hex(rawToken))
                 .filter(i -> i.getConsumedAt() == null
                         && i.getExpiresAt().isAfter(OffsetDateTime.now(ZoneOffset.UTC)));
     }

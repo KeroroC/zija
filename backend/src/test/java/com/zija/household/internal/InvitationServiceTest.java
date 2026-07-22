@@ -136,6 +136,11 @@ class InvitationServiceTest {
 
         verify(invitationMapper).markConsumed(eq(invitation.getId()), any());
         verify(memberService).addMember(any(), any(), eq(HouseholdApi.MemberRole.MEMBER));
+        var auditCaptor = org.mockito.ArgumentCaptor.forClass(SystemApi.AuditEvent.class);
+        verify(systemApi, times(2)).recordAudit(auditCaptor.capture());
+        assertThat(auditCaptor.getAllValues())
+                .extracting(SystemApi.AuditEvent::action)
+                .containsExactly("MEMBER_JOINED", "INVITATION_REDEEMED");
     }
 
     private InvitationService service(MemberEntity creator) {

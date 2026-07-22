@@ -1,6 +1,7 @@
 package com.zija.system.internal.persistence;
 
 import com.zija.ZijaSessionInvalidator;
+import com.zija.system.SystemApi;
 import com.zija.system.internal.AuditEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +10,8 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -29,6 +32,12 @@ class AuditLogIntegrationTest {
 
     @Autowired
     AuditLogMapper mapper;
+
+    @Autowired
+    SystemApi systemApi;
+
+    @Autowired
+    PlatformTransactionManager transactionManager;
 
     @MockitoBean
     ZijaSessionInvalidator sessionInvalidator;
@@ -74,5 +83,39 @@ class AuditLogIntegrationTest {
         assertThat(rows.get(0).getDetail())
                 .containsEntry("oldRole", "MEMBER")
                 .containsEntry("nested", Map.of("k", "v"));
+    }
+
+    @Test
+    void successfulAuditRollsBackWithOuterBusinessTransaction() {
+        var actor = UUID.randomUUID();
+        var event = new SystemApi.AuditEvent(
+                "MEMBER_JOINED", "SUCCESS",
+                UUID.randomUUID(), actor, actor,
+                "req-rollback", "10.0.0.2", null
+        );
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            systemApi.recordAudit(event);
+            status.setRollbackOnly();
+        });
+
+        assertThat(mapper.findByActor(actor)).isEmpty();
+    }
+
+    @Test
+    void auditWithoutOuterTransactionCommitsThroughSystemApi() {
+        var actor = UUID.randomUUID();
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                "LOGIN_FAILURE", "FAILURE", null,
+                actor, null, "req-standalone", "10.0.0.3",
+                Map.of("username", "owner")
+        ));
+
+        assertThat(mapper.findByActor(actor))
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getAction()).isEqualTo("LOGIN_FAILURE");
+                    assertThat(row.getRequestId()).isEqualTo("req-standalone");
+                });
     }
 }

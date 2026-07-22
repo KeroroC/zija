@@ -17,11 +17,14 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {"spring.flyway.enabled=false", "zija.session.jdbc.enabled=false"})
@@ -87,7 +90,14 @@ class ZijaSessionLifecycleIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/logout")
                         .session(session)
                         .cookie(newCsrfCookie)
+                        .header("X-Request-Id", "logout-request")
                         .header("X-XSRF-TOKEN", newCsrfCookie.getValue()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isNoContent())
+                .andExpect(header().string("X-Request-Id", "logout-request"));
+
+        verify(systemApi).recordAudit(argThat(event ->
+                "LOGOUT".equals(event.action())
+                        && accountId.equals(event.actorAccountId())
+                        && "logout-request".equals(event.requestId())));
     }
 }

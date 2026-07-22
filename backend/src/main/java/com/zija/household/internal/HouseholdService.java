@@ -61,6 +61,7 @@ class HouseholdService implements HouseholdApi {
     @Transactional
     public HouseholdInfo bootstrap(BootstrapCommand command) {
         var household = new HouseholdEntity();
+        household.setSingletonKey((short) 1);
         household.setId(UUID.randomUUID());
         household.setName(command.householdName());
         household.setTimezone("Asia/Shanghai");

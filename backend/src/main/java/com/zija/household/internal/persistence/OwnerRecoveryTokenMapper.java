@@ -10,6 +10,8 @@ import java.util.UUID;
 @Mapper
 public interface OwnerRecoveryTokenMapper extends BaseMapper<OwnerRecoveryTokenEntity> {
 
+    Optional<OwnerRecoveryTokenEntity> selectByDigest(@Param("tokenDigest") String tokenDigest);
+
     Optional<OwnerRecoveryTokenEntity> selectByDigestForUpdate(@Param("tokenDigest") String tokenDigest);
 
     int markConsumed(@Param("id") UUID id);

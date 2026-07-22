@@ -1,6 +1,5 @@
 package com.zija.household.internal;
 
-import com.zija.ZijaSessionInvalidator;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
 import com.zija.identity.IdentityApi;
@@ -21,16 +20,14 @@ class OwnerRecoveryService {
     private final OwnerRecoveryTokenMapper tokenMapper;
     private final IdentityApi identityApi;
     private final SystemApi systemApi;
-    private final ZijaSessionInvalidator sessionInvalidator;
     private final SecureRandom random = new SecureRandom();
     private final Base64.Encoder base64Url = Base64.getUrlEncoder().withoutPadding();
 
     OwnerRecoveryService(OwnerRecoveryTokenMapper tokenMapper, IdentityApi identityApi,
-                        SystemApi systemApi, ZijaSessionInvalidator sessionInvalidator) {
+                        SystemApi systemApi) {
         this.tokenMapper = tokenMapper;
         this.identityApi = identityApi;
         this.systemApi = systemApi;
-        this.sessionInvalidator = sessionInvalidator;
     }
 
     public record GenerateResult(UUID id, String rawToken, OffsetDateTime expiresAt) {
@@ -69,14 +66,14 @@ class OwnerRecoveryService {
         identityApi.resetPassword(token.getAccountId(), newPassword);
         identityApi.disableAccount(token.getAccountId());
         identityApi.activateAccount(token.getAccountId());
-        sessionInvalidator.invalidateAllForAccount(token.getAccountId());
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 "OWNER_RECOVERY", "SUCCESS", token.getHouseholdId(),
                 token.getAccountId(), token.getAccountId(), null, null, null));
     }
 
+    @Transactional(readOnly = true)
     public Optional<OwnerRecoveryTokenEntity> inspect(String rawToken) {
-        return tokenMapper.selectByDigestForUpdate(InvitationService.sha256Hex(rawToken))
+        return tokenMapper.selectByDigest(InvitationService.sha256Hex(rawToken))
                 .filter(t -> t.getConsumedAt() == null
                         && t.getExpiresAt().isAfter(OffsetDateTime.now(ZoneOffset.UTC)));
     }
