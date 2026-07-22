@@ -137,3 +137,17 @@ src/
 - TypeScript/Vue: 2-space indent.
 - LF line endings, UTF-8 charset, final newline (`.editorconfig` enforced).
 - Commit messages: Chinese body with English technical prefix (e.g., `fix:`, `chore:`, `docs:`).
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.

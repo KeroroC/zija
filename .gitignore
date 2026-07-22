@@ -29,8 +29,5 @@ frontend/.vite/
 data/
 backups/
 
-# Specs and plans
-docs/
-
 # workbuddy
 .workbuddy/
