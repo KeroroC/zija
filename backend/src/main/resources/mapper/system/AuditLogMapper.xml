@@ -30,6 +30,33 @@
         ORDER BY created_at DESC
     </select>
 
+    <select id="queryByCondition" resultMap="auditLogResultMap">
+        SELECT id, household_id, actor_account_id, subject_account_id,
+               action, outcome, detail, ip_address, request_id, created_at
+        FROM audit_log
+        <where>
+            <if test="householdId != null">
+                AND household_id = #{householdId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
+            </if>
+            <if test="from != null">
+                AND created_at &gt;= #{from}
+            </if>
+            <if test="to != null">
+                AND created_at &lt;= #{to}
+            </if>
+            <if test="action != null and action != ''">
+                AND action = #{action}
+            </if>
+            <if test="actorAccountId != null">
+                AND actor_account_id = #{actorAccountId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
+            </if>
+            <if test="outcome != null and outcome != ''">
+                AND outcome = #{outcome}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
     <resultMap id="auditLogResultMap" type="com.zija.system.internal.persistence.AuditLogEntity">
         <id property="id" column="id"
             typeHandler="com.zija.system.internal.persistence.PostgresUuidTypeHandler" />

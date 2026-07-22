@@ -6,6 +6,9 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
 @Service
 class SystemInfoService implements SystemApi {
 
@@ -42,5 +45,25 @@ class SystemInfoService implements SystemApi {
     @Override
     public void recordAudit(SystemApi.AuditEvent event) {
         auditService.recordAudit(event);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AuditLogPage queryAuditLogs(
+            UUID householdId, OffsetDateTime from, OffsetDateTime to,
+            String action, UUID actorAccountId, String outcome,
+            int page, int pageSize
+    ) {
+        var request = new AuditLogQueryRequest(householdId, from, to, action, actorAccountId, outcome);
+        var result = auditService.queryAuditLogs(request, page, pageSize);
+        var items = result.getRecords().stream()
+                .map(e -> new AuditLogItem(
+                        e.getId(), e.getAction(), e.getOutcome(),
+                        e.getActorAccountId(), e.getSubjectAccountId(),
+                        e.getDetail(), e.getIpAddress(), e.getRequestId(),
+                        e.getCreatedAt()
+                ))
+                .toList();
+        return new AuditLogPage(items, result.getTotal(), page, pageSize);
     }
 }

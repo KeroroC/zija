@@ -1,154 +1,138 @@
 {
-  "openapi": "3.1.0",
-  "info": {
-    "title": "知家 API",
-    "description": "知家家庭物品管理系统 REST API",
-    "version": "1"
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "知家 API",
+    "description" : "知家家庭物品管理系统 REST API",
+    "version" : "1"
   },
-  "servers": [
-    {
-      "url": "http://localhost",
-      "description": "Generated server url"
-    }
-  ],
-  "paths": {
-    "/api/v1/members/{id}/status": {
-      "put": {
-        "tags": [
-          "member-controller"
-        ],
-        "operationId": "updateStatus",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
+  "servers" : [ {
+    "url" : "http://localhost",
+    "description" : "Generated server url"
+  } ],
+  "paths" : {
+    "/api/v1/members/{id}/status" : {
+      "put" : {
+        "tags" : [ "member-controller" ],
+        "operationId" : "updateStatus",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
           }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateStatusRequest"
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateStatusRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "OK"
+        "responses" : {
+          "200" : {
+            "description" : "OK"
           }
         }
       }
     },
-    "/api/v1/members/{id}/role": {
-      "put": {
-        "tags": [
-          "member-controller"
-        ],
-        "operationId": "updateRole",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
+    "/api/v1/members/{id}/role" : {
+      "put" : {
+        "tags" : [ "member-controller" ],
+        "operationId" : "updateRole",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
           }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateRoleRequest"
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateRoleRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "OK"
+        "responses" : {
+          "200" : {
+            "description" : "OK"
           }
         }
       }
     },
-    "/api/v1/auth/password": {
-      "put": {
-        "tags": [
-          "identity-controller"
-        ],
-        "operationId": "changePassword",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangePasswordRequest"
+    "/api/v1/auth/password" : {
+      "put" : {
+        "tags" : [ "identity-controller" ],
+        "operationId" : "changePassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChangePasswordRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "OK"
+        "responses" : {
+          "200" : {
+            "description" : "OK"
           }
         }
       }
     },
-    "/api/v1/owner-recovery/reset-password": {
-      "post": {
-        "tags": [
-          "owner-recovery-controller"
-        ],
-        "operationId": "resetPassword",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResetPasswordRequest"
+    "/api/v1/owner-recovery/reset-password" : {
+      "post" : {
+        "tags" : [ "owner-recovery-controller" ],
+        "operationId" : "resetPassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ResetPasswordRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "OK"
+        "responses" : {
+          "200" : {
+            "description" : "OK"
           }
         }
       }
     },
-    "/api/v1/owner-recovery/inspect": {
-      "post": {
-        "tags": [
-          "owner-recovery-controller"
-        ],
-        "operationId": "inspect",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InspectRequest"
+    "/api/v1/owner-recovery/inspect" : {
+      "post" : {
+        "tags" : [ "owner-recovery-controller" ],
+        "operationId" : "inspect",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/InspectRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/InspectResponse"
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InspectResponse"
                 }
               }
             }
@@ -156,29 +140,27 @@
         }
       }
     },
-    "/api/v1/invitations": {
-      "post": {
-        "tags": [
-          "invitation-controller"
-        ],
-        "operationId": "create",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateInvitationRequest"
+    "/api/v1/invitations" : {
+      "post" : {
+        "tags" : [ "invitation-controller" ],
+        "operationId" : "create",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateInvitationRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvitationInfoResponse"
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InvitationInfoResponse"
                 }
               }
             }
@@ -186,29 +168,27 @@
         }
       }
     },
-    "/api/v1/invitations/redeem": {
-      "post": {
-        "tags": [
-          "invitation-controller"
-        ],
-        "operationId": "redeem",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RedeemRequest"
+    "/api/v1/invitations/redeem" : {
+      "post" : {
+        "tags" : [ "invitation-controller" ],
+        "operationId" : "redeem",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RedeemRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionInfo"
+        "responses" : {
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SessionInfo"
                 }
               }
             }
@@ -216,29 +196,27 @@
         }
       }
     },
-    "/api/v1/invitations/inspect": {
-      "post": {
-        "tags": [
-          "invitation-controller"
-        ],
-        "operationId": "inspect_1",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InspectRequest"
+    "/api/v1/invitations/inspect" : {
+      "post" : {
+        "tags" : [ "invitation-controller" ],
+        "operationId" : "inspect_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/InspectRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/InspectResponse"
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InspectResponse"
                 }
               }
             }
@@ -246,52 +224,48 @@
         }
       }
     },
-    "/api/v1/household/transfer-ownership": {
-      "post": {
-        "tags": [
-          "household-controller"
-        ],
-        "operationId": "transferOwnership",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TransferOwnershipRequest"
+    "/api/v1/household/transfer-ownership" : {
+      "post" : {
+        "tags" : [ "household-controller" ],
+        "operationId" : "transferOwnership",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TransferOwnershipRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "OK"
+        "responses" : {
+          "200" : {
+            "description" : "OK"
           }
         }
       }
     },
-    "/api/v1/household/bootstrap": {
-      "post": {
-        "tags": [
-          "household-controller"
-        ],
-        "operationId": "bootstrap",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BootstrapRequest"
+    "/api/v1/household/bootstrap" : {
+      "post" : {
+        "tags" : [ "household-controller" ],
+        "operationId" : "bootstrap",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/BootstrapRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionInfo"
+        "responses" : {
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SessionInfo"
                 }
               }
             }
@@ -299,42 +273,38 @@
         }
       }
     },
-    "/api/v1/auth/logout": {
-      "post": {
-        "tags": [
-          "identity-controller"
-        ],
-        "operationId": "logout",
-        "responses": {
-          "200": {
-            "description": "OK"
+    "/api/v1/auth/logout" : {
+      "post" : {
+        "tags" : [ "identity-controller" ],
+        "operationId" : "logout",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
           }
         }
       }
     },
-    "/api/v1/auth/login": {
-      "post": {
-        "tags": [
-          "identity-controller"
-        ],
-        "operationId": "login",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LoginRequest"
+    "/api/v1/auth/login" : {
+      "post" : {
+        "tags" : [ "identity-controller" ],
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionInfo"
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SessionInfo"
                 }
               }
             }
@@ -342,19 +312,17 @@
         }
       }
     },
-    "/api/v1/system/info": {
-      "get": {
-        "tags": [
-          "system-controller"
-        ],
-        "operationId": "info",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/SystemInfoResponse"
+    "/api/v1/system/info" : {
+      "get" : {
+        "tags" : [ "system-controller" ],
+        "operationId" : "info",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SystemInfoResponse"
                 }
               }
             }
@@ -362,21 +330,19 @@
         }
       }
     },
-    "/api/v1/members": {
-      "get": {
-        "tags": [
-          "member-controller"
-        ],
-        "operationId": "list",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/MemberResponse"
+    "/api/v1/members" : {
+      "get" : {
+        "tags" : [ "member-controller" ],
+        "operationId" : "list",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/MemberResponse"
                   }
                 }
               }
@@ -385,19 +351,17 @@
         }
       }
     },
-    "/api/v1/household/status": {
-      "get": {
-        "tags": [
-          "household-controller"
-        ],
-        "operationId": "status",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/HouseholdStatusResponse"
+    "/api/v1/household/status" : {
+      "get" : {
+        "tags" : [ "household-controller" ],
+        "operationId" : "status",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/HouseholdStatusResponse"
                 }
               }
             }
@@ -405,19 +369,17 @@
         }
       }
     },
-    "/api/v1/household/me": {
-      "get": {
-        "tags": [
-          "household-controller"
-        ],
-        "operationId": "me",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/CurrentMemberResponse"
+    "/api/v1/household/me" : {
+      "get" : {
+        "tags" : [ "household-controller" ],
+        "operationId" : "me",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CurrentMemberResponse"
                 }
               }
             }
@@ -425,19 +387,17 @@
         }
       }
     },
-    "/api/v1/auth/session": {
-      "get": {
-        "tags": [
-          "identity-controller"
-        ],
-        "operationId": "session",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionInfo"
+    "/api/v1/auth/session" : {
+      "get" : {
+        "tags" : [ "identity-controller" ],
+        "operationId" : "session",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SessionInfo"
                 }
               }
             }
@@ -445,32 +405,103 @@
         }
       }
     },
-    "/api/v1/auth/csrf": {
-      "get": {
-        "tags": [
-          "identity-controller"
-        ],
-        "operationId": "csrf",
-        "parameters": [
-          {
-            "name": "csrfToken",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/CsrfToken"
-            }
+    "/api/v1/auth/csrf" : {
+      "get" : {
+        "tags" : [ "identity-controller" ],
+        "operationId" : "csrf",
+        "parameters" : [ {
+          "name" : "csrfToken",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/CsrfToken"
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object",
+                  "additionalProperties" : {
+                    "type" : "string"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-logs" : {
+      "get" : {
+        "tags" : [ "audit-log-controller" ],
+        "operationId" : "auditLogs",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 1
+          }
+        }, {
+          "name" : "pageSize",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "name" : "action",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "actorAccountId",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "outcome",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuditLogPageResponse"
                 }
               }
             }
@@ -479,348 +510,406 @@
       }
     }
   },
-  "components": {
-    "schemas": {
-      "UpdateStatusRequest": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "pattern": "ACTIVE|DEACTIVATED"
+  "components" : {
+    "schemas" : {
+      "UpdateStatusRequest" : {
+        "type" : "object",
+        "properties" : {
+          "status" : {
+            "type" : "string",
+            "pattern" : "ACTIVE|DEACTIVATED"
           }
         },
-        "required": [
-          "status"
-        ]
+        "required" : [ "status" ]
       },
-      "UpdateRoleRequest": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "pattern": "ADMIN|MEMBER"
+      "UpdateRoleRequest" : {
+        "type" : "object",
+        "properties" : {
+          "role" : {
+            "type" : "string",
+            "pattern" : "ADMIN|MEMBER"
           }
         },
-        "required": [
-          "role"
-        ]
+        "required" : [ "role" ]
       },
-      "ChangePasswordRequest": {
-        "type": "object",
-        "properties": {
-          "currentPassword": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 0
+      "ChangePasswordRequest" : {
+        "type" : "object",
+        "properties" : {
+          "currentPassword" : {
+            "type" : "string",
+            "maxLength" : 200,
+            "minLength" : 0
           },
-          "newPassword": {
-            "type": "string",
-            "maxLength": 72,
-            "minLength": 8
+          "newPassword" : {
+            "type" : "string",
+            "maxLength" : 72,
+            "minLength" : 8
           }
         },
-        "required": [
-          "currentPassword",
-          "newPassword"
-        ]
+        "required" : [ "currentPassword", "newPassword" ]
       },
-      "ResetPasswordRequest": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 0
+      "ResetPasswordRequest" : {
+        "type" : "object",
+        "properties" : {
+          "token" : {
+            "type" : "string",
+            "maxLength" : 200,
+            "minLength" : 0
           },
-          "newPassword": {
-            "type": "string",
-            "maxLength": 72,
-            "minLength": 8
+          "newPassword" : {
+            "type" : "string",
+            "maxLength" : 72,
+            "minLength" : 8
           }
         },
-        "required": [
-          "newPassword",
-          "token"
-        ]
+        "required" : [ "newPassword", "token" ]
       },
-      "InspectRequest": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 0
+      "InspectRequest" : {
+        "type" : "object",
+        "properties" : {
+          "token" : {
+            "type" : "string",
+            "maxLength" : 200,
+            "minLength" : 0
           }
         },
-        "required": [
-          "token"
-        ]
+        "required" : [ "token" ]
       },
-      "InspectResponse": {
-        "type": "object",
-        "properties": {
-          "valid": {
-            "type": "boolean"
+      "InspectResponse" : {
+        "type" : "object",
+        "properties" : {
+          "valid" : {
+            "type" : "boolean"
           },
-          "ownerDisplayName": {
-            "type": "string"
+          "ownerDisplayName" : {
+            "type" : "string"
           }
         }
       },
-      "CreateInvitationRequest": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "pattern": "ADMIN|MEMBER"
+      "CreateInvitationRequest" : {
+        "type" : "object",
+        "properties" : {
+          "role" : {
+            "type" : "string",
+            "pattern" : "ADMIN|MEMBER"
           },
-          "expiresInHours": {
-            "type": "integer",
-            "format": "int32"
+          "expiresInHours" : {
+            "type" : "integer",
+            "format" : "int32"
           }
         },
-        "required": [
-          "role"
-        ]
+        "required" : [ "role" ]
       },
-      "InvitationInfoResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
+      "InvitationInfoResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
           },
-          "token": {
-            "type": "string"
+          "token" : {
+            "type" : "string"
           },
-          "role": {
-            "type": "string"
+          "role" : {
+            "type" : "string"
           },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time"
+          "expiresAt" : {
+            "type" : "string",
+            "format" : "date-time"
           },
-          "path": {
-            "type": "string"
+          "path" : {
+            "type" : "string"
           }
         }
       },
-      "RedeemRequest": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 0
+      "RedeemRequest" : {
+        "type" : "object",
+        "properties" : {
+          "token" : {
+            "type" : "string",
+            "maxLength" : 200,
+            "minLength" : 0
           },
-          "username": {
-            "type": "string",
-            "maxLength": 50,
-            "minLength": 0
+          "username" : {
+            "type" : "string",
+            "maxLength" : 50,
+            "minLength" : 0
           },
-          "password": {
-            "type": "string",
-            "maxLength": 72,
-            "minLength": 8
+          "password" : {
+            "type" : "string",
+            "maxLength" : 72,
+            "minLength" : 8
           },
-          "displayName": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 0
+          "displayName" : {
+            "type" : "string",
+            "maxLength" : 100,
+            "minLength" : 0
           },
-          "email": {
-            "type": "string",
-            "maxLength": 255,
-            "minLength": 0
+          "email" : {
+            "type" : "string",
+            "maxLength" : 255,
+            "minLength" : 0
           }
         },
-        "required": [
-          "displayName",
-          "password",
-          "token",
-          "username"
-        ]
+        "required" : [ "displayName", "password", "token", "username" ]
       },
-      "SessionInfo": {
-        "type": "object",
-        "properties": {
-          "authenticated": {
-            "type": "boolean"
+      "SessionInfo" : {
+        "type" : "object",
+        "properties" : {
+          "authenticated" : {
+            "type" : "boolean"
           },
-          "accountId": {
-            "type": "string",
-            "format": "uuid"
+          "accountId" : {
+            "type" : "string",
+            "format" : "uuid"
           },
-          "username": {
-            "type": "string"
+          "username" : {
+            "type" : "string"
           },
-          "displayName": {
-            "type": "string"
+          "displayName" : {
+            "type" : "string"
           }
         }
       },
-      "TransferOwnershipRequest": {
-        "type": "object",
-        "properties": {
-          "targetMemberId": {
-            "type": "string",
-            "format": "uuid"
+      "TransferOwnershipRequest" : {
+        "type" : "object",
+        "properties" : {
+          "targetMemberId" : {
+            "type" : "string",
+            "format" : "uuid"
           }
         },
-        "required": [
-          "targetMemberId"
-        ]
+        "required" : [ "targetMemberId" ]
       },
-      "BootstrapRequest": {
-        "type": "object",
-        "properties": {
-          "householdName": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 0
+      "BootstrapRequest" : {
+        "type" : "object",
+        "properties" : {
+          "householdName" : {
+            "type" : "string",
+            "maxLength" : 100,
+            "minLength" : 0
           },
-          "username": {
-            "type": "string",
-            "maxLength": 50,
-            "minLength": 0
+          "username" : {
+            "type" : "string",
+            "maxLength" : 50,
+            "minLength" : 0
           },
-          "password": {
-            "type": "string",
-            "maxLength": 72,
-            "minLength": 8
+          "password" : {
+            "type" : "string",
+            "maxLength" : 72,
+            "minLength" : 8
           },
-          "displayName": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 0
+          "displayName" : {
+            "type" : "string",
+            "maxLength" : 100,
+            "minLength" : 0
           },
-          "email": {
-            "type": "string",
-            "maxLength": 255,
-            "minLength": 0
+          "email" : {
+            "type" : "string",
+            "maxLength" : 255,
+            "minLength" : 0
           }
         },
-        "required": [
-          "displayName",
-          "householdName",
-          "password",
-          "username"
-        ]
+        "required" : [ "displayName", "householdName", "password", "username" ]
       },
-      "LoginRequest": {
-        "type": "object",
-        "properties": {
-          "username": {
-            "type": "string",
-            "maxLength": 50,
-            "minLength": 0
+      "LoginRequest" : {
+        "type" : "object",
+        "properties" : {
+          "username" : {
+            "type" : "string",
+            "maxLength" : 50,
+            "minLength" : 0
           },
-          "password": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 0
+          "password" : {
+            "type" : "string",
+            "maxLength" : 200,
+            "minLength" : 0
           }
         },
-        "required": [
-          "password",
-          "username"
-        ]
+        "required" : [ "password", "username" ]
       },
-      "SystemInfoResponse": {
-        "type": "object",
-        "properties": {
-          "application": {
-            "type": "string"
+      "SystemInfoResponse" : {
+        "type" : "object",
+        "properties" : {
+          "application" : {
+            "type" : "string"
           },
-          "version": {
-            "type": "string"
+          "version" : {
+            "type" : "string"
           },
-          "status": {
-            "type": "string"
+          "status" : {
+            "type" : "string"
           },
-          "installationId": {
-            "type": "string",
-            "format": "uuid"
+          "installationId" : {
+            "type" : "string",
+            "format" : "uuid"
           },
-          "databaseTime": {
-            "type": "string",
-            "format": "date-time"
+          "databaseTime" : {
+            "type" : "string",
+            "format" : "date-time"
           }
         }
       },
-      "MemberResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
+      "MemberResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
           },
-          "accountId": {
-            "type": "string",
-            "format": "uuid"
+          "accountId" : {
+            "type" : "string",
+            "format" : "uuid"
           },
-          "username": {
-            "type": "string"
+          "username" : {
+            "type" : "string"
           },
-          "displayName": {
-            "type": "string"
+          "displayName" : {
+            "type" : "string"
           },
-          "role": {
-            "type": "string"
+          "role" : {
+            "type" : "string"
           },
-          "status": {
-            "type": "string"
+          "status" : {
+            "type" : "string"
           }
         }
       },
-      "HouseholdStatusResponse": {
-        "type": "object",
-        "properties": {
-          "initialized": {
-            "type": "boolean"
+      "HouseholdStatusResponse" : {
+        "type" : "object",
+        "properties" : {
+          "initialized" : {
+            "type" : "boolean"
           }
         }
       },
-      "CurrentMemberResponse": {
-        "type": "object",
-        "properties": {
-          "householdId": {
-            "type": "string",
-            "format": "uuid"
+      "CurrentMemberResponse" : {
+        "type" : "object",
+        "properties" : {
+          "householdId" : {
+            "type" : "string",
+            "format" : "uuid"
           },
-          "memberId": {
-            "type": "string",
-            "format": "uuid"
+          "memberId" : {
+            "type" : "string",
+            "format" : "uuid"
           },
-          "accountId": {
-            "type": "string",
-            "format": "uuid"
+          "accountId" : {
+            "type" : "string",
+            "format" : "uuid"
           },
-          "username": {
-            "type": "string"
+          "username" : {
+            "type" : "string"
           },
-          "displayName": {
-            "type": "string"
+          "displayName" : {
+            "type" : "string"
           },
-          "role": {
-            "type": "string"
+          "role" : {
+            "type" : "string"
           },
-          "status": {
-            "type": "string"
+          "status" : {
+            "type" : "string"
           }
         }
       },
-      "CsrfToken": {
-        "type": "object",
-        "properties": {
-          "parameterName": {
-            "type": "string"
+      "CsrfToken" : {
+        "type" : "object",
+        "properties" : {
+          "headerName" : {
+            "type" : "string"
           },
-          "token": {
-            "type": "string"
+          "parameterName" : {
+            "type" : "string"
           },
-          "headerName": {
-            "type": "string"
+          "token" : {
+            "type" : "string"
+          }
+        }
+      },
+      "AccountInfo" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "username" : {
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        }
+      },
+      "AuditLogItemResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "action" : {
+            "type" : "string"
+          },
+          "outcome" : {
+            "type" : "string"
+          },
+          "actorAccountId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "actor" : {
+            "$ref" : "#/components/schemas/AccountInfo"
+          },
+          "subjectAccountId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "subject" : {
+            "$ref" : "#/components/schemas/AccountInfo"
+          },
+          "detail" : {
+            "type" : "object",
+            "additionalProperties" : { }
+          },
+          "ipAddress" : {
+            "type" : "string"
+          },
+          "requestId" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "AuditLogPageResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AuditLogItemResponse"
+            }
+          },
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "pageSize" : {
+            "type" : "integer",
+            "format" : "int32"
           }
         }
       }

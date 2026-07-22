@@ -15,6 +15,7 @@
       >
         <el-menu-item index="/">首页</el-menu-item>
         <el-menu-item index="/members">成员管理</el-menu-item>
+        <el-menu-item index="/audit-logs">审计日志</el-menu-item>
         <el-menu-item index="/profile">个人资料</el-menu-item>
         <el-menu-item index="/items" disabled>物品资料</el-menu-item>
         <el-menu-item index="/inventory" disabled>库存管理</el-menu-item>
