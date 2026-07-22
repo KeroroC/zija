@@ -72,7 +72,7 @@ describe("AppShell", () => {
     expect(wrapper.text()).toContain("登出");
   });
 
-  it("hides authenticated navigation when not signed in", async () => {
+  it("hides sidebar completely when not signed in", async () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -91,7 +91,9 @@ describe("AppShell", () => {
       }
     });
 
-    expect(wrapper.text()).toContain("首页");
+    expect(wrapper.text()).toContain("系统状态");
+    expect(wrapper.text()).not.toContain("知家");
+    expect(wrapper.text()).not.toContain("首页");
     expect(wrapper.text()).not.toContain("成员管理");
     expect(wrapper.text()).not.toContain("个人资料");
     expect(wrapper.text()).not.toContain("登出");
