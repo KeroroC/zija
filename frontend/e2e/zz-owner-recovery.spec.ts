@@ -52,7 +52,7 @@ test("owner recovery resets password and invalidates old credentials and session
 
   await page.locator("input").nth(0).fill(owner.username);
   await page.locator("input").nth(1).fill(owner.password);
-  await page.getByRole("button", { name: "登录" }).click();
+  await page.locator(".login-btn").click();
   await expect(page.getByText("用户名或密码错误")).toBeVisible();
 
   const recoveredPassword = "N3wPassw0rd!";

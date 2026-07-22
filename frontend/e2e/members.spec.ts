@@ -45,7 +45,7 @@ test("owner manages a member and transfers ownership with role boundaries", asyn
   await page.goto("/members");
 
   await memberRow.getByRole("button", { name: "设为管理员" }).click();
-  await expect(memberRow.getByText("ADMIN", { exact: true })).toBeVisible();
+  await expect(memberRow.getByText("管理员", { exact: true })).toBeVisible();
 
   const adminContext = await browser.newContext({ baseURL: e2eBaseURL });
   const adminPage = await adminContext.newPage();
@@ -61,12 +61,12 @@ test("owner manages a member and transfers ownership with role boundaries", asyn
   await adminContext.close();
 
   await memberRow.getByRole("button", { name: "取消管理员" }).click();
-  await expect(memberRow.getByText("MEMBER", { exact: true })).toBeVisible();
+  await expect(memberRow.getByText("成员", { exact: true })).toBeVisible();
   await memberRow.getByRole("button", { name: "停用" }).click();
-  await expect(memberRow.getByText("DEACTIVATED", { exact: true })).toBeVisible();
+  await expect(memberRow.getByText("已停用", { exact: true })).toBeVisible();
   await expect(memberRow.getByRole("button", { name: "转移所有权" })).toHaveCount(0);
   await memberRow.getByRole("button", { name: "启用" }).click();
-  await expect(memberRow.getByText("ACTIVE", { exact: true })).toBeVisible();
+  await expect(memberRow.getByText("活跃", { exact: true })).toBeVisible();
 
   await memberRow.getByRole("button", { name: "转移所有权" }).click();
   await page.getByTestId("confirm-transfer").click();
@@ -75,7 +75,7 @@ test("owner manages a member and transfers ownership with role boundaries", asyn
   await loginViaUi(page, username, password);
   await page.goto("/members");
   const formerOwnerRow = page.locator("tbody tr", { hasText: owner.username });
-  await expect(formerOwnerRow.getByText("ADMIN", { exact: true })).toBeVisible();
+  await expect(formerOwnerRow.getByText("管理员", { exact: true })).toBeVisible();
   await formerOwnerRow.getByRole("button", { name: "转移所有权" }).click();
   await page.getByTestId("confirm-transfer").click();
   await expect(page).toHaveURL(/\/login/);
