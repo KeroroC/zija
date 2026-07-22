@@ -1,0 +1,17 @@
+import { expect, test } from "@playwright/test";
+import { bootstrapViaUi, owner, readCsrf } from "./helpers";
+
+test("bootstrap creates household and owner then lands on home", async ({ page }) => {
+  // Fresh compose stack is uninitialized; if already initialized this test is skipped
+  // by checking status first.
+  const status = await page.request.get("/api/v1/household/status");
+  const body = await status.json();
+  test.skip(body.initialized === true, "household already initialized");
+
+  const csrfBeforeBootstrap = await readCsrf(page.request);
+  await bootstrapViaUi(page, owner);
+  const csrfAfterBootstrap = await readCsrf(page.request);
+  expect(csrfAfterBootstrap).not.toBe(csrfBeforeBootstrap);
+  await expect(page.getByText("系统运行正常")).toBeVisible();
+  await expect(page.getByText("所有者")).toBeVisible();
+});
