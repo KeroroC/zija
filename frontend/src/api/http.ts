@@ -172,3 +172,7 @@ export async function postJsonAndRefreshCsrf<T>(
 export async function putJson<T>(path: string, body?: unknown): Promise<T> {
   return request<T>("PUT", path, body);
 }
+
+export async function deleteJson<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>("DELETE", path, body);
+}

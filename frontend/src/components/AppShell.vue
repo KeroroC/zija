@@ -17,9 +17,9 @@
         <el-menu-item index="/members">成员管理</el-menu-item>
         <el-menu-item index="/audit-logs">审计日志</el-menu-item>
         <el-menu-item index="/profile">个人资料</el-menu-item>
-        <el-menu-item index="/items" disabled>物品资料</el-menu-item>
+        <el-menu-item index="/items">物品资料</el-menu-item>
         <el-menu-item index="/inventory" disabled>库存管理</el-menu-item>
-        <el-menu-item index="/locations" disabled>位置管理</el-menu-item>
+        <el-menu-item index="/locations">位置管理</el-menu-item>
         <el-menu-item index="/reminders" disabled>提醒中心</el-menu-item>
         <el-menu-item index="/reports" disabled>报表与导出</el-menu-item>
         <el-menu-item index="/settings" disabled>家庭设置</el-menu-item>
