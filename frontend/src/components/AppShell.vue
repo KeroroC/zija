@@ -1,5 +1,8 @@
 <template>
-  <el-container class="app-shell">
+  <template v-if="!session.authenticated">
+    <router-view />
+  </template>
+  <el-container v-else class="app-shell">
     <el-aside class="app-sidebar" width="224px">
       <div class="brand">
         <span class="brand-cn">知家</span>
@@ -11,8 +14,8 @@
         :default-active="$route.path"
       >
         <el-menu-item index="/">首页</el-menu-item>
-        <el-menu-item v-if="session.authenticated" index="/members">成员管理</el-menu-item>
-        <el-menu-item v-if="session.authenticated" index="/profile">个人资料</el-menu-item>
+        <el-menu-item index="/members">成员管理</el-menu-item>
+        <el-menu-item index="/profile">个人资料</el-menu-item>
         <el-menu-item index="/items" disabled>物品资料</el-menu-item>
         <el-menu-item index="/inventory" disabled>库存管理</el-menu-item>
         <el-menu-item index="/locations" disabled>位置管理</el-menu-item>
@@ -25,11 +28,10 @@
     <el-container>
       <el-header class="app-header">
         <span class="header-context">家庭：我的家</span>
-        <el-tag v-if="session.authenticated" effect="plain" type="success">
+        <el-tag effect="plain" type="success">
           {{ roleLabel }}
         </el-tag>
         <el-button
-          v-if="session.authenticated"
           size="small"
           @click="onLogout"
         >
