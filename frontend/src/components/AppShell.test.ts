@@ -1,18 +1,25 @@
 import ElementPlus from "element-plus";
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import {
   createMemoryHistory,
   createRouter
 } from "vue-router";
 import { createPinia, setActivePinia } from "pinia";
 import { h } from "vue";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppShell from "./AppShell.vue";
 import { useSessionStore } from "../stores/session";
 
 describe("AppShell", () => {
+  let wrapper: VueWrapper | null = null;
+
   beforeEach(() => {
     setActivePinia(createPinia());
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = null;
   });
 
   it("renders the approved desktop navigation when authenticated", async () => {
@@ -45,7 +52,7 @@ describe("AppShell", () => {
     await router.push("/");
     await router.isReady();
 
-    const wrapper = mount(AppShell, {
+    wrapper = mount(AppShell, {
       global: {
         plugins: [router, ElementPlus]
       }
@@ -63,7 +70,6 @@ describe("AppShell", () => {
     expect(wrapper.text()).toContain("家庭设置");
     expect(wrapper.text()).toContain("管理员");
     expect(wrapper.text()).toContain("登出");
-    wrapper.unmount();
   });
 
   it("hides authenticated navigation when not signed in", async () => {
@@ -79,7 +85,7 @@ describe("AppShell", () => {
     await router.push("/");
     await router.isReady();
 
-    const wrapper = mount(AppShell, {
+    wrapper = mount(AppShell, {
       global: {
         plugins: [router, ElementPlus]
       }
@@ -89,6 +95,39 @@ describe("AppShell", () => {
     expect(wrapper.text()).not.toContain("成员管理");
     expect(wrapper.text()).not.toContain("个人资料");
     expect(wrapper.text()).not.toContain("登出");
-    wrapper.unmount();
+  });
+
+  it("shows an error and stays on the current route when logout fails", async () => {
+    const session = useSessionStore();
+    session.session = { authenticated: true, username: "admin" };
+    session.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "Admin",
+      role: "ADMIN",
+      status: "ACTIVE"
+    };
+    vi.spyOn(session, "logout").mockRejectedValue(new Error("logout unavailable"));
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/", name: "home", component: { render: () => h("div", "系统状态") } },
+        { path: "/login", name: "login", component: { render: () => h("div", "登录") } }
+      ]
+    });
+    await router.push("/");
+    await router.isReady();
+    wrapper = mount(AppShell, {
+      attachTo: document.body,
+      global: { plugins: [router, ElementPlus] }
+    });
+
+    await wrapper.get("button").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe("home");
+    expect(document.body.textContent).toContain("登出失败，请重试");
   });
 });

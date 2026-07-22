@@ -46,6 +46,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
 import { useSessionStore } from "../stores/session";
 
 const router = useRouter();
@@ -65,7 +66,11 @@ const roleLabel = computed(() => {
 });
 
 async function onLogout() {
-  await session.logout();
-  router.push({ name: "login" });
+  try {
+    await session.logout();
+    router.push({ name: "login" });
+  } catch {
+    ElMessage.error("登出失败，请重试");
+  }
 }
 </script>

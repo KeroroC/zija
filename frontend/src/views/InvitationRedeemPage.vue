@@ -71,8 +71,8 @@ async function redeem() {
   loading.value = true;
   try {
     await authApi.initializeCsrf();
-    await invitationApi.redeem(token.value, form);
-    await session.ensureInitialized();
+    const sessionInfo = await invitationApi.redeem(token.value, form);
+    await session.applySession(sessionInfo);
     router.push({ name: "home" });
   } catch (e) {
     ElMessage.error((e as Error).message);

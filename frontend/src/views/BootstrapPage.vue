@@ -50,9 +50,9 @@ async function submit() {
   loading.value = true;
   try {
     await authApi.initializeCsrf();
-    await householdApi.bootstrap(form);
-    await session.ensureInitialized();
+    const sessionInfo = await householdApi.bootstrap(form);
     session.householdInitialized = true;
+    await session.applySession(sessionInfo);
     router.push({ name: "home" });
   } catch (e) {
     ElMessage.error((e as Error).message);

@@ -20,7 +20,8 @@ export class ApiError extends Error {
 }
 
 let csrfToken: string | null = null;
-let csrfPromise: Promise<void> | null = null;
+let csrfGeneration = 0;
+let csrfPromise: { generation: number; promise: Promise<void> } | null = null;
 
 function baseUrl(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
@@ -35,23 +36,59 @@ function getCookie(name: string): string | null {
 
 export async function ensureCsrf(): Promise<void> {
   if (csrfToken) return;
-  if (csrfPromise) return csrfPromise;
-  csrfPromise = fetch(baseUrl() + "/api/v1/auth/csrf", {
+  if (csrfPromise?.generation === csrfGeneration) return csrfPromise.promise;
+
+  const generation = csrfGeneration;
+  const promise = fetch(baseUrl() + "/api/v1/auth/csrf", {
     credentials: "same-origin",
     headers: { Accept: "application/json" }
   })
-    .then((res) => res.json())
-    .then((data: { token: string }) => {
-      csrfToken = data.token;
+    .then(async (res) => {
+      if (!res.ok) {
+        throw new ApiError(
+          "CSRF request failed",
+          "csrf_fetch_failed",
+          res.status,
+          res.headers.get("X-Request-Id") ?? undefined
+        );
+      }
+
+      let data: unknown;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+      if (
+        !data
+        || typeof data !== "object"
+        || typeof (data as { token?: unknown }).token !== "string"
+        || (data as { token: string }).token.trim() === ""
+      ) {
+        throw new ApiError(
+          "CSRF response did not include a valid token",
+          "invalid_csrf_response",
+          res.status,
+          res.headers.get("X-Request-Id") ?? undefined
+        );
+      }
+      if (generation === csrfGeneration) {
+        csrfToken = (data as { token: string }).token;
+      }
     })
     .finally(() => {
-      csrfPromise = null;
+      if (csrfPromise?.generation === generation) {
+        csrfPromise = null;
+      }
     });
-  return csrfPromise;
+  csrfPromise = { generation, promise };
+  return promise;
 }
 
 export function clearCsrf(): void {
+  csrfGeneration += 1;
   csrfToken = null;
+  csrfPromise = null;
 }
 
 async function request<T>(
@@ -88,7 +125,11 @@ async function request<T>(
   }
 
   if (response.ok) {
-    return response.json() as Promise<T>;
+    const text = await response.text();
+    if (!text) {
+      return undefined as T;
+    }
+    return JSON.parse(text) as T;
   }
 
   let problem: ApiProblem = {};
@@ -112,6 +153,20 @@ export async function getJson<T>(path: string): Promise<T> {
 
 export async function postJson<T>(path: string, body?: unknown): Promise<T> {
   return request<T>("POST", path, body);
+}
+
+export async function postJsonAndRefreshCsrf<T>(
+  path: string,
+  body?: unknown
+): Promise<T> {
+  const result = await request<T>("POST", path, body);
+  clearCsrf();
+  try {
+    await ensureCsrf();
+  } catch {
+    // The business POST succeeded. The next unsafe request will retry CSRF.
+  }
+  return result;
 }
 
 export async function putJson<T>(path: string, body?: unknown): Promise<T> {

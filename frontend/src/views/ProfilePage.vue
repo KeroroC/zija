@@ -32,7 +32,7 @@ async function submit() {
   try {
     await authApi.changePassword(form);
     ElMessage.success("密码已修改，请重新登录");
-    await session.logout();
+    session.clearLocalSession();
     router.push({ name: "login" });
   } catch (e) {
     ElMessage.error((e as Error).message);
