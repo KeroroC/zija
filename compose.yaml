@@ -28,6 +28,9 @@ services:
       ZIJA_DB_USERNAME: ${ZIJA_POSTGRES_USER:-zija}
       ZIJA_DB_PASSWORD: ${ZIJA_POSTGRES_PASSWORD:?set ZIJA_POSTGRES_PASSWORD}
       ZIJA_VERSION: ${ZIJA_VERSION:-dev}
+      ZIJA_FILE_STORAGE_PATH: /var/lib/zija/files
+    volumes:
+      - zija-files:/var/lib/zija/files
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,3 +63,4 @@ services:
 
 volumes:
   postgres-data:
+  zija-files:

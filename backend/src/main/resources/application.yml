@@ -66,3 +66,7 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     enabled: ${ZIJA_SWAGGER_ENABLED:false}
+
+zija:
+  file:
+    storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}
