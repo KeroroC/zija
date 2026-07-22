@@ -1,0 +1,3 @@
+zija:
+  file:
+    storage-path: ${java.io.tmpdir}/zija-test-files

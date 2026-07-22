@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.location.internal.persistence.LocationMapper">
+
+    <select id="findTree" resultType="com.zija.location.internal.persistence.LocationEntity">
+        SELECT id, household_id, parent_id, name, name_normalized, sort_order,
+               ever_referenced, created_at, updated_at, version
+        FROM location
+        WHERE household_id = #{householdId}
+        ORDER BY sort_order, id
+    </select>
+
+    <select id="findDescendantIds" resultType="java.util.UUID">
+        WITH RECURSIVE descendants AS (
+            SELECT id FROM location
+            WHERE id = #{locationId} AND household_id = #{householdId}
+            UNION ALL
+            SELECT l.id FROM location l
+            INNER JOIN descendants d ON l.parent_id = d.id
+        )
+        SELECT id FROM descendants
+    </select>
+
+    <update id="markReferenced">
+        UPDATE location
+        SET ever_referenced = TRUE, updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id} AND household_id = #{householdId}
+    </update>
+</mapper>
