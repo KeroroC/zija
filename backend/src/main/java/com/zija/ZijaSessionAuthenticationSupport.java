@@ -12,6 +12,7 @@ import org.springframework.security.web.authentication.session.SessionAuthentica
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.session.FindByIndexNameSessionRepository;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -47,6 +48,10 @@ public class ZijaSessionAuthenticationSupport {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
+        var principal = (ZijaPrincipal) authentication.getPrincipal();
+        request.getSession().setAttribute(
+                FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME,
+                principal.getAccountId().toString());
         regenerateCsrfToken(request, response);
 
         return authentication;
