@@ -14,6 +14,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.*;
@@ -206,9 +208,12 @@ class ItemController {
 
         fileApi.release(member.householdId(), item.getCoverFileId());
 
-        item.setCoverFileId(null);
-        item.setVersion(request.version());
-        if (itemMapper.updateById(item) == 0) {
+        var wrapper = new UpdateWrapper<ItemEntity>()
+                .eq("id", id)
+                .eq("version", request.version())
+                .set("cover_file_id", null)
+                .set("version", request.version() + 1);
+        if (itemMapper.update(null, wrapper) == 0) {
             throw new CatalogVersionConflictException();
         }
 

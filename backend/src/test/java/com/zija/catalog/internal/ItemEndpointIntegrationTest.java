@@ -2,6 +2,7 @@ package com.zija.catalog.internal;
 
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
+import com.zija.file.FileApi;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.household.internal.persistence.MemberEntity;
@@ -14,6 +15,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -25,7 +27,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -46,6 +53,7 @@ class ItemEndpointIntegrationTest {
     @Autowired MemberMapper memberMapper;
     @Autowired ItemService itemService;
 
+    @MockitoBean FileApi fileApi;
     @MockitoBean ZijaSessionInvalidator sessionInvalidator;
 
     private UUID householdId;
@@ -215,6 +223,159 @@ class ItemEndpointIntegrationTest {
                         .with(auth()).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"新名字\",\"version\":0}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("CATALOG_ARCHIVED_DICTIONARY"));
+    }
+
+    // --- Cover endpoint tests ---
+
+    @Test
+    void uploadCoverSetsCoverFileIdAndBumpsVersion() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+        var version = itemService.findItem(householdId, item.getId()).getVersion();
+
+        UUID fileId = UUID.randomUUID();
+        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
+                .thenReturn(new FileApi.StoredFileInfo(
+                        fileId, householdId, "2026/07/cover.jpg", "cover.jpg",
+                        "image/jpeg", 2048L, "sha256hash"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "cover.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(file)
+                        .param("version", String.valueOf(version))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(fileId.toString()))
+                .andExpect(jsonPath("$.originalFilename").value("cover.jpg"))
+                .andExpect(jsonPath("$.detectedMediaType").value("image/jpeg"))
+                .andExpect(jsonPath("$.byteSize").value(2048));
+
+        var updated = itemService.findItem(householdId, item.getId());
+        assert updated.getCoverFileId() != null;
+        assert updated.getVersion() == version + 1;
+    }
+
+    @Test
+    void uploadCoverWithStaleVersionReturns409() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+
+        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
+                .thenReturn(new FileApi.StoredFileInfo(
+                        UUID.randomUUID(), householdId, "2026/07/cover.jpg", "cover.jpg",
+                        "image/jpeg", 1024L, "sha"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "cover.jpg", "image/jpeg", new byte[]{1});
+
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(file)
+                        .param("version", "999")
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("CATALOG_VERSION_CONFLICT"));
+    }
+
+    @Test
+    void uploadCoverRejectsNonExistentItem() throws Exception {
+        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
+                .thenReturn(new FileApi.StoredFileInfo(
+                        UUID.randomUUID(), householdId, "k", "cover.jpg",
+                        "image/jpeg", 1L, "s"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "cover.jpg", "image/jpeg", new byte[]{1});
+
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", UUID.randomUUID())
+                        .file(file)
+                        .param("version", "0")
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("CATALOG_ARCHIVED_DICTIONARY"));
+    }
+
+    @Test
+    void removeCoverClearsCoverFileIdAndBumpsVersion() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+
+        // 先上传封面
+        UUID fileId = UUID.randomUUID();
+        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
+                .thenReturn(new FileApi.StoredFileInfo(
+                        fileId, householdId, "2026/07/cover.jpg", "cover.jpg",
+                        "image/jpeg", 1024L, "sha"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "cover.jpg", "image/jpeg", new byte[]{1});
+        var v = itemService.findItem(householdId, item.getId()).getVersion();
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(file)
+                        .param("version", String.valueOf(v))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        // 删除封面
+        var afterUpload = itemService.findItem(householdId, item.getId());
+        mockMvc.perform(delete("/api/v1/items/{id}/cover", item.getId())
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":" + afterUpload.getVersion() + "}"))
+                .andExpect(status().isOk());
+
+        var afterRemove = itemService.findItem(householdId, item.getId());
+        assert afterRemove.getCoverFileId() == null;
+        assert afterRemove.getVersion() == afterUpload.getVersion() + 1;
+    }
+
+    @Test
+    void removeCoverWithStaleVersionReturns409() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+
+        // 先上传封面
+        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
+                .thenReturn(new FileApi.StoredFileInfo(
+                        UUID.randomUUID(), householdId, "k", "cover.jpg",
+                        "image/jpeg", 1L, "s"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "cover.jpg", "image/jpeg", new byte[]{1});
+        var v = itemService.findItem(householdId, item.getId()).getVersion();
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(file)
+                        .param("version", String.valueOf(v))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        // 用过期版本删除
+        mockMvc.perform(delete("/api/v1/items/{id}/cover", item.getId())
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":999}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("CATALOG_VERSION_CONFLICT"));
+    }
+
+    @Test
+    void removeCoverRejectsItemWithoutCover() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+        var version = itemService.findItem(householdId, item.getId()).getVersion();
+
+        mockMvc.perform(delete("/api/v1/items/{id}/cover", item.getId())
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":" + version + "}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("CATALOG_ARCHIVED_DICTIONARY"));
     }
