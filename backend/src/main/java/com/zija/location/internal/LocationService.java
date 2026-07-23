@@ -62,6 +62,7 @@ class LocationService implements LocationApi {
         entity.setNameNormalized(normalized);
         entity.setSortOrder(sortOrder);
         entity.setEverReferenced(false);
+        entity.setVersion(0);
         locationMapper.insert(entity);
         audit(householdId, "LOCATION_CREATED", entity.getId());
         return entity;

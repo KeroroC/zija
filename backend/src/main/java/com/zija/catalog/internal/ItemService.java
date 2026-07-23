@@ -114,6 +114,7 @@ class ItemService implements CatalogApi {
         entity.setLowStockMode(lowStockMode);
         entity.setLowStockThreshold(lowStockThreshold);
         entity.setStatus("ACTIVE");
+        entity.setVersion(0);
         itemMapper.insert(entity);
 
         if (tagIds != null) {

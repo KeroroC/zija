@@ -65,6 +65,7 @@ class HouseholdService implements HouseholdApi {
         household.setId(UUID.randomUUID());
         household.setName(command.householdName());
         household.setTimezone("Asia/Shanghai");
+        household.setVersion(0);
 
         try {
             householdMapper.insertSingleton(household);
@@ -82,6 +83,7 @@ class HouseholdService implements HouseholdApi {
         member.setAccountId(account.id());
         member.setRole("OWNER");
         member.setStatus("ACTIVE");
+        member.setVersion(0);
         memberMapper.insert(member);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(

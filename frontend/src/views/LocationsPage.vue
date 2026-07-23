@@ -133,7 +133,7 @@ async function submitName() {
     if (nameForm.editingId) {
       await renameLocation(nameForm.editingId, { name: nameForm.name, version: nameForm.version })
     } else {
-      await createLocation({ name: nameForm.name, parentId: nameForm.parentId || undefined })
+      await createLocation({ name: nameForm.name, parentId: nameForm.parentId ?? null, sortOrder: 0 })
     }
     nameDialogVisible.value = false
     await loadTree()

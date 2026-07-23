@@ -11,7 +11,7 @@ export async function fetchLocation(id: string): Promise<LocationInfo> {
 
 export async function createLocation(data: {
   name: string
-  parentId?: string
+  parentId?: string | null
   sortOrder?: number
 }): Promise<LocationInfo> {
   return postJson<LocationInfo>('/api/v1/locations', data)

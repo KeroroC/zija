@@ -54,6 +54,7 @@ class IdentityService implements IdentityApi {
         entity.setDisplayName(command.displayName().trim());
         entity.setEmail(command.email());
         entity.setStatus("ACTIVE");
+        entity.setVersion(0);
         accountMapper.insert(entity);
 
         return toInfo(entity);

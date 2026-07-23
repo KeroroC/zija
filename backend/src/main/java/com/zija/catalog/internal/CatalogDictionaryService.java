@@ -45,6 +45,7 @@ class CatalogDictionaryService {
         entity.setNameNormalized(normalized);
         entity.setStatus("ACTIVE");
         entity.setSortOrder(sortOrder);
+        entity.setVersion(0);
         categoryMapper.insert(entity);
         audit(householdId, "CATEGORY_CREATED", entity.getId());
         return entity;
@@ -121,6 +122,7 @@ class CatalogDictionaryService {
         entity.setName(name.trim());
         entity.setNameNormalized(normalized);
         entity.setStatus("ACTIVE");
+        entity.setVersion(0);
         brandMapper.insert(entity);
         audit(householdId, "BRAND_CREATED", entity.getId());
         return entity;
@@ -165,6 +167,7 @@ class CatalogDictionaryService {
         entity.setNameNormalized(normalized);
         entity.setDecimalScale((short) decimalScale);
         entity.setStatus("ACTIVE");
+        entity.setVersion(0);
         unitMapper.insert(entity);
         audit(householdId, "UNIT_CREATED", entity.getId());
         return entity;
@@ -195,6 +198,7 @@ class CatalogDictionaryService {
         entity.setName(name.trim());
         entity.setNameNormalized(normalized);
         entity.setStatus("ACTIVE");
+        entity.setVersion(0);
         tagMapper.insert(entity);
         audit(householdId, "TAG_CREATED", entity.getId());
         return entity;
