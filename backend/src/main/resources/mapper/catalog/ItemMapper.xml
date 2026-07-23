@@ -16,4 +16,37 @@
     <select id="findTagIdsByItemId" resultType="java.util.UUID">
         SELECT tag_id FROM catalog_item_tag WHERE item_id = #{itemId}
     </select>
+
+    <select id="findPage" resultType="com.zija.catalog.internal.persistence.ItemEntity">
+        SELECT id, household_id, name, management_type, category_id, brand_id, unit_id,
+               cover_file_id, memo, expiry_reminder_mode, expiry_reminder_days,
+               low_stock_mode, low_stock_threshold, status, archived_at, archived_by,
+               created_at, updated_at, version
+        FROM catalog_item
+        <where>
+            household_id = #{householdId}
+            <if test="q != null and q != ''">
+                AND name ILIKE CONCAT('%', #{q}, '%')
+            </if>
+            <if test="managementType != null and managementType != ''">
+                AND management_type = #{managementType}
+            </if>
+            <if test="categoryId != null">
+                AND category_id = #{categoryId}
+            </if>
+            <if test="brandId != null">
+                AND brand_id = #{brandId}
+            </if>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+            <if test="tagId != null">
+                AND EXISTS (
+                    SELECT 1 FROM catalog_item_tag t
+                    WHERE t.item_id = catalog_item.id AND t.tag_id = #{tagId}
+                )
+            </if>
+        </where>
+        ORDER BY ${orderBy}
+    </select>
 </mapper>

@@ -1,6 +1,8 @@
 package com.zija.catalog.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.catalog.CatalogApi;
 import com.zija.catalog.internal.persistence.*;
 import com.zija.system.SystemApi;
@@ -160,6 +162,82 @@ class ItemService implements CatalogApi {
     @Transactional(readOnly = true)
     public List<UUID> findItemTagIds(UUID itemId) {
         return itemMapper.findTagIdsByItemId(itemId);
+    }
+
+    @Transactional(readOnly = true)
+    public IPage<ItemEntity> listItems(
+            UUID householdId, String q, String managementType,
+            UUID categoryId, UUID brandId, UUID tagId, String status,
+            int page, int pageSize, String sort
+    ) {
+        return itemMapper.findPage(
+                new Page<>(page, pageSize), householdId,
+                q, managementType, categoryId, brandId, tagId, status, resolveSort(sort));
+    }
+
+    private String resolveSort(String sort) {
+        if (sort == null) return "updated_at DESC, id DESC";
+        return switch (sort) {
+            case "name" -> "name ASC, id ASC";
+            case "-name" -> "name DESC, id DESC";
+            default -> "updated_at DESC, id DESC";
+        };
+    }
+
+    @Transactional
+    public ItemEntity updateItem(
+            UUID householdId, UUID id,
+            String name, UUID categoryId, UUID brandId, UUID unitId,
+            String memo, UUID coverFileId,
+            String expiryReminderMode, List<Short> expiryReminderDays,
+            String lowStockMode, BigDecimal lowStockThreshold,
+            List<UUID> tagIds, Integer version
+    ) {
+        var entity = requireItemEntity(householdId, id);
+        if (name != null) entity.setName(name.trim());
+        if (memo != null) entity.setMemo(memo);
+        if (coverFileId != null) entity.setCoverFileId(coverFileId);
+        if (unitId != null) {
+            requireActiveUnit(householdId, unitId);
+            entity.setUnitId(unitId);
+        }
+        if (categoryId != null) {
+            requireActiveDictionary(categoryMapper, categoryId, householdId, "category");
+            entity.setCategoryId(categoryId);
+        }
+        if (brandId != null) {
+            requireActiveDictionary(brandMapper, brandId, householdId, "brand");
+            entity.setBrandId(brandId);
+        }
+        if (expiryReminderMode != null) {
+            entity.setExpiryReminderMode(expiryReminderMode);
+            entity.setExpiryReminderDays(expiryReminderDays);
+        }
+        if (lowStockMode != null) {
+            if ("CUSTOM".equals(lowStockMode) && lowStockThreshold != null) {
+                var unit = requireActiveUnit(householdId, entity.getUnitId());
+                int scale = lowStockThreshold.stripTrailingZeros().scale();
+                if (scale > unit.getDecimalScale()) {
+                    throw new CatalogUnitPrecisionInvalidException(scale, unit.getDecimalScale());
+                }
+            }
+            entity.setLowStockMode(lowStockMode);
+            entity.setLowStockThreshold(lowStockThreshold);
+        }
+        entity.setUpdatedAt(OffsetDateTime.now());
+        entity.setVersion(version);
+        if (itemMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        if (tagIds != null) {
+            itemMapper.deleteItemTags(id);
+            for (UUID tagId : tagIds) {
+                requireActiveDictionary(tagMapper, tagId, householdId, "tag");
+                itemMapper.insertItemTag(householdId, id, tagId);
+            }
+        }
+        audit(householdId, "ITEM_UPDATED", id);
+        return itemMapper.selectById(id);
     }
 
     // --- Private helpers ---

@@ -26,6 +26,40 @@ class ItemController {
     }
 
     @RequireMember
+    @GetMapping
+    Map<String, Object> listItems(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String managementType,
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) UUID brandId,
+            @RequestParam(required = false) UUID tagId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sort
+    ) {
+        if (pageSize > 100) pageSize = 100;
+        if (pageSize < 1) pageSize = 20;
+        if (page < 1) page = 1;
+
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var result = itemService.listItems(member.householdId(), q, managementType,
+                categoryId, brandId, tagId, status, page, pageSize, sort);
+
+        List<Map<String, Object>> items = result.getRecords().stream()
+                .map(e -> toItemResponse(e, itemService.findItemTagIds(e.getId())))
+                .toList();
+
+        var response = new LinkedHashMap<String, Object>();
+        response.put("items", items);
+        response.put("total", result.getTotal());
+        response.put("page", page);
+        response.put("pageSize", pageSize);
+        return response;
+    }
+
+    @RequireMember
     @PostMapping
     Map<String, Object> createItem(
             @AuthenticationPrincipal ZijaPrincipal principal,
@@ -55,6 +89,25 @@ class ItemController {
         }
         var tagIds = itemService.findItemTagIds(id);
         return toItemResponse(entity, tagIds);
+    }
+
+    @RequireMember
+    @PutMapping("/{id}")
+    Map<String, Object> updateItem(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateItemRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var entity = itemService.updateItem(
+                member.householdId(), id,
+                request.name(), request.categoryId(), request.brandId(), request.unitId(),
+                request.memo(), request.coverFileId(),
+                request.expiryReminderMode(), request.expiryReminderDays(),
+                request.lowStockMode(), request.lowStockThreshold(),
+                request.tagIds(), request.version()
+        );
+        return toItemResponse(entity, itemService.findItemTagIds(id));
     }
 
     @RequireMember
@@ -118,6 +171,18 @@ class ItemController {
             String lowStockMode,
             BigDecimal lowStockThreshold,
             List<UUID> tagIds
+    ) {}
+
+    record UpdateItemRequest(
+            @NotBlank String name,
+            UUID categoryId, UUID brandId, UUID unitId,
+            String memo, UUID coverFileId,
+            String expiryReminderMode,
+            List<Short> expiryReminderDays,
+            String lowStockMode,
+            BigDecimal lowStockThreshold,
+            List<UUID> tagIds,
+            @NotNull Integer version
     ) {}
 
     record VersionRequest(Integer version) {}
