@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.catalog.internal.persistence.CategoryMapper">
+
+    <select id="findTree" resultType="com.zija.catalog.internal.persistence.CategoryEntity">
+        WITH RECURSIVE category_tree AS (
+            SELECT id, household_id, parent_id, name, name_normalized, status,
+                   sort_order, created_at, updated_at, version
+            FROM catalog_category
+            WHERE household_id = #{householdId} AND parent_id IS NULL
+            UNION ALL
+            SELECT c.id, c.household_id, c.parent_id, c.name, c.name_normalized, c.status,
+                   c.sort_order, c.created_at, c.updated_at, c.version
+            FROM catalog_category c
+            INNER JOIN category_tree ct ON c.parent_id = ct.id
+            WHERE c.household_id = #{householdId}
+        )
+        SELECT id, household_id, parent_id, name, name_normalized, status,
+               sort_order, created_at, updated_at, version
+        FROM category_tree
+        ORDER BY sort_order, id
+    </select>
+
+    <select id="findDescendantIds" resultType="java.util.UUID">
+        WITH RECURSIVE descendants AS (
+            SELECT id FROM catalog_category
+            WHERE id = #{categoryId} AND household_id = #{householdId}
+            UNION ALL
+            SELECT c.id FROM catalog_category c
+            INNER JOIN descendants d ON c.parent_id = d.id
+        )
+        SELECT id FROM descendants
+    </select>
+
+    <select id="findAncestors" resultType="com.zija.catalog.internal.persistence.CategoryEntity">
+        WITH RECURSIVE ancestors AS (
+            SELECT id, household_id, parent_id, name, name_normalized, status,
+                   sort_order, created_at, updated_at, version
+            FROM catalog_category
+            WHERE id = #{categoryId} AND household_id = #{householdId}
+            UNION ALL
+            SELECT c.id, c.household_id, c.parent_id, c.name, c.name_normalized, c.status,
+                   c.sort_order, c.created_at, c.updated_at, c.version
+            FROM catalog_category c
+            INNER JOIN ancestors a ON c.id = a.parent_id
+        )
+        SELECT id, household_id, parent_id, name, name_normalized, status,
+               sort_order, created_at, updated_at, version
+        FROM ancestors
+        WHERE id != #{categoryId}
+    </select>
+
+</mapper>

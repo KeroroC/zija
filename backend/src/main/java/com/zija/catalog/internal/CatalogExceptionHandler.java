@@ -39,6 +39,11 @@ class CatalogExceptionHandler {
         return problem(request, HttpStatus.CONFLICT, "归档的字典项不可使用", "CATALOG_ARCHIVED_DICTIONARY");
     }
 
+    @ExceptionHandler(CatalogCycleDetectedException.class)
+    ProblemDetail handleCycleDetected(HttpServletRequest request) {
+        return problem(request, HttpStatus.CONFLICT, "移动会产生循环引用", "CATALOG_CYCLE_DETECTED");
+    }
+
     private ProblemDetail problem(HttpServletRequest request, HttpStatus status, String title, String errorCode) {
         var problem = ProblemDetail.forStatusAndDetail(status, title);
         problem.setTitle(title);

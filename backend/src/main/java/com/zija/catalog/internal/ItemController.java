@@ -2,14 +2,19 @@ package com.zija.catalog.internal;
 
 import com.zija.ZijaPrincipal;
 import com.zija.catalog.internal.persistence.ItemEntity;
+import com.zija.catalog.internal.persistence.ItemMapper;
+import com.zija.file.FileApi;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireMember;
+import com.zija.system.SystemApi;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.*;
 
@@ -19,10 +24,17 @@ class ItemController {
 
     private final ItemService itemService;
     private final HouseholdApi householdApi;
+    private final FileApi fileApi;
+    private final ItemMapper itemMapper;
+    private final SystemApi systemApi;
 
-    ItemController(ItemService itemService, HouseholdApi householdApi) {
+    ItemController(ItemService itemService, HouseholdApi householdApi,
+                   FileApi fileApi, ItemMapper itemMapper, SystemApi systemApi) {
         this.itemService = itemService;
         this.householdApi = householdApi;
+        this.fileApi = fileApi;
+        this.itemMapper = itemMapper;
+        this.systemApi = systemApi;
     }
 
     @RequireMember
@@ -130,6 +142,76 @@ class ItemController {
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         itemService.restoreItem(member.householdId(), id, request.version());
+    }
+
+    @RequireMember
+    @PostMapping("/{id}/cover")
+    Map<String, Object> uploadCover(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @RequestParam("file") MultipartFile file
+    ) throws IOException {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var item = itemService.findItem(member.householdId(), id);
+        if (item == null) {
+            throw new CatalogArchivedDictionaryException("item", id);
+        }
+
+        var newFileInfo = fileApi.store(
+                member.householdId(), file.getBytes(),
+                file.getOriginalFilename(), file.getContentType()
+        );
+
+        if (item.getCoverFileId() != null) {
+            fileApi.release(member.householdId(), item.getCoverFileId());
+        }
+
+        item.setCoverFileId(newFileInfo.id());
+        item.setVersion(item.getVersion() + 1);
+        itemMapper.updateById(item);
+
+        fileApi.retain(member.householdId(), newFileInfo.id());
+
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                "ITEM_COVER_UPLOADED", "SUCCESS", member.householdId(),
+                null, null, null, null,
+                Map.of("id", id.toString(), "fileId", newFileInfo.id().toString())
+        ));
+
+        return Map.of(
+                "id", newFileInfo.id(),
+                "url", "/api/v1/files/" + newFileInfo.id() + "/content",
+                "detectedMediaType", newFileInfo.detectedMediaType(),
+                "originalFilename", newFileInfo.originalFilename(),
+                "byteSize", newFileInfo.byteSize(),
+                "sha256", newFileInfo.sha256()
+        );
+    }
+
+    @RequireMember
+    @DeleteMapping("/{id}/cover")
+    void removeCover(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody VersionRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var item = itemService.findItem(member.householdId(), id);
+        if (item == null || item.getCoverFileId() == null) {
+            throw new CatalogArchivedDictionaryException("item", id);
+        }
+
+        fileApi.release(member.householdId(), item.getCoverFileId());
+
+        item.setCoverFileId(null);
+        item.setVersion(item.getVersion() + 1);
+        itemMapper.updateById(item);
+
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                "ITEM_COVER_REMOVED", "SUCCESS", member.householdId(),
+                null, null, null, null,
+                Map.of("id", id.toString())
+        ));
     }
 
     private Map<String, Object> toItemResponse(ItemEntity entity, List<UUID> tagIds) {

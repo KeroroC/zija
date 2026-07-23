@@ -76,6 +76,39 @@ class CatalogDictionaryService {
         audit(householdId, "CATEGORY_RESTORED", id);
     }
 
+    @Transactional
+    public void updateCategory(UUID householdId, UUID id, String name, Integer version) {
+        var entity = requireCategory(householdId, id);
+        String normalized = normalizeName(name);
+        checkDuplicateCategory(householdId, entity.getParentId(), normalized, id);
+        entity.setName(name.trim());
+        entity.setNameNormalized(normalized);
+        if (categoryMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "CATEGORY_UPDATED", id);
+    }
+
+    @Transactional
+    public void moveCategory(UUID householdId, UUID id, UUID newParentId, int newSortOrder, Integer version) {
+        var entity = requireCategory(householdId, id);
+        if (newParentId != null) {
+            if (newParentId.equals(id)) {
+                throw new CatalogCycleDetectedException();
+            }
+            var descendants = categoryMapper.findDescendantIds(id, householdId);
+            if (descendants.contains(newParentId)) {
+                throw new CatalogCycleDetectedException();
+            }
+        }
+        entity.setParentId(newParentId);
+        entity.setSortOrder(newSortOrder);
+        if (categoryMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "CATEGORY_MOVED", id);
+    }
+
     // --- Brands ---
 
     @Transactional
@@ -103,6 +136,19 @@ class CatalogDictionaryService {
         audit(householdId, "BRAND_ARCHIVED", id);
     }
 
+    @Transactional
+    public void updateBrand(UUID householdId, UUID id, String name, Integer version) {
+        var entity = requireBrand(householdId, id);
+        String normalized = normalizeName(name);
+        checkDuplicateBrand(householdId, normalized, id);
+        entity.setName(name.trim());
+        entity.setNameNormalized(normalized);
+        if (brandMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "BRAND_UPDATED", id);
+    }
+
     // --- Units ---
 
     @Transactional
@@ -122,6 +168,19 @@ class CatalogDictionaryService {
         unitMapper.insert(entity);
         audit(householdId, "UNIT_CREATED", entity.getId());
         return entity;
+    }
+
+    @Transactional
+    public void updateUnit(UUID householdId, UUID id, String name, Integer version) {
+        var entity = requireUnit(householdId, id);
+        String normalized = normalizeName(name);
+        checkDuplicateUnit(householdId, normalized, id);
+        entity.setName(name.trim());
+        entity.setNameNormalized(normalized);
+        if (unitMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "UNIT_UPDATED", id);
     }
 
     // --- Tags ---
@@ -149,6 +208,19 @@ class CatalogDictionaryService {
             throw new CatalogVersionConflictException();
         }
         audit(householdId, "TAG_ARCHIVED", id);
+    }
+
+    @Transactional
+    public void updateTag(UUID householdId, UUID id, String name, Integer version) {
+        var entity = requireTag(householdId, id);
+        String normalized = normalizeName(name);
+        checkDuplicateTag(householdId, normalized, id);
+        entity.setName(name.trim());
+        entity.setNameNormalized(normalized);
+        if (tagMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "TAG_UPDATED", id);
     }
 
     // --- Query ---

@@ -1,0 +1,389 @@
+<template>
+  <el-drawer
+    :model-value="modelValue"
+    :title="isEdit ? '编辑物品' : '新建物品'"
+    size="520px"
+    @close="close"
+  >
+    <el-form
+      ref="formRef"
+      :model="form"
+      :rules="rules"
+      label-width="100px"
+      label-position="top"
+    >
+      <el-form-item label="名称" prop="name">
+        <el-input v-model="form.name" placeholder="请输入物品名称" maxlength="100" />
+      </el-form-item>
+
+      <el-form-item label="管理类型" prop="managementType">
+        <el-select v-model="form.managementType" placeholder="请选择管理类型" style="width: 100%">
+          <el-option label="消耗品" value="CONSUMABLE" />
+          <el-option label="耐用品" value="DURABLE" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="单位" prop="unitId">
+        <el-select v-model="form.unitId" placeholder="请选择单位" style="width: 100%">
+          <el-option
+            v-for="u in units"
+            :key="u.id"
+            :label="u.name"
+            :value="u.id"
+          />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="分类">
+        <el-tree-select
+          v-model="form.categoryId"
+          :data="categoryTree"
+          :props="{ label: 'name', value: 'id', children: 'children' } as any"
+          placeholder="请选择分类（可选）"
+          clearable
+          check-strictly
+          style="width: 100%"
+        />
+      </el-form-item>
+
+      <el-form-item label="品牌">
+        <el-select
+          v-model="form.brandId"
+          placeholder="请选择品牌（可选）"
+          clearable
+          filterable
+          allow-create
+          style="width: 100%"
+          @create="handleCreateBrand"
+        >
+          <el-option
+            v-for="b in brands"
+            :key="b.id"
+            :label="b.name"
+            :value="b.id"
+          />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="标签">
+        <el-select
+          v-model="form.tagIds"
+          placeholder="请选择标签（可选）"
+          multiple
+          clearable
+          filterable
+          allow-create
+          style="width: 100%"
+          @create="handleCreateTag"
+        >
+          <el-option
+            v-for="t in tags"
+            :key="t.id"
+            :label="t.name"
+            :value="t.id"
+          />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="备注">
+        <el-input
+          v-model="form.memo"
+          type="textarea"
+          :rows="3"
+          placeholder="请输入备注（可选）"
+          maxlength="500"
+          show-word-limit
+        />
+      </el-form-item>
+
+      <el-divider />
+
+      <el-form-item label="到期提醒模式">
+        <el-select v-model="form.expiryReminderMode" style="width: 100%">
+          <el-option label="继承全局设置" value="INHERIT" />
+          <el-option label="禁用" value="DISABLED" />
+          <el-option label="自定义" value="CUSTOM" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item
+        v-if="form.expiryReminderMode === 'CUSTOM'"
+        label="提醒天数"
+      >
+        <el-input-number
+          v-model="form.expiryReminderDays"
+          :min="1"
+          :max="365"
+          placeholder="到期前多少天提醒"
+          style="width: 100%"
+        />
+      </el-form-item>
+
+      <el-form-item label="低库存提醒模式">
+        <el-select v-model="form.lowStockMode" style="width: 100%">
+          <el-option label="继承全局设置" value="INHERIT" />
+          <el-option label="禁用" value="DISABLED" />
+          <el-option label="自定义" value="CUSTOM" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item
+        v-if="form.lowStockMode === 'CUSTOM'"
+        label="低库存阈值"
+      >
+        <el-input
+          v-model="form.lowStockThreshold"
+          placeholder="库存低于此值时提醒"
+        >
+          <template #append>
+            <span style="color: var(--el-text-color-secondary); font-size: 12px">
+              请根据单位精度输入
+            </span>
+          </template>
+        </el-input>
+      </el-form-item>
+
+      <el-divider v-if="isEdit" />
+
+      <el-form-item v-if="isEdit" label="封面图片">
+        <ItemCoverUpload
+          :item-id="props.item!.id"
+          :cover-url="props.item!.coverUrl ?? null"
+          :version="props.item!.version"
+          @uploaded="onCoverUploaded"
+          @removed="onCoverRemoved"
+        />
+      </el-form-item>
+    </el-form>
+
+    <template #footer>
+      <el-button @click="close">取消</el-button>
+      <el-button type="primary" :loading="submitting" @click="handleSubmit">
+        {{ isEdit ? '保存' : '创建' }}
+      </el-button>
+    </template>
+  </el-drawer>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, watch, onMounted } from 'vue'
+import type { FormInstance, FormRules } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import {
+  createItem,
+  updateItem,
+  fetchCategories,
+  fetchBrands,
+  fetchUnits,
+  fetchTags,
+  createBrand as apiCreateBrand,
+  createTag as apiCreateTag,
+} from '../api/catalog'
+import type { CatalogItem, Category, Brand, Unit, Tag } from '../types/catalog'
+import ItemCoverUpload from './ItemCoverUpload.vue'
+
+interface CategoryTreeNode extends Category {
+  children?: CategoryTreeNode[]
+}
+
+const props = defineProps<{
+  modelValue: boolean
+  item: CatalogItem | null
+}>()
+
+const emit = defineEmits<{
+  'update:modelValue': [value: boolean]
+  saved: []
+}>()
+
+const formRef = ref<FormInstance>()
+const submitting = ref(false)
+
+const units = ref<Unit[]>([])
+const brands = ref<Brand[]>([])
+const tags = ref<Tag[]>([])
+const categoryTree = ref<CategoryTreeNode[]>([])
+
+const isEdit = computed(() => !!props.item)
+
+const defaultForm = () => ({
+  name: '',
+  managementType: 'CONSUMABLE' as string,
+  unitId: '',
+  categoryId: null as string | null,
+  brandId: null as string | null,
+  tagIds: [] as string[],
+  memo: '',
+  expiryReminderMode: 'INHERIT' as string,
+  expiryReminderDays: undefined as number | undefined,
+  lowStockMode: 'INHERIT' as string,
+  lowStockThreshold: '' as string,
+})
+
+const form = reactive(defaultForm())
+
+const rules: FormRules = {
+  name: [
+    { required: true, message: '请输入物品名称', trigger: 'blur' },
+    { max: 100, message: '名称不能超过100个字符', trigger: 'blur' },
+  ],
+  managementType: [
+    { required: true, message: '请选择管理类型', trigger: 'change' },
+  ],
+  unitId: [
+    { required: true, message: '请选择单位', trigger: 'change' },
+  ],
+}
+
+function buildCategoryTree(list: Category[]): CategoryTreeNode[] {
+  const map = new Map<string, CategoryTreeNode>()
+  const roots: CategoryTreeNode[] = []
+
+  for (const cat of list) {
+    map.set(cat.id, { ...cat, children: [] })
+  }
+
+  for (const node of map.values()) {
+    if (node.parentId && map.has(node.parentId)) {
+      map.get(node.parentId)!.children!.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+
+  return roots
+}
+
+async function loadDictionaries() {
+  const [cats, b, u, t] = await Promise.all([
+    fetchCategories(),
+    fetchBrands(),
+    fetchUnits(),
+    fetchTags(),
+  ])
+  categoryTree.value = buildCategoryTree(cats)
+  brands.value = b
+  units.value = u
+  tags.value = t
+}
+
+function resetForm() {
+  const d = defaultForm()
+  Object.assign(form, d)
+  formRef.value?.clearValidate()
+}
+
+function fillForm(item: CatalogItem) {
+  form.name = item.name
+  form.managementType = item.managementType
+  form.unitId = item.unitId
+  form.categoryId = item.categoryId
+  form.brandId = item.brandId
+  form.tagIds = item.tagIds ? [...item.tagIds] : []
+  form.memo = item.memo || ''
+  form.expiryReminderMode = item.expiryReminderMode
+  form.expiryReminderDays = item.expiryReminderDays?.[0]
+  form.lowStockMode = item.lowStockMode
+  form.lowStockThreshold = item.lowStockThreshold || ''
+}
+
+watch(
+  () => props.modelValue,
+  (visible) => {
+    if (visible) {
+      if (props.item) {
+        fillForm(props.item)
+      } else {
+        resetForm()
+      }
+    }
+  },
+)
+
+function close() {
+  emit('update:modelValue', false)
+}
+
+function onCoverUploaded(payload: { coverFileId: string; coverUrl: string }) {
+  if (props.item) {
+    props.item.coverFileId = payload.coverFileId
+    props.item.coverUrl = payload.coverUrl
+  }
+}
+
+function onCoverRemoved() {
+  if (props.item) {
+    props.item.coverFileId = null
+    props.item.coverUrl = undefined
+  }
+}
+
+async function handleCreateBrand(name: string) {
+  try {
+    const brand = await apiCreateBrand(name)
+    brands.value.push(brand)
+    form.brandId = brand.id
+    ElMessage.success('品牌已创建')
+  } catch (e: any) {
+    ElMessage.error(e.title || '创建品牌失败')
+  }
+}
+
+async function handleCreateTag(name: string) {
+  try {
+    const tag = await apiCreateTag(name)
+    tags.value.push(tag)
+    form.tagIds.push(tag.id)
+    ElMessage.success('标签已创建')
+  } catch (e: any) {
+    ElMessage.error(e.title || '创建标签失败')
+  }
+}
+
+function buildSubmitData() {
+  const data: Record<string, unknown> = {
+    name: form.name,
+    managementType: form.managementType,
+    unitId: form.unitId,
+    categoryId: form.categoryId || undefined,
+    brandId: form.brandId || undefined,
+    tagIds: form.tagIds.length > 0 ? form.tagIds : undefined,
+    memo: form.memo || undefined,
+    expiryReminderMode: form.expiryReminderMode,
+    expiryReminderDays: form.expiryReminderMode === 'CUSTOM' && form.expiryReminderDays
+      ? [form.expiryReminderDays]
+      : undefined,
+    lowStockMode: form.lowStockMode,
+    lowStockThreshold: form.lowStockMode === 'CUSTOM' && form.lowStockThreshold
+      ? form.lowStockThreshold
+      : undefined,
+  }
+  return data
+}
+
+async function handleSubmit() {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  submitting.value = true
+  try {
+    const data = buildSubmitData()
+    if (isEdit.value && props.item) {
+      data.version = props.item.version
+      await updateItem(props.item.id, data)
+      ElMessage.success('物品已更新')
+    } else {
+      await createItem(data as Parameters<typeof createItem>[0])
+      ElMessage.success('物品已创建')
+    }
+    emit('saved')
+    close()
+  } catch (e: any) {
+    ElMessage.error(e.title || '操作失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+onMounted(loadDictionaries)
+</script>

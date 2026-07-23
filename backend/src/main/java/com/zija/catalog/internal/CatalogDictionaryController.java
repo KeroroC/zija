@@ -51,6 +51,28 @@ class CatalogDictionaryController {
     }
 
     @RequireAdmin
+    @PutMapping("/categories/{id}")
+    void updateCategory(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateNameRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        dictionaryService.updateCategory(member.householdId(), id, request.name(), request.version());
+    }
+
+    @RequireAdmin
+    @PutMapping("/categories/{id}/position")
+    void moveCategory(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody MoveCategoryRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        dictionaryService.moveCategory(member.householdId(), id, request.parentId(), request.sortOrder(), request.version());
+    }
+
+    @RequireAdmin
     @PostMapping("/categories/{id}/archive")
     void archiveCategory(
             @AuthenticationPrincipal ZijaPrincipal principal,
@@ -95,6 +117,17 @@ class CatalogDictionaryController {
     }
 
     @RequireAdmin
+    @PutMapping("/brands/{id}")
+    void updateBrand(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateNameRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        dictionaryService.updateBrand(member.householdId(), id, request.name(), request.version());
+    }
+
+    @RequireAdmin
     @PostMapping("/brands/{id}/archive")
     void archiveBrand(
             @AuthenticationPrincipal ZijaPrincipal principal,
@@ -125,6 +158,17 @@ class CatalogDictionaryController {
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         return dictionaryService.createUnit(member.householdId(), request.name(), request.decimalScale());
+    }
+
+    @RequireAdmin
+    @PutMapping("/units/{id}")
+    void updateUnit(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateNameRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        dictionaryService.updateUnit(member.householdId(), id, request.name(), request.version());
     }
 
     // --- Tags ---
@@ -160,10 +204,23 @@ class CatalogDictionaryController {
         dictionaryService.archiveTag(member.householdId(), id, request.version());
     }
 
+    @RequireAdmin
+    @PutMapping("/tags/{id}")
+    void updateTag(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateNameRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        dictionaryService.updateTag(member.householdId(), id, request.name(), request.version());
+    }
+
     // --- DTOs ---
 
     record CreateCategoryRequest(@NotBlank String name, UUID parentId, int sortOrder) {}
     record CreateNameRequest(@NotBlank String name) {}
     record CreateUnitRequest(@NotBlank String name, int decimalScale) {}
     record VersionRequest(Integer version) {}
+    record UpdateNameRequest(@NotBlank String name, Integer version) {}
+    record MoveCategoryRequest(UUID parentId, int sortOrder, Integer version) {}
 }

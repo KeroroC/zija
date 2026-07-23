@@ -27,7 +27,7 @@ function baseUrl(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
 }
 
-function getCookie(name: string): string | null {
+export function getCookie(name: string): string | null {
   const match = document.cookie.match(
     new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1") + "=([^;]*)")
   );

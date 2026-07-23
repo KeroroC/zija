@@ -69,8 +69,20 @@ export async function createCategory(data: { name: string; parentId?: string; so
   return postJson<Category>('/api/v1/categories', data)
 }
 
+export async function renameCategory(id: string, name: string, version: number): Promise<Category> {
+  return putJson<Category>(`/api/v1/categories/${id}`, { name, version })
+}
+
+export async function moveCategory(id: string, parentId: string | null, sortOrder: number, version: number): Promise<void> {
+  return putJson<void>(`/api/v1/categories/${id}/position`, { parentId, sortOrder, version })
+}
+
 export async function archiveCategory(id: string, version: number): Promise<void> {
   return postJson<void>(`/api/v1/categories/${id}/archive`, { version })
+}
+
+export async function restoreCategory(id: string, version: number): Promise<void> {
+  return postJson<void>(`/api/v1/categories/${id}/restore`, { version })
 }
 
 // Brands
@@ -86,6 +98,10 @@ export async function archiveBrand(id: string, version: number): Promise<void> {
   return postJson<void>(`/api/v1/brands/${id}/archive`, { version })
 }
 
+export async function restoreBrand(id: string, version: number): Promise<void> {
+  return postJson<void>(`/api/v1/brands/${id}/restore`, { version })
+}
+
 // Units
 export async function fetchUnits(includeArchived = false): Promise<Unit[]> {
   return getJson<Unit[]>(`/api/v1/units?includeArchived=${includeArchived}`)
@@ -93,6 +109,10 @@ export async function fetchUnits(includeArchived = false): Promise<Unit[]> {
 
 export async function createUnit(data: { name: string; decimalScale: number }): Promise<Unit> {
   return postJson<Unit>('/api/v1/units', data)
+}
+
+export async function renameUnit(id: string, name: string, version: number): Promise<Unit> {
+  return putJson<Unit>(`/api/v1/units/${id}`, { name, version })
 }
 
 // Tags
@@ -106,4 +126,12 @@ export async function createTag(name: string): Promise<Tag> {
 
 export async function archiveTag(id: string, version: number): Promise<void> {
   return postJson<void>(`/api/v1/tags/${id}/archive`, { version })
+}
+
+export async function renameTag(id: string, name: string, version: number): Promise<Tag> {
+  return putJson<Tag>(`/api/v1/tags/${id}`, { name, version })
+}
+
+export async function restoreTag(id: string, version: number): Promise<void> {
+  return postJson<void>(`/api/v1/tags/${id}/restore`, { version })
 }

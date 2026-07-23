@@ -22,7 +22,8 @@
         <el-menu-item index="/locations">位置管理</el-menu-item>
         <el-menu-item index="/reminders" disabled>提醒中心</el-menu-item>
         <el-menu-item index="/reports" disabled>报表与导出</el-menu-item>
-        <el-menu-item index="/settings" disabled>家庭设置</el-menu-item>
+        <el-menu-item v-if="session.role === 'OWNER' || session.role === 'ADMIN'" index="/settings/catalog">家庭设置</el-menu-item>
+        <el-menu-item v-else index="/settings" disabled>家庭设置</el-menu-item>
       </el-menu>
     </el-aside>
 

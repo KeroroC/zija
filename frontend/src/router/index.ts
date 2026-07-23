@@ -10,6 +10,7 @@ import OwnerRecoveryPage from "../views/OwnerRecoveryPage.vue";
 import AuditLogPage from "../views/AuditLogPage.vue";
 import ItemsPage from "../views/ItemsPage.vue";
 import LocationsPage from "../views/LocationsPage.vue";
+import CatalogSettingsPage from "../views/CatalogSettingsPage.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -23,7 +24,8 @@ export const router = createRouter({
     { path: "/profile", name: "profile", component: ProfilePage },
     { path: "/owner-recovery", name: "owner-recovery", component: OwnerRecoveryPage },
     { path: "/items", name: "items", component: ItemsPage },
-    { path: "/locations", name: "locations", component: LocationsPage }
+    { path: "/locations", name: "locations", component: LocationsPage },
+    { path: "/settings/catalog", name: "catalog-settings", component: CatalogSettingsPage }
   ]
 });
 
