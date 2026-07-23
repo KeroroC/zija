@@ -65,6 +65,12 @@
         </div>
       </div>
     </el-drawer>
+
+    <ItemFormDrawer
+      v-model="formDrawerVisible"
+      :item="editingItem"
+      @saved="onFormSaved"
+    />
   </div>
 </template>
 
@@ -73,11 +79,14 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchItems as apiFetchItems, archiveItem as apiArchiveItem, restoreItem as apiRestoreItem } from '../api/catalog'
 import type { CatalogItem } from '../types/catalog'
+import ItemFormDrawer from './ItemFormDrawer.vue'
 
 const items = ref<CatalogItem[]>([])
 const loading = ref(false)
 const detailVisible = ref(false)
 const selectedItem = ref<CatalogItem | null>(null)
+const formDrawerVisible = ref(false)
+const editingItem = ref<CatalogItem | null>(null)
 
 const filters = reactive({ q: '', managementType: '', status: 'ACTIVE' })
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
@@ -109,11 +118,18 @@ async function fetchItems() {
 }
 
 function openCreate() {
-  ElMessage.info('新建物品功能开发中')
+  editingItem.value = null
+  formDrawerVisible.value = true
 }
 
 function openEdit(item: CatalogItem) {
-  ElMessage.info('编辑物品功能开发中')
+  editingItem.value = item
+  formDrawerVisible.value = true
+}
+
+function onFormSaved() {
+  formDrawerVisible.value = false
+  fetchItems()
 }
 
 function openDetail(item: CatalogItem) {
