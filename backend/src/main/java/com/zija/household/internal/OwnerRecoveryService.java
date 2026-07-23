@@ -64,8 +64,6 @@ class OwnerRecoveryService {
         }
         tokenMapper.markConsumed(token.getId());
         identityApi.resetPassword(token.getAccountId(), newPassword);
-        identityApi.disableAccount(token.getAccountId());
-        identityApi.activateAccount(token.getAccountId());
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 "OWNER_RECOVERY", "SUCCESS", token.getHouseholdId(),
                 token.getAccountId(), token.getAccountId(), null, null, null));
