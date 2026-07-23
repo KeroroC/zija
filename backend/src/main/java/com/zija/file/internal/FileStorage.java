@@ -19,27 +19,9 @@ class FileStorage {
 
     @PostConstruct
     void init() throws IOException {
-        try {
-            Files.createDirectories(storageRoot);
-            if (!Files.isWritable(storageRoot)) {
-                throw new IllegalStateException("File storage path is not writable: " + storageRoot);
-            }
-        } catch (IOException | IllegalStateException e) {
-            // Fallback to temp directory for development/testing
-            Path tempFallback = Path.of(System.getProperty("java.io.tmpdir"), "zija-files");
-            Files.createDirectories(tempFallback);
-            if (Files.isWritable(tempFallback)) {
-                // Use reflection to update final field (for testing only)
-                try {
-                    var field = FileStorage.class.getDeclaredField("storageRoot");
-                    field.setAccessible(true);
-                    field.set(this, tempFallback);
-                } catch (Exception ex) {
-                    throw new IllegalStateException("Cannot fallback to temp directory", ex);
-                }
-            } else {
-                throw e;
-            }
+        Files.createDirectories(storageRoot);
+        if (!Files.isWritable(storageRoot)) {
+            throw new IllegalStateException("File storage path is not writable: " + storageRoot);
         }
     }
 
