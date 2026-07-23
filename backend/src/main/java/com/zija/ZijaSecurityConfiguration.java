@@ -25,6 +25,19 @@ import org.springframework.security.web.csrf.CsrfTokenRepository;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Spring Security 安全配置。
+ *
+ * <p>主要配置内容包括：</p>
+ * <ul>
+ *   <li>URL 级别授权：放行登录、CSRF、家庭初始化、邀请、密码恢复、系统信息、Swagger UI 及健康检查等端点，其余请求需认证</li>
+ *   <li>CSRF 防护：基于 Cookie 的 CSRF Token 仓库（HttpOnly 关闭，供前端 JS 读取）</li>
+ *   <li>会话管理：按需创建会话，启用会话固定攻击防护（每次认证更换 Session ID）</li>
+ *   <li>登出处理：清除会话与认证信息，删除相关 Cookie，并记录审计日志</li>
+ *   <li>密码编码器：委托式编码器，默认使用 bcrypt，兼容 sha256 历史格式</li>
+ *   <li>认证管理器：基于 DAO 的认证提供者</li>
+ * </ul>
+ */
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
 public class ZijaSecurityConfiguration {

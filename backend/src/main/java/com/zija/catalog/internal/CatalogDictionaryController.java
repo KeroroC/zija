@@ -16,6 +16,36 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * 目录字典控制器，提供分类（Category）、品牌（Brand）、计量单位（Unit）、标签（Tag）的 CRUD REST API。
+ *
+ * <p>查询接口要求用户为家庭成员（{@link RequireMember}），修改接口要求管理员权限（{@link RequireAdmin}）。</p>
+ *
+ * <p>端点概览：</p>
+ * <ul>
+ *   <li><b>分类</b>：
+ *     {@code GET /api/v1/categories/tree}（树形查询）、
+ *     {@code POST /api/v1/categories}（创建）、
+ *     {@code PUT /api/v1/categories/{id}}（重命名）、
+ *     {@code PUT /api/v1/categories/{id}/position}（移动位置）、
+ *     {@code POST /api/v1/categories/{id}/archive}（归档）、
+ *     {@code POST /api/v1/categories/{id}/restore}（恢复）</li>
+ *   <li><b>品牌</b>：
+ *     {@code GET /api/v1/brands}（列表）、
+ *     {@code POST /api/v1/brands}（创建）、
+ *     {@code PUT /api/v1/brands/{id}}（更新）、
+ *     {@code POST /api/v1/brands/{id}/archive}（归档）</li>
+ *   <li><b>计量单位</b>：
+ *     {@code GET /api/v1/units}（列表）、
+ *     {@code POST /api/v1/units}（创建）、
+ *     {@code PUT /api/v1/units/{id}}（更新）</li>
+ *   <li><b>标签</b>：
+ *     {@code GET /api/v1/tags}（列表）、
+ *     {@code POST /api/v1/tags}（创建）、
+ *     {@code PUT /api/v1/tags/{id}}（更新）、
+ *     {@code POST /api/v1/tags/{id}/archive}（归档）</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/v1")
 class CatalogDictionaryController {
@@ -30,6 +60,9 @@ class CatalogDictionaryController {
 
     // --- Categories ---
 
+    /**
+     * 查询分类树形结构，支持包含已归档分类。
+     */
     @RequireMember
     @GetMapping("/categories/tree")
     List<CategoryEntity> getCategoryTree(
@@ -40,6 +73,9 @@ class CatalogDictionaryController {
         return dictionaryService.findCategoryTree(member.householdId(), includeArchived);
     }
 
+    /**
+     * 创建分类，可指定父分类和排序序号。
+     */
     @RequireAdmin
     @PostMapping("/categories")
     CategoryEntity createCategory(
@@ -50,6 +86,9 @@ class CatalogDictionaryController {
         return dictionaryService.createCategory(member.householdId(), request.name(), request.parentId(), request.sortOrder());
     }
 
+    /**
+     * 重命名分类，支持乐观锁版本控制。
+     */
     @RequireAdmin
     @PutMapping("/categories/{id}")
     void updateCategory(
@@ -61,6 +100,9 @@ class CatalogDictionaryController {
         dictionaryService.updateCategory(member.householdId(), id, request.name(), request.version());
     }
 
+    /**
+     * 移动分类位置，可调整父分类和排序序号。
+     */
     @RequireAdmin
     @PutMapping("/categories/{id}/position")
     void moveCategory(
@@ -72,6 +114,9 @@ class CatalogDictionaryController {
         dictionaryService.moveCategory(member.householdId(), id, request.parentId(), request.sortOrder(), request.version());
     }
 
+    /**
+     * 归档分类。
+     */
     @RequireAdmin
     @PostMapping("/categories/{id}/archive")
     void archiveCategory(
@@ -83,6 +128,9 @@ class CatalogDictionaryController {
         dictionaryService.archiveCategory(member.householdId(), id, request.version());
     }
 
+    /**
+     * 恢复已归档的分类。
+     */
     @RequireAdmin
     @PostMapping("/categories/{id}/restore")
     void restoreCategory(
@@ -96,6 +144,9 @@ class CatalogDictionaryController {
 
     // --- Brands ---
 
+    /**
+     * 查询品牌列表，支持包含已归档品牌。
+     */
     @RequireMember
     @GetMapping("/brands")
     List<BrandEntity> getBrands(
@@ -106,6 +157,9 @@ class CatalogDictionaryController {
         return dictionaryService.findBrands(member.householdId(), includeArchived);
     }
 
+    /**
+     * 创建品牌。
+     */
     @RequireMember
     @PostMapping("/brands")
     BrandEntity createBrand(
@@ -116,6 +170,9 @@ class CatalogDictionaryController {
         return dictionaryService.createBrand(member.householdId(), request.name());
     }
 
+    /**
+     * 更新品牌名称，支持乐观锁版本控制。
+     */
     @RequireAdmin
     @PutMapping("/brands/{id}")
     void updateBrand(
@@ -127,6 +184,9 @@ class CatalogDictionaryController {
         dictionaryService.updateBrand(member.householdId(), id, request.name(), request.version());
     }
 
+    /**
+     * 归档品牌。
+     */
     @RequireAdmin
     @PostMapping("/brands/{id}/archive")
     void archiveBrand(
@@ -140,6 +200,9 @@ class CatalogDictionaryController {
 
     // --- Units ---
 
+    /**
+     * 查询计量单位列表，支持包含已归档单位。
+     */
     @RequireMember
     @GetMapping("/units")
     List<UnitEntity> getUnits(
@@ -150,6 +213,9 @@ class CatalogDictionaryController {
         return dictionaryService.findUnits(member.householdId(), includeArchived);
     }
 
+    /**
+     * 创建计量单位，可指定小数精度。
+     */
     @RequireAdmin
     @PostMapping("/units")
     UnitEntity createUnit(
@@ -160,6 +226,9 @@ class CatalogDictionaryController {
         return dictionaryService.createUnit(member.householdId(), request.name(), request.decimalScale());
     }
 
+    /**
+     * 更新计量单位名称，支持乐观锁版本控制。
+     */
     @RequireAdmin
     @PutMapping("/units/{id}")
     void updateUnit(
@@ -173,6 +242,9 @@ class CatalogDictionaryController {
 
     // --- Tags ---
 
+    /**
+     * 查询标签列表，支持包含已归档标签。
+     */
     @RequireMember
     @GetMapping("/tags")
     List<TagEntity> getTags(
@@ -183,6 +255,9 @@ class CatalogDictionaryController {
         return dictionaryService.findTags(member.householdId(), includeArchived);
     }
 
+    /**
+     * 创建标签。
+     */
     @RequireMember
     @PostMapping("/tags")
     TagEntity createTag(
@@ -193,6 +268,9 @@ class CatalogDictionaryController {
         return dictionaryService.createTag(member.householdId(), request.name());
     }
 
+    /**
+     * 归档标签。
+     */
     @RequireAdmin
     @PostMapping("/tags/{id}/archive")
     void archiveTag(
@@ -204,6 +282,9 @@ class CatalogDictionaryController {
         dictionaryService.archiveTag(member.householdId(), id, request.version());
     }
 
+    /**
+     * 更新标签名称，支持乐观锁版本控制。
+     */
     @RequireAdmin
     @PutMapping("/tags/{id}")
     void updateTag(

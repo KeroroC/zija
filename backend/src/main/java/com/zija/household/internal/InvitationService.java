@@ -16,6 +16,13 @@ import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 邀请码服务，管理家庭成员邀请的创建、兑换和验证。
+ * <p>
+ * 邀请码使用 Base64 URL 编码的随机 token 生成，存储时仅保留 SHA-256 摘要。
+ * 支持设置有效期，兑换时自动注册账户并添加为家庭成员。
+ * 权限规则：OWNER 可邀请 ADMIN 和 MEMBER，ADMIN 仅可邀请 MEMBER。
+ */
 @Service
 class InvitationService {
 
@@ -39,6 +46,16 @@ class InvitationService {
                                 String displayName, String email) {
     }
 
+    /**
+     * 创建邀请码，返回原始 token（仅本次可见）和摘要。
+     *
+     * @param householdId    家庭 ID
+     * @param createdBy      创建人账户 ID
+     * @param role           邀请角色（ADMIN 或 MEMBER）
+     * @param expiresInHours 有效期（小时）
+     * @return 创建结果，包含 ID、原始 token、摘要、角色和过期时间
+     * @throws InsufficientRoleException 如果创建人权限不足
+     */
     @Transactional
     public CreateResult create(UUID householdId, UUID createdBy,
                                 HouseholdApi.MemberRole role, int expiresInHours) {
@@ -78,6 +95,17 @@ class InvitationService {
         return new CreateResult(entity.getId(), rawToken, digest, role, entity.getExpiresAt());
     }
 
+    /**
+     * 兑换邀请码，注册新账户并添加为家庭成员。
+     * <p>
+     * 邀请码兑换后即失效（标记为已消费），不可重复使用。
+     *
+     * @param rawToken      原始 token
+     * @param command       注册信息（用户名、密码、显示名、邮箱）
+     * @param identityApi   身份服务（用于注册账户）
+     * @param memberService 成员服务（用于添加成员）
+     * @throws InvalidInvitationException 如果 token 无效、已消费或已过期
+     */
     @Transactional
     public void redeem(String rawToken, RedeemCommand command,
                        IdentityApi identityApi, MemberService memberService) {
@@ -104,6 +132,12 @@ class InvitationService {
                 account.id(), account.id(), null, null, null));
     }
 
+    /**
+     * 验证邀请码是否有效（未消费且未过期）。
+     *
+     * @param rawToken 原始 token
+     * @return 有效的邀请实体，无效则返回空
+     */
     @Transactional(readOnly = true)
     public Optional<InvitationEntity> inspect(String rawToken) {
         return invitationMapper.selectByDigest(sha256Hex(rawToken))
@@ -111,6 +145,12 @@ class InvitationService {
                         && i.getExpiresAt().isAfter(OffsetDateTime.now(ZoneOffset.UTC)));
     }
 
+    /**
+     * 计算输入字符串的 SHA-256 十六进制摘要。
+     *
+     * @param input 输入字符串
+     * @return 小写十六进制摘要
+     */
     static String sha256Hex(String input) {
         try {
             var digest = java.security.MessageDigest.getInstance("SHA-256");

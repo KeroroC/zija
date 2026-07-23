@@ -16,6 +16,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 家庭管理服务，处理家庭的初始化和基本信息查询。
+ * <p>
+ * 实现 {@link HouseholdApi} 接口，提供系统初始化引导（bootstrap）、
+ * 家庭信息查询、成员列表查询及角色权限校验等功能。
+ * 系统采用单家庭模式，家庭记录通过单例键（singletonKey=1）保证唯一性。
+ */
 @Service
 class HouseholdService implements HouseholdApi {
 
@@ -45,6 +52,11 @@ class HouseholdService implements HouseholdApi {
     ) {
     }
 
+    /**
+     * 检查系统是否已完成初始化（即家庭记录是否存在）。
+     *
+     * @return 已初始化返回 true，否则返回 false
+     */
     @Override
     @Transactional(readOnly = true)
     public boolean isInitialized() {
@@ -58,6 +70,16 @@ class HouseholdService implements HouseholdApi {
                 .map(h -> new HouseholdInfo(h.getId(), h.getName(), h.getTimezone()));
     }
 
+    /**
+     * 执行系统初始化引导，创建家庭和首个 OWNER 账户。
+     * <p>
+     * 此操作在同一个事务中完成：创建家庭记录、注册账户、创建 OWNER 成员、记录审计日志。
+     * 如果家庭已初始化则抛出异常。
+     *
+     * @param command 初始化命令（家庭名、用户名、密码、显示名、邮箱）
+     * @return 创建的家庭信息
+     * @throws HouseholdAlreadyInitializedException 如果家庭已存在
+     */
     @Transactional
     public HouseholdInfo bootstrap(BootstrapCommand command) {
         var household = new HouseholdEntity();
@@ -112,6 +134,13 @@ class HouseholdService implements HouseholdApi {
                         null, null, MemberRole.valueOf(m.getRole()), m.getStatus()));
     }
 
+    /**
+     * 要求指定账户为活跃成员，否则抛出异常。
+     *
+     * @param accountId 账户 ID
+     * @return 成员信息
+     * @throws InvalidCredentialsException 如果账户不是成员或非活跃状态
+     */
     @Override
     @Transactional(readOnly = true)
     public MemberInfo requireActiveMember(UUID accountId) {
@@ -123,6 +152,13 @@ class HouseholdService implements HouseholdApi {
         return toInfo(member);
     }
 
+    /**
+     * 检查指定账户是否具有至少指定级别的角色。
+     *
+     * @param accountId    账户 ID
+     * @param requiredRole 最低要求角色
+     * @return 满足角色要求返回 true，否则返回 false
+     */
     @Override
     @Transactional(readOnly = true)
     public boolean hasAtLeastRole(UUID accountId, MemberRole requiredRole) {

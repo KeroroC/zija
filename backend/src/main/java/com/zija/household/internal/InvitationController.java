@@ -23,6 +23,17 @@ import org.springframework.web.bind.annotation.*;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+/**
+ * 邀请管理控制器。
+ *
+ * <p>提供家庭成员邀请的创建、检查和兑换（注册加入）的 REST API 端点。</p>
+ *
+ * <ul>
+ *   <li>{@code POST /api/v1/invitations} — 创建邀请链接（仅 Admin 及以上）</li>
+ *   <li>{@code POST /api/v1/invitations/inspect} — 检查邀请令牌有效性</li>
+ *   <li>{@code POST /api/v1/invitations/redeem} — 兑换邀请并注册新成员</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/v1/invitations")
 class InvitationController {
@@ -72,6 +83,12 @@ class InvitationController {
             @Email @Size(max = 255) String email) {
     }
 
+    /**
+     * 创建邀请链接。仅 Admin 及以上角色可创建邀请。
+     *
+     * @param request 创建邀请请求（角色、过期时间）
+     * @return 邀请信息，包含令牌和兑换路径
+     */
     @PostMapping
     @RequireAdmin
     InvitationInfoResponse create(@Valid @RequestBody CreateInvitationRequest request) {
@@ -87,6 +104,12 @@ class InvitationController {
                 "/invitation/redeem#token=" + result.rawToken());
     }
 
+    /**
+     * 检查邀请令牌是否有效，返回家庭名称、角色和过期时间。
+     *
+     * @param request 检查请求（令牌）
+     * @return 邀请详情及有效性
+     */
     @PostMapping("/inspect")
     InspectResponse inspect(@Valid @RequestBody InspectRequest request) {
         var invitation = invitationService.inspect(request.token());
@@ -99,6 +122,14 @@ class InvitationController {
                 entity.getExpiresAt(), true);
     }
 
+    /**
+     * 兑换邀请令牌并注册新成员账号，完成后自动登录。
+     *
+     * @param request      兑换请求（令牌、用户名、密码等）
+     * @param httpRequest  HTTP 请求
+     * @param httpResponse HTTP 响应
+     * @return 登录后的会话信息
+     */
     @PostMapping("/redeem")
     @ResponseStatus(HttpStatus.CREATED)
     SessionInfo redeem(@Valid @RequestBody RedeemRequest request,

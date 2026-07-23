@@ -16,6 +16,15 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * 审计日志控制器。
+ *
+ * <p>提供审计日志分页查询的 REST API 端点，支持按时间范围、操作类型、操作者和结果筛选。</p>
+ *
+ * <ul>
+ *   <li>{@code GET /api/v1/audit-logs} — 分页查询审计日志（仅 Admin 及以上）</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/v1/audit-logs")
 class AuditLogController {
@@ -28,6 +37,18 @@ class AuditLogController {
         this.identityApi = identityApi;
     }
 
+    /**
+     * 分页查询审计日志。支持按时间范围、操作类型、操作者和结果筛选，并自动解析账号显示名称。
+     *
+     * @param page          页码（默认 1）
+     * @param pageSize      每页数量（默认 20，最大 100）
+     * @param from          起始时间（可选）
+     * @param to            结束时间（可选）
+     * @param action        操作类型（可选）
+     * @param actorAccountId 操作者账号 ID（可选）
+     * @param outcome       操作结果（可选）
+     * @return 分页审计日志响应
+     */
     @GetMapping
     @RequireAdmin
     AuditLogPageResponse auditLogs(

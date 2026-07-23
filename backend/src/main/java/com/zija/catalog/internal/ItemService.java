@@ -13,6 +13,13 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.*;
 
+/**
+ * 物品（Item）管理服务，实现 {@link CatalogApi} 接口。
+ * <p>
+ * 负责家庭资产物品的完整生命周期管理，包括创建、归档、恢复和更新操作。
+ * 支持物品与分类、品牌、单位、标签的关联，以及过期提醒和低库存预警配置。
+ * 所有操作均限定在指定家庭（householdId）范围内，并通过乐观锁保证并发安全。
+ */
 @Service
 class ItemService implements CatalogApi {
 
@@ -39,6 +46,9 @@ class ItemService implements CatalogApi {
         this.systemApi = systemApi;
     }
 
+    /**
+     * 查询指定物品，不存在或不属于该家庭时抛出异常。
+     */
     @Override
     @Transactional(readOnly = true)
     public ItemInfo requireItem(UUID householdId, UUID itemId) {
@@ -49,6 +59,9 @@ class ItemService implements CatalogApi {
         return toInfo(entity);
     }
 
+    /**
+     * 查询指定物品且要求状态为 ACTIVE，归档物品会抛出异常。
+     */
     @Override
     @Transactional(readOnly = true)
     public ItemInfo requireActiveItem(UUID householdId, UUID itemId) {
@@ -73,6 +86,9 @@ class ItemService implements CatalogApi {
                 entity.getDecimalScale(), entity.getStatus());
     }
 
+    /**
+     * 创建新物品，校验单位、分类、品牌、标签的有效性，并检查数量精度。
+     */
     @Transactional
     public ItemEntity createItem(
             UUID householdId, String name, String managementType,
@@ -127,6 +143,9 @@ class ItemService implements CatalogApi {
         return entity;
     }
 
+    /**
+     * 归档物品，记录归档时间和操作人。
+     */
     @Transactional
     public void archiveItem(UUID householdId, UUID id, UUID accountId, Integer version) {
         var entity = requireItemEntity(householdId, id);
@@ -165,6 +184,9 @@ class ItemService implements CatalogApi {
         return itemMapper.findTagIdsByItemId(itemId);
     }
 
+    /**
+     * 分页查询物品列表，支持按名称、管理类型、分类、品牌、标签、状态筛选和排序。
+     */
     @Transactional(readOnly = true)
     public IPage<ItemEntity> listItems(
             UUID householdId, String q, String managementType,
@@ -185,6 +207,9 @@ class ItemService implements CatalogApi {
         };
     }
 
+    /**
+     * 更新物品信息，支持部分更新（仅更新非 null 字段），使用乐观锁防止并发冲突。
+     */
     @Transactional
     public ItemEntity updateItem(
             UUID householdId, UUID id,

@@ -5,10 +5,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.session.jdbc.config.annotation.web.http.EnableJdbcHttpSession;
 
 /**
- * Activates Spring Session JDBC for server-side session storage in PostgreSQL.
+ * Spring Session JDBC 会话持久化配置。
  *
- * <p>Disabled when {@code zija.session.jdbc.enabled=false} (used by tests that
- * exercise database-failure scenarios without a real DataSource).
+ * <p>启用基于 JDBC 的服务端会话存储，将会话数据持久化到 PostgreSQL 数据库。
+ * 当配置属性 {@code zija.session.jdbc.enabled=false} 时禁用（用于无真实数据源的数据库故障测试场景）。
  */
 @Configuration(proxyBeanMethods = false)
 @EnableJdbcHttpSession

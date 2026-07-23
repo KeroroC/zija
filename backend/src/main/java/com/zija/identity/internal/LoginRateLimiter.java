@@ -7,6 +7,16 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 登录速率限制器，防止暴力破解攻击。
+ * <p>
+ * 基于滑动窗口算法，同时对用户名和 IP 两个维度进行限流：
+ * <ul>
+ *   <li>账户维度：同一用户名在窗口期内连续失败达到阈值后被封锁</li>
+ *   <li>IP 维度：同一 IP 在窗口期内连续失败达到阈值后被封锁</li>
+ * </ul>
+ * 使用基于 LRU 策略的内存存储，超过最大条目数时自动淘汰未封锁的记录。
+ */
 @Component
 class LoginRateLimiter {
 
@@ -43,6 +53,13 @@ class LoginRateLimiter {
         this.clock = clock;
     }
 
+    /**
+     * 检查指定用户名和 IP 是否被限流，被限流时抛出异常。
+     *
+     * @param normalizedUsername 归一化用户名
+     * @param ip                客户端 IP 地址
+     * @throws LoginRateLimitedException 如果用户名或 IP 已被封锁
+     */
     synchronized void checkAllowed(String normalizedUsername, String ip) {
         var now = clock.millis();
         cleanup(now);
@@ -52,6 +69,14 @@ class LoginRateLimiter {
         }
     }
 
+    /**
+     * 记录一次登录失败，更新用户名和 IP 的失败计数，达到阈值时封锁并抛出异常。
+     *
+     * @param normalizedUsername 归一化用户名
+     * @param ip                客户端 IP 地址
+     * @return 限流结果
+     * @throws LoginRateLimitedException 如果因本次失败触发封锁
+     */
     synchronized Result recordFailure(String normalizedUsername, String ip) {
         var now = clock.millis();
         cleanup(now);
@@ -66,6 +91,11 @@ class LoginRateLimiter {
         return new Result(false);
     }
 
+    /**
+     * 记录一次登录成功，清除该用户名的失败计数。
+     *
+     * @param normalizedUsername 归一化用户名
+     */
     synchronized void recordSuccess(String normalizedUsername) {
         cleanup(clock.millis());
         accountBuckets.remove(normalizedUsername);

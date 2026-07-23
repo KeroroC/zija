@@ -7,6 +7,9 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+/**
+ * 方法/类级别权限注解，要求当前用户至少拥有家庭「普通成员」角色。
+ */
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 @PreAuthorize("@householdAuthorization.hasAtLeast(authentication, 'MEMBER')")

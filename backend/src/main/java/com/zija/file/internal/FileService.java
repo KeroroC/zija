@@ -10,6 +10,13 @@ import java.io.IOException;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 文件管理服务，实现 {@link FileApi} 接口。
+ * <p>
+ * 负责文件的存储、引用计数和生命周期管理。存储前通过 {@link FileContentInspector} 校验文件内容，
+ * 确保媒体类型合法且内容与声明一致。采用引用计数机制，当引用归零时自动清理物理文件和数据库记录，
+ * 避免存储空间泄漏。
+ */
 @Service
 class FileService implements FileApi {
 
@@ -27,6 +34,9 @@ class FileService implements FileApi {
         this.fileStorage = fileStorage;
     }
 
+    /**
+     * 存储文件，自动检测媒体类型并校验内容合法性，返回文件元信息。
+     */
     @Override
     @Transactional
     public StoredFileInfo store(UUID householdId, byte[] content, String originalFilename, String declaredMediaType) {
@@ -61,12 +71,18 @@ class FileService implements FileApi {
         return toInfo(entity);
     }
 
+    /**
+     * 增加文件引用计数，表示有新的业务实体引用该文件。
+     */
     @Override
     @Transactional
     public void retain(UUID householdId, UUID fileId) {
         storedFileMapper.incrementReferenceCount(fileId, householdId);
     }
 
+    /**
+     * 释放文件引用，引用计数归零时自动删除物理文件和数据库记录。
+     */
     @Override
     @Transactional
     public void release(UUID householdId, UUID fileId) {

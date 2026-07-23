@@ -14,6 +14,18 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 文件管理控制器，提供文件的上传、下载和删除 REST API。
+ *
+ * <p>文件以家庭为单位隔离存储，通过内容寻址（SHA-256）实现去重。</p>
+ *
+ * <p>端点概览：</p>
+ * <ul>
+ *   <li>{@code POST   /api/v1/files}               — 上传文件</li>
+ *   <li>{@code GET    /api/v1/files/{fileId}/content} — 下载/预览文件内容</li>
+ *   <li>{@code DELETE /api/v1/files/{fileId}}        — 删除文件</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/v1/files")
 class FileController {
@@ -28,6 +40,11 @@ class FileController {
         this.householdApi = householdApi;
     }
 
+    /**
+     * 上传文件，自动检测媒体类型并通过 SHA-256 去重。
+     *
+     * @return 文件元信息（id、storageKey、文件名、媒体类型、大小、SHA-256、访问 URL）
+     */
     @PostMapping
     Map<String, Object> upload(
             @AuthenticationPrincipal ZijaPrincipal principal,
@@ -51,6 +68,12 @@ class FileController {
         );
     }
 
+    /**
+     * 下载或预览文件内容，以 inline 方式返回。
+     *
+     * @param fileId 文件 ID
+     * @throws ResponseStatusException 文件不存在时返回 404
+     */
     @GetMapping("/{fileId}/content")
     void download(
             @AuthenticationPrincipal ZijaPrincipal principal,
@@ -69,6 +92,11 @@ class FileController {
         response.getOutputStream().write(content);
     }
 
+    /**
+     * 释放文件引用。当引用计数归零时文件将被实际删除。
+     *
+     * @param fileId 文件 ID
+     */
     @DeleteMapping("/{fileId}")
     void remove(
             @AuthenticationPrincipal ZijaPrincipal principal,

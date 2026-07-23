@@ -16,6 +16,13 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * 身份认证服务，管理用户账户的完整生命周期。
+ * <p>
+ * 实现 {@link IdentityApi} 接口，提供账户注册、查询、密码修改/重置、
+ * 账户启用/禁用等功能。用户名在存储前会进行归一化处理（去空格、转小写）。
+ * 密码修改和重置操作会同时失效该账户的所有活跃会话。
+ */
 @Service
 class IdentityService implements IdentityApi {
 
@@ -36,6 +43,13 @@ class IdentityService implements IdentityApi {
         this.sessionInvalidator = sessionInvalidator;
     }
 
+    /**
+     * 注册新账户，用户名归一化后全局唯一。
+     *
+     * @param command 注册命令（用户名、密码、显示名、邮箱）
+     * @return 注册成功的账户信息
+     * @throws UsernameAlreadyExistsException 如果用户名已存在
+     */
     @Override
     @Transactional
     public AccountInfo registerAccount(RegisterAccountCommand command) {
@@ -72,6 +86,13 @@ class IdentityService implements IdentityApi {
         return accountMapper.selectByNormalizedUsername(normalizedUsername).map(this::toInfo);
     }
 
+    /**
+     * 修改密码，需验证当前密码。修改成功后失效该账户所有会话。
+     *
+     * @param accountId 账户 ID
+     * @param command   修改密码命令（当前密码、新密码）
+     * @throws InvalidCredentialsException 如果账户不存在或当前密码不正确
+     */
     @Override
     @Transactional
     public void changePassword(UUID accountId, ChangePasswordCommand command) {
@@ -90,6 +111,14 @@ class IdentityService implements IdentityApi {
         sessionInvalidator.invalidateAllForAccount(accountId);
     }
 
+    /**
+     * 重置密码（无需验证当前密码），用于管理员操作或密码恢复流程。
+     * 重置成功后失效该账户所有会话。
+     *
+     * @param accountId 账户 ID
+     * @param newPassword 新密码
+     * @throws InvalidCredentialsException 如果账户不存在或乐观锁失败
+     */
     @Override
     @Transactional
     public void resetPassword(UUID accountId, String newPassword) {
@@ -115,6 +144,11 @@ class IdentityService implements IdentityApi {
                 .collect(Collectors.toMap(AccountEntity::getId, this::toInfo));
     }
 
+    /**
+     * 禁用指定账户。
+     *
+     * @param accountId 账户 ID
+     */
     @Override
     @Transactional
     public void disableAccount(UUID accountId) {
@@ -124,6 +158,11 @@ class IdentityService implements IdentityApi {
         }
     }
 
+    /**
+     * 激活指定账户。
+     *
+     * @param accountId 账户 ID
+     */
     @Override
     @Transactional
     public void activateAccount(UUID accountId) {
@@ -133,6 +172,12 @@ class IdentityService implements IdentityApi {
         }
     }
 
+    /**
+     * 校验指定账户是否存在且状态为 ACTIVE，不满足则抛出异常。
+     *
+     * @param accountId 账户 ID
+     * @throws InvalidCredentialsException 如果账户不存在或非活跃状态
+     */
     @Override
     @Transactional(readOnly = true)
     public void requireActive(UUID accountId) {

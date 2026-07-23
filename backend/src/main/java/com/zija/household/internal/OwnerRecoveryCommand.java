@@ -8,6 +8,12 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
+/**
+ * 家庭所有者密码恢复命令行工具。
+ * <p>
+ * 通过 {@code --zija.command=recover-owner} 参数激活，执行后生成一次性
+ * 密码恢复链接并输出到控制台。适用于 OWNER 忘记密码时的紧急恢复场景。
+ */
 @Component
 @ConditionalOnProperty(name = "zija.command", havingValue = "recover-owner")
 class OwnerRecoveryCommand implements org.springframework.boot.CommandLineRunner, ExitCodeGenerator {
@@ -24,6 +30,11 @@ class OwnerRecoveryCommand implements org.springframework.boot.CommandLineRunner
         this.recoveryService = recoveryService;
     }
 
+    /**
+     * 执行密码恢复流程：查找家庭和 OWNER，生成恢复 token 并输出链接。
+     *
+     * @param args 命令行参数（未使用）
+     */
     @Override
     public void run(String... args) {
         var household = householdMapper.selectById((short) 1);

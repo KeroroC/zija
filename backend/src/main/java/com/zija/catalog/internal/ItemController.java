@@ -20,6 +20,23 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.*;
 
+/**
+ * 物品管理控制器，提供物品（Item）的增删改查及封面图管理 REST API。
+ *
+ * <p>所有端点均要求当前用户为家庭的活跃成员（{@link RequireMember}）。</p>
+ *
+ * <p>端点概览：</p>
+ * <ul>
+ *   <li>{@code GET    /api/v1/items}           — 分页查询物品列表（支持搜索、筛选、排序）</li>
+ *   <li>{@code POST   /api/v1/items}           — 创建物品</li>
+ *   <li>{@code GET    /api/v1/items/{id}}       — 查询单个物品详情</li>
+ *   <li>{@code PUT    /api/v1/items/{id}}       — 更新物品</li>
+ *   <li>{@code POST   /api/v1/items/{id}/archive}  — 归档物品</li>
+ *   <li>{@code POST   /api/v1/items/{id}/restore}  — 恢复已归档物品</li>
+ *   <li>{@code POST   /api/v1/items/{id}/cover}    — 上传物品封面图</li>
+ *   <li>{@code DELETE /api/v1/items/{id}/cover}    — 移除物品封面图</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/v1/items")
 class ItemController {
@@ -39,6 +56,11 @@ class ItemController {
         this.systemApi = systemApi;
     }
 
+    /**
+     * 分页查询物品列表，支持按关键词、管理类型、分类、品牌、标签、状态筛选及排序。
+     *
+     * @return 包含 items、total、page、pageSize 的分页结果
+     */
     @RequireMember
     @GetMapping
     Map<String, Object> listItems(
@@ -73,6 +95,11 @@ class ItemController {
         return response;
     }
 
+    /**
+     * 创建物品。
+     *
+     * @return 新创建的物品信息
+     */
     @RequireMember
     @PostMapping
     Map<String, Object> createItem(
@@ -90,6 +117,13 @@ class ItemController {
         return toItemResponse(entity, request.tagIds());
     }
 
+    /**
+     * 查询单个物品详情。
+     *
+     * @param id 物品 ID
+     * @return 物品详细信息
+     * @throws CatalogArchivedDictionaryException 物品不存在时抛出
+     */
     @RequireMember
     @GetMapping("/{id}")
     Map<String, Object> getItem(
@@ -105,6 +139,12 @@ class ItemController {
         return toItemResponse(entity, tagIds);
     }
 
+    /**
+     * 更新物品信息，支持乐观锁版本控制。
+     *
+     * @param id 物品 ID
+     * @return 更新后的物品信息
+     */
     @RequireMember
     @PutMapping("/{id}")
     Map<String, Object> updateItem(
@@ -124,6 +164,11 @@ class ItemController {
         return toItemResponse(entity, itemService.findItemTagIds(id));
     }
 
+    /**
+     * 归档物品，归档后物品不再出现在默认列表中。
+     *
+     * @param id 物品 ID
+     */
     @RequireMember
     @PostMapping("/{id}/archive")
     void archiveItem(
@@ -135,6 +180,11 @@ class ItemController {
         itemService.archiveItem(member.householdId(), id, member.accountId(), request.version());
     }
 
+    /**
+     * 恢复已归档的物品。
+     *
+     * @param id 物品 ID
+     */
     @RequireMember
     @PostMapping("/{id}/restore")
     void restoreItem(
@@ -146,6 +196,12 @@ class ItemController {
         itemService.restoreItem(member.householdId(), id, request.version());
     }
 
+    /**
+     * 上传物品封面图。若已有封面图则替换旧文件。
+     *
+     * @param id 物品 ID
+     * @return 新封面文件信息（id、url、媒体类型、文件名、大小、SHA-256）
+     */
     @RequireMember
     @PostMapping("/{id}/cover")
     Map<String, Object> uploadCover(
@@ -193,6 +249,11 @@ class ItemController {
         );
     }
 
+    /**
+     * 移除物品封面图，同时释放对应的文件引用。
+     *
+     * @param id 物品 ID
+     */
     @RequireMember
     @DeleteMapping("/{id}/cover")
     void removeCover(

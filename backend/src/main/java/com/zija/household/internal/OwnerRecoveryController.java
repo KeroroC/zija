@@ -12,6 +12,16 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Optional;
 
+/**
+ * 家庭所有者密码恢复控制器。
+ *
+ * <p>提供通过恢复令牌重置 Owner 密码的 REST API 端点。</p>
+ *
+ * <ul>
+ *   <li>{@code POST /api/v1/owner-recovery/inspect} — 检查恢复令牌有效性</li>
+ *   <li>{@code POST /api/v1/owner-recovery/reset-password} — 使用恢复令牌重置密码</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/v1/owner-recovery")
 class OwnerRecoveryController {
@@ -38,12 +48,25 @@ class OwnerRecoveryController {
             @NotBlank @Size(min = 8, max = 72) @Utf8ByteLength(max = 72) String newPassword) {
     }
 
+    /**
+     * 检查恢复令牌是否有效。
+     *
+     * @param request 检查请求（令牌）
+     * @return 令牌有效性及 Owner 显示名称
+     */
     @PostMapping("/inspect")
     InspectResponse inspect(@Valid @RequestBody InspectRequest request) {
         Optional<OwnerRecoveryTokenEntity> token = recoveryService.inspect(request.token());
         return new InspectResponse(token.isPresent(), null);
     }
 
+    /**
+     * 使用恢复令牌重置 Owner 密码，并刷新 CSRF 令牌。
+     *
+     * @param request      重置密码请求（令牌和新密码）
+     * @param httpRequest  HTTP 请求
+     * @param httpResponse HTTP 响应
+     */
     @PostMapping("/reset-password")
     void resetPassword(
             @Valid @RequestBody ResetPasswordRequest request,

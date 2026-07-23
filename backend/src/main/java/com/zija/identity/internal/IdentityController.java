@@ -24,6 +24,19 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * 身份认证控制器。
+ *
+ * <p>提供用户登录、登出、会话管理、CSRF 令牌获取及密码修改的 REST API 端点。</p>
+ *
+ * <ul>
+ *   <li>{@code POST /api/v1/auth/login} — 用户登录</li>
+ *   <li>{@code POST /api/v1/auth/logout} — 用户登出</li>
+ *   <li>{@code GET /api/v1/auth/session} — 获取当前会话信息</li>
+ *   <li>{@code GET /api/v1/auth/csrf} — 获取 CSRF 令牌</li>
+ *   <li>{@code PUT /api/v1/auth/password} — 修改当前用户密码</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/v1/auth")
 class IdentityController {
@@ -45,6 +58,14 @@ class IdentityController {
         this.systemApi = systemApi;
     }
 
+    /**
+     * 用户登录。支持登录频率限制，并记录审计日志。
+     *
+     * @param request    登录请求（用户名和密码）
+     * @param httpRequest  HTTP 请求，用于获取客户端 IP
+     * @param httpResponse HTTP 响应，用于写入会话
+     * @return 登录成功后的会话信息
+     */
     @PostMapping("/login")
     SessionInfo login(
             @Valid @RequestBody LoginRequest request,
@@ -88,6 +109,12 @@ class IdentityController {
         }
     }
 
+    /**
+     * 用户登出。销毁当前会话并记录审计日志。
+     *
+     * @param request  HTTP 请求
+     * @param response HTTP 响应
+     */
     @PostMapping("/logout")
     void logout(HttpServletRequest request, HttpServletResponse response) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -104,6 +131,11 @@ class IdentityController {
         }
     }
 
+    /**
+     * 获取当前会话信息。未认证时返回匿名会话。
+     *
+     * @return 会话信息
+     */
     @GetMapping("/session")
     SessionInfo session() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -115,6 +147,12 @@ class IdentityController {
                 principal.getUsername(), principal.getDisplayName());
     }
 
+    /**
+     * 获取 CSRF 令牌信息，包括令牌值、请求头名称和参数名称。
+     *
+     * @param csrfToken CSRF 令牌对象
+     * @return 包含令牌详情的 Map
+     */
     @GetMapping("/csrf")
     Map<String, String> csrf(CsrfToken csrfToken) {
         return Map.of(
@@ -124,6 +162,12 @@ class IdentityController {
         );
     }
 
+    /**
+     * 修改当前登录用户的密码。操作成功后记录审计日志。
+     *
+     * @param request     修改密码请求（当前密码和新密码）
+     * @param httpRequest HTTP 请求
+     */
     @PutMapping("/password")
     void changePassword(
             @Valid @RequestBody ChangePasswordRequest request,

@@ -11,6 +11,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
+/**
+ * 家庭成员管理服务，处理成员的角色变更、状态管理和所有权转移。
+ * <p>
+ * 提供成员添加、角色升降级（OWNER > ADMIN > MEMBER）、成员停用/激活、
+ * 以及所有权转移等操作。所有操作均进行权限校验并记录审计日志。
+ * 成员停用时会同时禁用其账户并失效所有会话。
+ */
 @Service
 class MemberService {
 
@@ -27,6 +34,13 @@ class MemberService {
         this.sessionInvalidator = sessionInvalidator;
     }
 
+    /**
+     * 向家庭添加新成员。
+     *
+     * @param householdId 家庭 ID
+     * @param accountId   账户 ID
+     * @param role        成员角色
+     */
     @Transactional
     public void addMember(UUID householdId, UUID accountId, HouseholdApi.MemberRole role) {
         var member = new MemberEntity();
@@ -38,6 +52,14 @@ class MemberService {
         memberMapper.insert(member);
     }
 
+    /**
+     * 修改成员角色。仅 OWNER 可操作，且只能修改 ADMIN 或 MEMBER 的角色。
+     *
+     * @param actorAccountId  操作人账户 ID
+     * @param targetMemberId  目标成员 ID
+     * @param newRole         新角色（ADMIN 或 MEMBER）
+     * @throws InsufficientRoleException 如果操作人权限不足
+     */
     @Transactional
     public void updateRole(UUID actorAccountId, UUID targetMemberId, String newRole) {
         if (!"ADMIN".equals(newRole) && !"MEMBER".equals(newRole)) {
@@ -57,6 +79,16 @@ class MemberService {
                 java.util.Map.of("oldRole", target.getRole(), "newRole", newRole)));
     }
 
+    /**
+     * 修改成员状态（激活/停用）。停用时同时禁用账户并失效会话。
+     * <p>
+     * 权限规则：OWNER 可管理 ADMIN 和 MEMBER，ADMIN 可管理 MEMBER，不可操作自身。
+     *
+     * @param actorAccountId 操作人账户 ID
+     * @param targetMemberId 目标成员 ID
+     * @param newStatus      新状态（ACTIVE 或 DEACTIVATED）
+     * @throws InsufficientRoleException 如果操作人权限不足
+     */
     @Transactional
     public void updateStatus(UUID actorAccountId, UUID targetMemberId, String newStatus) {
         if (!"ACTIVE".equals(newStatus) && !"DEACTIVATED".equals(newStatus)) {
@@ -88,6 +120,14 @@ class MemberService {
                 actorAccountId, target.getAccountId(), null, null, null));
     }
 
+    /**
+     * 转移家庭所有权。当前 OWNER 变为 ADMIN，目标成员变为 OWNER。
+     * 转移完成后双方账户会被短暂禁用再激活，同时失效所有会话以确保安全。
+     *
+     * @param currentOwnerAccountId 当前 OWNER 的账户 ID
+     * @param targetMemberId        目标成员 ID
+     * @throws InsufficientRoleException 如果操作人非 OWNER 或目标成员状态异常
+     */
     @Transactional
     public void transferOwnership(UUID currentOwnerAccountId, UUID targetMemberId) {
         var target = requireMember(targetMemberId);

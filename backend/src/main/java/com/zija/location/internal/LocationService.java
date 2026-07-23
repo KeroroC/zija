@@ -11,6 +11,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 存储位置管理服务，实现 {@link LocationApi} 接口。
+ * <p>
+ * 负责管理家庭物品的存储位置树形结构，支持位置的创建、重命名、移动和删除。
+ * 位置支持多级父子关系，移动操作包含循环引用检测，删除操作要求无子节点且未被引用。
+ * 通过 {@code everReferenced} 标记追踪位置是否曾被库存记录引用，防止误删活跃位置。
+ */
 @Service
 class LocationService implements LocationApi {
 
@@ -22,6 +29,9 @@ class LocationService implements LocationApi {
         this.systemApi = systemApi;
     }
 
+    /**
+     * 查询指定位置，不存在或不属于该家庭时抛出异常。
+     */
     @Override
     @Transactional(readOnly = true)
     public LocationInfo requireLocation(UUID householdId, UUID locationId) {
@@ -38,6 +48,9 @@ class LocationService implements LocationApi {
         locationMapper.markReferenced(locationId, householdId);
     }
 
+    /**
+     * 获取指定家庭的完整位置树结构。
+     */
     @Override
     @Transactional(readOnly = true)
     public LocationTree tree(UUID householdId) {
@@ -45,6 +58,9 @@ class LocationService implements LocationApi {
         return buildTree(all);
     }
 
+    /**
+     * 创建存储位置，校验父位置的有效性。
+     */
     @Transactional
     public LocationEntity createLocation(UUID householdId, String name, UUID parentId, int sortOrder) {
         if (parentId != null) {
@@ -80,6 +96,9 @@ class LocationService implements LocationApi {
         return entity;
     }
 
+    /**
+     * 移动位置到新的父节点下，包含循环引用检测，使用乐观锁。
+     */
     @Transactional
     public void moveLocation(UUID householdId, UUID id, UUID targetParentId, int targetSortOrder, Integer version) {
         var entity = requireLocationEntity(householdId, id);
@@ -100,6 +119,9 @@ class LocationService implements LocationApi {
         audit(householdId, "LOCATION_MOVED", id);
     }
 
+    /**
+     * 删除位置，要求无子节点且从未被库存记录引用。
+     */
     @Transactional
     public void deleteLocation(UUID householdId, UUID id, Integer version) {
         var entity = requireLocationEntity(householdId, id);

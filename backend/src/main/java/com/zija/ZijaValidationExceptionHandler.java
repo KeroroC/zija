@@ -14,6 +14,17 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 请求校验异常处理器。
+ * <p>
+ * 统一捕获并转换以下异常为 RFC 7807 Problem Details 响应：
+ * <ul>
+ *   <li>{@link MethodArgumentNotValidException} — Bean Validation 校验失败，返回逐字段错误</li>
+ *   <li>{@link HttpMessageNotReadableException} — 请求体无法解析（格式错误）</li>
+ *   <li>{@link MethodArgumentTypeMismatchException} — 方法参数类型不匹配</li>
+ * </ul>
+ * 所有响应均携带 {@code errorCode} 和 {@code requestId}，前端可据此定位问题。
+ */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class ZijaValidationExceptionHandler {

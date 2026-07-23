@@ -14,6 +14,16 @@ import java.io.IOException;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+/**
+ * 请求 ID 过滤器。
+ * <p>
+ * 为每个 HTTP 请求生成或提取唯一的请求标识符（{@code X-Request-Id}），用于全链路追踪。
+ * 如果客户端提供了合法的请求 ID 则复用，否则自动生成 UUID。
+ * 该 ID 会同时写入响应头、请求属性和 SLF4J MDC，便于日志关联。
+ *
+ * @see #HEADER
+ * @see #ATTRIBUTE
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class ZijaRequestIdFilter extends OncePerRequestFilter {

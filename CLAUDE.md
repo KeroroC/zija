@@ -32,6 +32,9 @@ make e2e-smoke               # Playwright browser smoke test against Compose sta
 
 # Cleanup
 make clean                   # Remove build artifacts
+
+# Owner recovery (run in container)
+make recover-owner           # Generate owner recovery link
 ```
 
 ## Tech Stack
@@ -56,7 +59,7 @@ com.zija.<module>/
     persistence/            # Mapper, Entity, XML — module-internal
 ```
 
-Existing module: `system` (health check, installation info, audit). Planned modules per the design spec: `identity`, `household`, `catalog`, `location`, `inventory`, `reminder`, `file`, `reporting`.
+Existing modules: `system` (health check, installation info, audit), `identity` (auth, users), `household` (family management), `catalog` (item categories), `location` (storage places), `file` (file storage). Planned: `inventory`, `reminder`, `reporting`.
 
 **Rules:**
 - External modules may only depend on another module's public `Api` interface and its public DTOs/records.
@@ -135,7 +138,7 @@ src/
 
 - Java: 4-space indent, no `proxyBeanMethods` on `@Configuration` classes (use `@Configuration(proxyBeanMethods = false)`).
 - TypeScript/Vue: 2-space indent.
-- LF line endings, UTF-8 charset, final newline (`.editorconfig` enforced).
+- LF line endings, UTF-8 charset, final newline, trim trailing whitespace (`.editorconfig` enforced).
 - Commit messages: Chinese body with English technical prefix (e.g., `fix:`, `chore:`, `docs:`).
 
 ## Agent skills

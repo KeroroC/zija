@@ -6,6 +6,13 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+/**
+ * 文件内容检查器。
+ * <p>
+ * 在文件存储前进行安全校验，包括：文件大小限制（最大 5MB）、通过魔数（magic bytes）检测真实媒体类型、
+ * 声明类型与实际类型的一致性校验、文件名清理（去除控制字符和路径分隔符）以及 SHA-256 哈希计算。
+ * 仅允许 JPEG、PNG、WebP 三种图片格式。
+ */
 @Component
 class FileContentInspector {
 
@@ -16,6 +23,13 @@ class FileContentInspector {
     private static final Pattern CONTROL_CHARS = Pattern.compile("[\\p{Cntrl}]");
     private static final Pattern PATH_SEPARATOR = Pattern.compile("[/\\\\]");
 
+    /**
+     * 检查文件内容的合法性，包括大小、媒体类型检测、声明一致性校验，并返回检查结果。
+     *
+     * @throws FileTooLargeException          文件为空或超过 5MB
+     * @throws FileMediaTypeUnsupportedException 不支持的媒体类型
+     * @throws FileSignatureMismatchException 声明类型与实际检测类型不一致
+     */
     InspectionResult inspect(byte[] content, String originalFilename, String declaredMediaType) {
         if (content.length == 0 || content.length > MAX_SIZE) {
             throw new FileTooLargeException(content.length);

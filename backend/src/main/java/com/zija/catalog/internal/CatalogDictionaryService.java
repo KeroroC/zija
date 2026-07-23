@@ -8,6 +8,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
+/**
+ * 目录字典管理服务。
+ * <p>
+ * 负责管理物品目录的四类辅助字典数据：分类（Category）、品牌（Brand）、单位（Unit）和标签（Tag）。
+ * 提供各字典的创建、更新、归档、恢复等 CRUD 操作，支持名称去重校验和 NFKC 规范化。
+ * 分类支持树形结构，包含父子关系管理和循环引用检测。
+ */
 @Service
 class CatalogDictionaryService {
 
@@ -33,6 +40,9 @@ class CatalogDictionaryService {
 
     // --- Categories ---
 
+    /**
+     * 创建分类，支持父子层级关系，自动检查同级名称重复。
+     */
     @Transactional
     public CategoryEntity createCategory(UUID householdId, String name, UUID parentId, int sortOrder) {
         String normalized = normalizeName(name);
@@ -51,6 +61,9 @@ class CatalogDictionaryService {
         return entity;
     }
 
+    /**
+     * 归档分类，要求该分类下无活跃子分类。
+     */
     @Transactional
     public void archiveCategory(UUID householdId, UUID id, Integer version) {
         var entity = requireCategory(householdId, id);
@@ -90,6 +103,9 @@ class CatalogDictionaryService {
         audit(householdId, "CATEGORY_UPDATED", id);
     }
 
+    /**
+     * 移动分类到新的父节点下，包含循环引用检测。
+     */
     @Transactional
     public void moveCategory(UUID householdId, UUID id, UUID newParentId, int newSortOrder, Integer version) {
         var entity = requireCategory(householdId, id);
@@ -229,6 +245,9 @@ class CatalogDictionaryService {
 
     // --- Query ---
 
+    /**
+     * 查询分类树，可选是否包含已归档分类，按排序序号升序返回。
+     */
     @Transactional(readOnly = true)
     public List<CategoryEntity> findCategoryTree(UUID householdId, boolean includeArchived) {
         var wrapper = new LambdaQueryWrapper<CategoryEntity>()

@@ -20,6 +20,18 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 家庭管理控制器。
+ *
+ * <p>提供家庭初始化、状态查询、当前成员信息获取及所有权转让的 REST API 端点。</p>
+ *
+ * <ul>
+ *   <li>{@code GET /api/v1/household/status} — 查询家庭是否已初始化</li>
+ *   <li>{@code POST /api/v1/household/bootstrap} — 初始化家庭并创建 Owner 账号</li>
+ *   <li>{@code GET /api/v1/household/me} — 获取当前登录成员信息</li>
+ *   <li>{@code POST /api/v1/household/transfer-ownership} — 转让家庭所有权（仅 Owner）</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/v1/household")
 class HouseholdController {
@@ -65,11 +77,24 @@ class HouseholdController {
     public record TransferOwnershipRequest(@NotNull UUID targetMemberId) {
     }
 
+    /**
+     * 查询家庭是否已完成初始化。
+     *
+     * @return 家庭状态响应
+     */
     @GetMapping("/status")
     HouseholdStatusResponse status() {
         return new HouseholdStatusResponse(householdService.isInitialized());
     }
 
+    /**
+     * 初始化家庭。创建家庭并注册 Owner 账号，完成后自动登录。
+     *
+     * @param request      初始化请求（家庭名称、用户名、密码等）
+     * @param httpRequest  HTTP 请求
+     * @param httpResponse HTTP 响应
+     * @return 登录后的会话信息
+     */
     @PostMapping("/bootstrap")
     @ResponseStatus(HttpStatus.CREATED)
     SessionInfo bootstrap(
@@ -90,6 +115,11 @@ class HouseholdController {
                 principal.getUsername(), principal.getDisplayName());
     }
 
+    /**
+     * 获取当前登录用户的成员信息，包括家庭 ID、角色和状态。
+     *
+     * @return 当前成员信息
+     */
     @GetMapping("/me")
     CurrentMemberResponse me() {
         var principal = (ZijaPrincipal) SecurityContextHolder
@@ -101,6 +131,11 @@ class HouseholdController {
                 member.role().name(), member.status());
     }
 
+    /**
+     * 转让家庭所有权给指定成员。仅当前 Owner 可执行此操作。
+     *
+     * @param request 转让请求（目标成员 ID）
+     */
     @PostMapping("/transfer-ownership")
     @RequireOwner
     void transferOwnership(@Valid @RequestBody TransferOwnershipRequest request) {

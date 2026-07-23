@@ -15,6 +15,18 @@ import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.session.FindByIndexNameSessionRepository;
 import org.springframework.stereotype.Component;
 
+/**
+ * 会话认证支持组件。
+ * <p>
+ * 封装基于 Session 的用户名/密码认证流程，包括：
+ * <ul>
+ *   <li>调用 {@link AuthenticationManager} 执行认证</li>
+ *   <li>会话固定攻击防护（{@link ChangeSessionIdAuthenticationStrategy}）</li>
+ *   <li>安全上下文持久化到 HttpSession</li>
+ *   <li>Spring Session 主索引写入，支持按账户查询会话</li>
+ *   <li>CSRF 令牌重新生成</li>
+ * </ul>
+ */
 @Component
 public class ZijaSessionAuthenticationSupport {
 
@@ -33,6 +45,15 @@ public class ZijaSessionAuthenticationSupport {
         this.sessionAuthenticationStrategy = new ChangeSessionIdAuthenticationStrategy();
     }
 
+    /**
+     * 执行用户名密码认证并建立安全会话。
+     *
+     * @param username 用户名
+     * @param password 明文密码
+     * @param request  当前 HTTP 请求
+     * @param response 当前 HTTP 响应
+     * @return 认证成功的 {@link Authentication} 对象
+     */
     public Authentication authenticate(
             String username,
             String password,
@@ -57,6 +78,11 @@ public class ZijaSessionAuthenticationSupport {
         return authentication;
     }
 
+    /**
+     * 重新生成 CSRF 令牌。
+     * <p>
+     * 先清除旧令牌，再通过延迟令牌机制生成新令牌并写入响应。
+     */
     public void regenerateCsrfToken(
             HttpServletRequest request,
             HttpServletResponse response
