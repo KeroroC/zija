@@ -149,7 +149,8 @@ class ItemController {
     Map<String, Object> uploadCover(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @PathVariable UUID id,
-            @RequestParam("file") MultipartFile file
+            @RequestParam("file") MultipartFile file,
+            @NotNull @RequestParam Integer version
     ) throws IOException {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var item = itemService.findItem(member.householdId(), id);
@@ -167,8 +168,10 @@ class ItemController {
         }
 
         item.setCoverFileId(newFileInfo.id());
-        item.setVersion(item.getVersion() + 1);
-        itemMapper.updateById(item);
+        item.setVersion(version);
+        if (itemMapper.updateById(item) == 0) {
+            throw new CatalogVersionConflictException();
+        }
 
         fileApi.retain(member.householdId(), newFileInfo.id());
 
@@ -204,8 +207,10 @@ class ItemController {
         fileApi.release(member.householdId(), item.getCoverFileId());
 
         item.setCoverFileId(null);
-        item.setVersion(item.getVersion() + 1);
-        itemMapper.updateById(item);
+        item.setVersion(request.version());
+        if (itemMapper.updateById(item) == 0) {
+            throw new CatalogVersionConflictException();
+        }
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 "ITEM_COVER_REMOVED", "SUCCESS", member.householdId(),
