@@ -304,10 +304,11 @@ function close() {
   emit('update:modelValue', false)
 }
 
-function onCoverUploaded(payload: { coverFileId: string; coverUrl: string }) {
+function onCoverUploaded(payload: { coverFileId: string; coverUrl: string; version: number }) {
   if (props.item) {
     props.item.coverFileId = payload.coverFileId
     props.item.coverUrl = payload.coverUrl
+    props.item.version = payload.version
   }
 }
 
@@ -315,6 +316,7 @@ function onCoverRemoved() {
   if (props.item) {
     props.item.coverFileId = null
     props.item.coverUrl = undefined
+    props.item.version++
   }
 }
 

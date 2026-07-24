@@ -86,7 +86,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  uploaded: [payload: { coverFileId: string; coverUrl: string }]
+  uploaded: [payload: { coverFileId: string; coverUrl: string; version: number }]
   removed: []
 }>()
 
@@ -150,7 +150,7 @@ async function doUpload(file: File) {
     progress.value = 100
 
     currentCoverUrl.value = result.url
-    emit('uploaded', { coverFileId: result.id, coverUrl: result.url })
+    emit('uploaded', { coverFileId: result.id, coverUrl: result.url, version: result.version })
     ElMessage.success('封面上传成功')
   } catch (e: any) {
     clearInterval(progressTimer)

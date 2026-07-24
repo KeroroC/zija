@@ -9,6 +9,7 @@ export interface UploadedFile {
   byteSize: number
   sha256: string
   url: string
+  version: number
 }
 
 export async function uploadItemCover(itemId: string, file: File, version: number): Promise<UploadedFile> {

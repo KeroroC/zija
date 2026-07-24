@@ -245,7 +245,8 @@ class ItemController {
                 "detectedMediaType", newFileInfo.detectedMediaType(),
                 "originalFilename", newFileInfo.originalFilename(),
                 "byteSize", newFileInfo.byteSize(),
-                "sha256", newFileInfo.sha256()
+                "sha256", newFileInfo.sha256(),
+                "version", item.getVersion()
         );
     }
 
