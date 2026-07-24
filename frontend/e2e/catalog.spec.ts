@@ -69,7 +69,7 @@ test("full catalog lifecycle: categories, brands, units, tags, and items", async
     .locator(".el-select-dropdown__item", { hasText: unitName }).click();
 
   // Select category via tree-select
-  await page.locator(".el-form-item", { hasText: "分类" }).locator(".el-tree-select").click();
+  await page.getByPlaceholder("请选择分类（可选）").click();
   await page.locator(".el-tree-select-dropdown:visible")
     .locator(".el-tree-node__label", { hasText: catName }).click();
 

@@ -181,7 +181,7 @@ async function submitName() {
     await loadTree()
     ElMessage.success(nameForm.editingId ? '已重命名' : '已创建')
   } catch (e: any) {
-    ElMessage.error(e.title || '操作失败')
+    ElMessage.error(e.message || '操作失败')
   }
 }
 
@@ -208,7 +208,7 @@ async function submitMove() {
     await loadTree()
     ElMessage.success('已移动')
   } catch (e: any) {
-    ElMessage.error(e.title || '移动失败')
+    ElMessage.error(e.message || '移动失败')
   }
 }
 
@@ -223,7 +223,7 @@ async function deleteNode(node: LocationNode) {
     await loadTree()
     ElMessage.success('已删除')
   } catch (e: any) {
-    ElMessage.error(e.title || '删除失败')
+    ElMessage.error(e.message || '删除失败')
   }
 }
 
