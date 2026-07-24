@@ -53,7 +53,6 @@ test("full catalog lifecycle: categories, brands, units, tags, and items", async
 
   // ─── 7. Create a new item ───
   await page.getByRole("button", { name: "新建物品" }).click();
-  const drawer = page.locator(".el-drawer");
 
   // Fill name
   await page.getByPlaceholder("请输入物品名称").fill(itemName);
@@ -68,10 +67,11 @@ test("full catalog lifecycle: categories, brands, units, tags, and items", async
   await page.locator(".el-select-dropdown:visible")
     .locator(".el-select-dropdown__item", { hasText: unitName }).click();
 
-  // Select category via tree-select
-  await page.getByPlaceholder("请选择分类（可选）").click();
-  await page.locator(".el-tree-select-dropdown:visible")
-    .locator(".el-tree-node__label", { hasText: catName }).click();
+  // Select category via tree-select (placeholder is a span, not an input attribute;
+  // click the .el-select trigger like the sibling selects above)
+  await page.locator(".el-form-item", { hasText: "分类" }).locator(".el-select").click();
+  await page.locator(".el-tree-select__popper:visible")
+    .locator(".el-select-dropdown__item", { hasText: catName }).click();
 
   // Select brand (filterable + allow-create: type and pick existing)
   await page.locator(".el-form-item", { hasText: "品牌" }).locator(".el-select").click();
@@ -87,7 +87,7 @@ test("full catalog lifecycle: categories, brands, units, tags, and items", async
 
   // Submit the form
   await page.getByRole("button", { name: "创建" }).click();
-  await expect(drawer).not.toBeVisible();
+  await expect(page.locator(".el-drawer:visible")).toHaveCount(0);
   const itemRow = page.locator("tbody tr", { hasText: itemName });
   await expect(itemRow).toBeVisible();
 
@@ -96,13 +96,13 @@ test("full catalog lifecycle: categories, brands, units, tags, and items", async
   // ─── 9. Archive the item via detail drawer ───
   await itemRow.click();
   await expect(page.getByRole("heading", { name: "物品详情" })).toBeVisible();
-  await expect(page.getByText(itemName)).toBeVisible();
+  await expect(page.locator(".el-drawer:visible").getByText(itemName)).toBeVisible();
   await page.getByRole("button", { name: "归档" }).click();
   // Confirm the archive dialog
   await page.locator(".el-message-box").getByRole("button", { name: "确定" }).click();
   // Close the detail drawer (selectedItem is not refreshed after archive)
-  await page.locator(".el-drawer__close-btn").click();
-  await expect(drawer).not.toBeVisible();
+  await page.locator(".el-drawer:visible .el-drawer__close-btn").click();
+  await expect(page.locator(".el-drawer:visible")).toHaveCount(0);
 
   // Verify the item is no longer in the ACTIVE table
   await expect(itemRow).not.toBeVisible();
@@ -122,8 +122,8 @@ test("full catalog lifecycle: categories, brands, units, tags, and items", async
   await expect(page.getByRole("heading", { name: "物品详情" })).toBeVisible();
   await page.getByRole("button", { name: "恢复" }).click();
   // Close the drawer
-  await page.locator(".el-drawer__close-btn").click();
-  await expect(drawer).not.toBeVisible();
+  await page.locator(".el-drawer:visible .el-drawer__close-btn").click();
+  await expect(page.locator(".el-drawer:visible")).toHaveCount(0);
 
   // Change status filter back to active
   const archivedFilter = page.locator(".items-filters .el-select", { hasText: "归档" });

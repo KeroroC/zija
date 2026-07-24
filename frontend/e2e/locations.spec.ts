@@ -85,7 +85,7 @@ test("location management lifecycle", async ({ page }) => {
   await childForDelete.locator('[data-testid="loc-delete"]').click();
   // Element MessageBox confirmation dialog appears
   await page.locator(".el-message-box").getByRole("button", { name: "确定" }).click();
-  await expect(page.getByText("已删除")).toBeVisible();
+  await expect(page.getByText("已删除").last()).toBeVisible();
   await expect(page.locator(".tree-node", { hasText: childName })).toHaveCount(0);
 
   // --- Step 9: Verify a node with children cannot be deleted ---
@@ -99,10 +99,10 @@ test("location management lifecycle", async ({ page }) => {
   const gcForDelete = page.locator(".tree-node", { hasText: grandchildName }).first();
   await gcForDelete.locator('[data-testid="loc-delete"]').click();
   await page.locator(".el-message-box").getByRole("button", { name: "确定" }).click();
-  await expect(page.getByText("已删除")).toBeVisible();
+  await expect(page.getByText("已删除").last()).toBeVisible();
 
   const rootFinal = page.locator(".tree-node", { hasText: renamedRoot }).first();
   await rootFinal.locator('[data-testid="loc-delete"]').click();
   await page.locator(".el-message-box").getByRole("button", { name: "确定" }).click();
-  await expect(page.getByText("已删除")).toBeVisible();
+  await expect(page.getByText("已删除").last()).toBeVisible();
 });
