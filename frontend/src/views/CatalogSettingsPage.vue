@@ -71,7 +71,7 @@
         </div>
         <div class="create-form">
           <el-input v-model="newUnitName" placeholder="新单位名称" maxlength="100" style="width: 200px" />
-          <el-input-number v-model="newUnitDecimalScale" :min="0" :max="10" placeholder="小数位" style="width: 140px" />
+          <el-input-number v-model="newUnitDecimalScale" :min="0" :max="6" placeholder="小数位" style="width: 140px" />
           <el-button type="primary" @click="handleCreateUnit">添加</el-button>
         </div>
         <el-table :data="units" v-loading="loading.units">
@@ -84,9 +84,10 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column label="操作" width="260" fixed="right">
             <template #default="{ row }">
               <el-button size="small" text @click="openRename('unit', row)">重命名</el-button>
+              <el-button size="small" text @click="openDecimalScaleDialog(row)">修改小数位</el-button>
               <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveUnit(row)">归档</el-button>
               <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreUnit(row)">恢复</el-button>
             </template>
@@ -174,6 +175,39 @@
         <el-button type="primary" @click="submitMoveCategory" :disabled="!moveCategoryForm.targetSelected">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- Decimal Scale Dialog -->
+    <el-dialog v-model="decimalScaleDialogVisible" title="修改小数位" width="400px">
+      <el-form label-width="100px">
+        <el-form-item label="单位名称">
+          <span>{{ decimalScaleForm.name }}</span>
+        </el-form-item>
+        <el-form-item label="当前小数位">
+          <span>{{ decimalScaleForm.currentScale }}</span>
+        </el-form-item>
+        <el-form-item label="新小数位">
+          <el-input-number v-model="decimalScaleForm.newScale" :min="0" :max="6" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="decimalScaleDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitDecimalScaleChange">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Confirm Truncate Dialog -->
+    <el-dialog v-model="confirmTruncateVisible" title="确认修改小数位" width="400px">
+      <el-alert type="warning" :closable="false" show-icon>
+        <template #title>
+          缩小小数位将影响 {{ truncateInfo.affectedItems }} 个物品的数据，
+          相关数值将被四舍五入到 {{ truncateInfo.newScale }} 位小数。此操作不可撤销。
+        </template>
+      </el-alert>
+      <template #footer>
+        <el-button @click="confirmTruncateVisible = false">取消</el-button>
+        <el-button type="danger" @click="confirmTruncate">确认截断</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -183,7 +217,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   fetchCategories, createCategory, renameCategory, moveCategory, archiveCategory, restoreCategory,
   fetchBrands, createBrand, renameBrand, archiveBrand, restoreBrand,
-  fetchUnits, createUnit, renameUnit, archiveUnit, restoreUnit,
+  fetchUnits, createUnit, renameUnit, archiveUnit, restoreUnit, updateUnitDecimalScale,
   fetchTags, createTag, renameTag, archiveTag, restoreTag,
 } from '../api/catalog'
 import type { Category, Brand, Unit, Tag } from '../types/catalog'
@@ -257,6 +291,24 @@ const moveCategoryForm = reactive({
   newParentId: null as string | null,
   newSortOrder: 0,
   targetSelected: false,
+})
+
+// Decimal scale dialog
+const decimalScaleDialogVisible = ref(false)
+const decimalScaleForm = reactive({
+  id: '',
+  name: '',
+  currentScale: 0,
+  newScale: 0,
+  version: 0,
+})
+
+// Confirm truncate dialog
+const confirmTruncateVisible = ref(false)
+const truncateInfo = reactive({
+  affectedItems: 0,
+  currentScale: 0,
+  newScale: 0,
 })
 const moveCategoryTreeData = computed(() => {
   // Exclude the node being moved and its descendants from target options
@@ -486,6 +538,59 @@ async function handleRestoreUnit(unit: any) {
     ElMessage.success('已恢复')
   } catch (e: any) {
     ElMessage.error(e.title || '恢复失败')
+  }
+}
+
+function openDecimalScaleDialog(unit: Unit) {
+  decimalScaleForm.id = unit.id
+  decimalScaleForm.name = unit.name
+  decimalScaleForm.currentScale = unit.decimalScale
+  decimalScaleForm.newScale = unit.decimalScale
+  decimalScaleForm.version = unit.version
+  decimalScaleDialogVisible.value = true
+}
+
+async function submitDecimalScaleChange() {
+  if (decimalScaleForm.newScale === decimalScaleForm.currentScale) {
+    decimalScaleDialogVisible.value = false
+    return
+  }
+  try {
+    const result = await updateUnitDecimalScale(
+      decimalScaleForm.id,
+      decimalScaleForm.newScale,
+      decimalScaleForm.version,
+      false
+    )
+    if (result.needsConfirmation && result.affectedItems > 0) {
+      truncateInfo.affectedItems = result.affectedItems
+      truncateInfo.currentScale = decimalScaleForm.currentScale
+      truncateInfo.newScale = decimalScaleForm.newScale
+      confirmTruncateVisible.value = true
+    } else {
+      decimalScaleDialogVisible.value = false
+      await loadUnits()
+      ElMessage.success('已修改小数位')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.title || '修改失败')
+  }
+}
+
+async function confirmTruncate() {
+  try {
+    const result = await updateUnitDecimalScale(
+      decimalScaleForm.id,
+      decimalScaleForm.newScale,
+      decimalScaleForm.version,
+      true
+    )
+    confirmTruncateVisible.value = false
+    decimalScaleDialogVisible.value = false
+    await loadUnits()
+    ElMessage.success(`已修改小数位，${result.affectedItems} 个物品的数据已截断`)
+  } catch (e: any) {
+    ElMessage.error(e.title || '修改失败')
   }
 }
 

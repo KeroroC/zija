@@ -22,6 +22,7 @@ class CatalogDictionaryService {
     private final BrandMapper brandMapper;
     private final UnitMapper unitMapper;
     private final TagMapper tagMapper;
+    private final ItemMapper itemMapper;
     private final SystemApi systemApi;
 
     CatalogDictionaryService(
@@ -29,12 +30,14 @@ class CatalogDictionaryService {
             BrandMapper brandMapper,
             UnitMapper unitMapper,
             TagMapper tagMapper,
+            ItemMapper itemMapper,
             SystemApi systemApi
     ) {
         this.categoryMapper = categoryMapper;
         this.brandMapper = brandMapper;
         this.unitMapper = unitMapper;
         this.tagMapper = tagMapper;
+        this.itemMapper = itemMapper;
         this.systemApi = systemApi;
     }
 
@@ -230,6 +233,48 @@ class CatalogDictionaryService {
             throw new CatalogVersionConflictException();
         }
         audit(householdId, "UNIT_RESTORED", id);
+    }
+
+    /**
+     * 修改单位的小数位数。
+     * <p>
+     * 增大时直接修改；缩小时，如果有物品引用该单位，返回影响范围供前端确认。
+     * 确认后（confirmed=true），四舍五入截断所有受影响物品的 low_stock_threshold。
+     */
+    @Transactional
+    public Map<String, Object> updateUnitDecimalScale(UUID householdId, UUID id, int newDecimalScale, Integer version, boolean confirmed) {
+        if (newDecimalScale < 0 || newDecimalScale > 6) {
+            throw new IllegalArgumentException("decimal_scale must be between 0 and 6");
+        }
+        var entity = requireUnit(householdId, id);
+        int currentScale = entity.getDecimalScale();
+
+        if (newDecimalScale == currentScale) {
+            return Map.of("affectedItems", 0);
+        }
+
+        int affectedItems = 0;
+        if (newDecimalScale < currentScale) {
+            affectedItems = itemMapper.countByUnitId(id);
+            if (affectedItems > 0 && !confirmed) {
+                return Map.of(
+                        "needsConfirmation", true,
+                        "affectedItems", affectedItems,
+                        "currentScale", currentScale,
+                        "newScale", newDecimalScale
+                );
+            }
+            if (affectedItems > 0) {
+                itemMapper.truncateLowStockThreshold(id, newDecimalScale);
+            }
+        }
+
+        entity.setDecimalScale((short) newDecimalScale);
+        if (unitMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "UNIT_DECIMAL_SCALE_UPDATED", id);
+        return Map.of("affectedItems", affectedItems);
     }
 
     // --- Tags ---

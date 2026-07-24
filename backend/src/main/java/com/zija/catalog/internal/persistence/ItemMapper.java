@@ -31,4 +31,8 @@ public interface ItemMapper extends BaseMapper<ItemEntity> {
             @Param("status") String status,
             @Param("orderBy") String orderBy
     );
+
+    int countByUnitId(@Param("unitId") UUID unitId);
+
+    int truncateLowStockThreshold(@Param("unitId") UUID unitId, @Param("newScale") int newScale);
 }

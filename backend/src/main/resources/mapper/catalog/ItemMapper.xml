@@ -49,4 +49,17 @@
         </where>
         ORDER BY ${orderBy}
     </select>
+
+    <select id="countByUnitId" resultType="int">
+        SELECT COUNT(*) FROM catalog_item
+        WHERE unit_id = #{unitId} AND status = 'ACTIVE'
+    </select>
+
+    <update id="truncateLowStockThreshold">
+        UPDATE catalog_item
+        SET low_stock_threshold = ROUND(low_stock_threshold, #{newScale})
+        WHERE unit_id = #{unitId}
+          AND status = 'ACTIVE'
+          AND low_stock_threshold IS NOT NULL
+    </update>
 </mapper>

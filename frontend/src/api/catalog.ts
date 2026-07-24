@@ -127,6 +127,15 @@ export async function restoreUnit(id: string, version: number): Promise<void> {
   return postJson<void>(`/api/v1/units/${id}/restore`, { version })
 }
 
+export async function updateUnitDecimalScale(
+  id: string,
+  decimalScale: number,
+  version: number,
+  confirmed = false
+): Promise<{ affectedItems: number; needsConfirmation?: boolean; currentScale?: number; newScale?: number }> {
+  return putJson(`/api/v1/units/${id}/decimal-scale`, { decimalScale, version, confirmed })
+}
+
 // Tags
 export async function fetchTags(includeArchived = false): Promise<Tag[]> {
   return getJson<Tag[]>(`/api/v1/tags?includeArchived=${includeArchived}`)

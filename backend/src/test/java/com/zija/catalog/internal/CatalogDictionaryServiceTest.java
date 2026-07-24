@@ -19,6 +19,7 @@ class CatalogDictionaryServiceTest {
     private BrandMapper brandMapper;
     private UnitMapper unitMapper;
     private TagMapper tagMapper;
+    private ItemMapper itemMapper;
     private SystemApi systemApi;
     private CatalogDictionaryService service;
 
@@ -30,8 +31,9 @@ class CatalogDictionaryServiceTest {
         brandMapper = mock(BrandMapper.class);
         unitMapper = mock(UnitMapper.class);
         tagMapper = mock(TagMapper.class);
+        itemMapper = mock(ItemMapper.class);
         systemApi = mock(SystemApi.class);
-        service = new CatalogDictionaryService(categoryMapper, brandMapper, unitMapper, tagMapper, systemApi);
+        service = new CatalogDictionaryService(categoryMapper, brandMapper, unitMapper, tagMapper, itemMapper, systemApi);
     }
 
     @Test

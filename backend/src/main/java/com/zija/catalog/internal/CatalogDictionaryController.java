@@ -14,6 +14,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -40,6 +41,7 @@ import java.util.UUID;
  *     {@code GET /api/v1/units}（列表）、
  *     {@code POST /api/v1/units}（创建）、
  *     {@code PUT /api/v1/units/{id}}（更新）、
+ *     {@code PUT /api/v1/units/{id}/decimal-scale}（修改小数位）、
  *     {@code POST /api/v1/units/{id}/archive}（归档）、
  *     {@code POST /api/v1/units/{id}/restore}（恢复）</li>
  *   <li><b>标签</b>：
@@ -286,6 +288,24 @@ class CatalogDictionaryController {
         dictionaryService.restoreUnit(member.householdId(), id, request.version());
     }
 
+    /**
+     * 修改计量单位的小数位数。
+     *
+     * <p>增大时直接修改；缩小时如果有物品引用该单位，返回影响范围供前端确认。
+     * 确认后（confirmed=true），四舍五入截断受影响物品的数据。</p>
+     */
+    @RequireAdmin
+    @PutMapping("/units/{id}/decimal-scale")
+    Map<String, Object> updateUnitDecimalScale(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateDecimalScaleRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        return dictionaryService.updateUnitDecimalScale(
+                member.householdId(), id, request.decimalScale(), request.version(), request.confirmed());
+    }
+
     // --- Tags ---
 
     /**
@@ -364,4 +384,5 @@ class CatalogDictionaryController {
     record VersionRequest(Integer version) {}
     record UpdateNameRequest(@NotBlank String name, Integer version) {}
     record MoveCategoryRequest(UUID parentId, int sortOrder, Integer version) {}
+    record UpdateDecimalScaleRequest(int decimalScale, Integer version, boolean confirmed) {}
 }
