@@ -33,7 +33,7 @@ class LoginRateLimiter {
             new LinkedHashMap<>(16, 0.75f, true);
 
     LoginRateLimiter() {
-        this(5, 5, 20, 5, 1000, Clock.systemUTC());
+        this(5, 5, 50, 5, 1000, Clock.systemUTC());
     }
 
     LoginRateLimiter(int accountThreshold, int accountWindowMinutes,
