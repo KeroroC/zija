@@ -1,5 +1,7 @@
 package com.zija.catalog.internal.persistence;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.Version;
@@ -25,7 +27,9 @@ public class ItemEntity {
     private String lowStockMode;
     private BigDecimal lowStockThreshold;
     private String status;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private OffsetDateTime archivedAt;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private UUID archivedBy;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
