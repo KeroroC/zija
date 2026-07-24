@@ -20,7 +20,7 @@ async function waitForAppReady(page: Page): Promise<void> {
   await Promise.race([
     page.getByRole("heading", { name: "系统状态" }).waitFor({ state: "visible", timeout: 15_000 }),
     page.getByRole("heading", { name: "初始化你的家庭" }).waitFor({ state: "visible", timeout: 15_000 }),
-    page.locator(".login-logo").waitFor({ state: "visible", timeout: 15_000 }),
+    page.locator(".auth-brand-cn").waitFor({ state: "visible", timeout: 15_000 }),
     page.getByRole("button", { name: "登出" }).waitFor({ state: "visible", timeout: 15_000 })
   ]).catch(() => undefined);
 }
@@ -49,7 +49,7 @@ export async function loginViaUi(
   password: string
 ): Promise<void> {
   await page.goto("/login");
-  await expect(page.locator(".login-logo")).toBeVisible();
+  await expect(page.locator(".auth-brand-cn")).toBeVisible();
   const inputs = page.locator("input");
   await inputs.nth(0).fill(username);
   await inputs.nth(1).fill(password);
