@@ -77,3 +77,10 @@ springdoc:
 zija:
   file:
     storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}
+  login:
+    rate-limit:
+      account-threshold: ${ZIJA_RATE_LIMIT_ACCOUNT_THRESHOLD:5}
+      account-window-minutes: ${ZIJA_RATE_LIMIT_ACCOUNT_WINDOW_MINUTES:5}
+      ip-threshold: ${ZIJA_RATE_LIMIT_IP_THRESHOLD:50}
+      ip-window-minutes: ${ZIJA_RATE_LIMIT_IP_WINDOW_MINUTES:5}
+      max-entries: ${ZIJA_RATE_LIMIT_MAX_ENTRIES:1000}

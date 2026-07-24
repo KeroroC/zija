@@ -1,5 +1,6 @@
 package com.zija.identity.internal;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -32,12 +33,13 @@ class LoginRateLimiter {
     private final Map<String, Bucket> ipBuckets =
             new LinkedHashMap<>(16, 0.75f, true);
 
-    LoginRateLimiter() {
-        this(5, 5, 50, 5, 1000, Clock.systemUTC());
-    }
-
-    LoginRateLimiter(int accountThreshold, int accountWindowMinutes,
-                     int ipThreshold, int ipWindowMinutes, int maxEntries) {
+    LoginRateLimiter(
+            @Value("${zija.login.rate-limit.account-threshold:5}") int accountThreshold,
+            @Value("${zija.login.rate-limit.account-window-minutes:5}") int accountWindowMinutes,
+            @Value("${zija.login.rate-limit.ip-threshold:50}") int ipThreshold,
+            @Value("${zija.login.rate-limit.ip-window-minutes:5}") int ipWindowMinutes,
+            @Value("${zija.login.rate-limit.max-entries:1000}") int maxEntries
+    ) {
         this(accountThreshold, accountWindowMinutes,
                 ipThreshold, ipWindowMinutes, maxEntries, Clock.systemUTC());
     }
