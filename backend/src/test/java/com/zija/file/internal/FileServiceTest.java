@@ -64,19 +64,14 @@ class FileServiceTest {
     @Test
     void releaseDeletesFileAndEntityWhenReferenceCountReachesZero() throws IOException {
         UUID fileId = UUID.randomUUID();
-        var entity = new StoredFileEntity();
-        entity.setId(fileId);
-        entity.setHouseholdId(householdId);
-        entity.setStorageKey("2026/07/uuid.jpg");
-        entity.setReferenceCount(1);
+        var decrementedEntity = updatedEntity(fileId, householdId, "2026/07/uuid.jpg", 0);
 
-        when(storedFileMapper.selectById(fileId))
-                .thenReturn(entity)
-                .thenReturn(updatedEntity(fileId, householdId, "2026/07/uuid.jpg", 0));
+        when(storedFileMapper.decrementReferenceCountIfPositive(fileId, householdId))
+                .thenReturn(decrementedEntity);
 
         service.release(householdId, fileId);
 
-        verify(storedFileMapper).decrementReferenceCount(fileId, householdId);
+        verify(storedFileMapper).decrementReferenceCountIfPositive(fileId, householdId);
         verify(fileStorage).delete("2026/07/uuid.jpg");
         verify(storedFileMapper).deleteById(fileId);
     }
@@ -84,19 +79,28 @@ class FileServiceTest {
     @Test
     void releaseDoesNotDeleteWhenReferencesRemain() throws IOException {
         UUID fileId = UUID.randomUUID();
-        var entity = new StoredFileEntity();
-        entity.setId(fileId);
-        entity.setHouseholdId(householdId);
-        entity.setStorageKey("2026/07/uuid.jpg");
-        entity.setReferenceCount(2);
+        var decrementedEntity = updatedEntity(fileId, householdId, "2026/07/uuid.jpg", 1);
 
-        when(storedFileMapper.selectById(fileId))
-                .thenReturn(entity)
-                .thenReturn(updatedEntity(fileId, householdId, "2026/07/uuid.jpg", 1));
+        when(storedFileMapper.decrementReferenceCountIfPositive(fileId, householdId))
+                .thenReturn(decrementedEntity);
 
         service.release(householdId, fileId);
 
-        verify(storedFileMapper).decrementReferenceCount(fileId, householdId);
+        verify(storedFileMapper).decrementReferenceCountIfPositive(fileId, householdId);
+        verify(fileStorage, never()).delete(anyString());
+        verify(storedFileMapper, never()).deleteById(any(UUID.class));
+    }
+
+    @Test
+    void releaseDoesNothingWhenReferenceCountAlreadyZero() throws IOException {
+        UUID fileId = UUID.randomUUID();
+
+        when(storedFileMapper.decrementReferenceCountIfPositive(fileId, householdId))
+                .thenReturn(null); // 引用计数已为 0 或文件不存在
+
+        service.release(householdId, fileId);
+
+        verify(storedFileMapper).decrementReferenceCountIfPositive(fileId, householdId);
         verify(fileStorage, never()).delete(anyString());
         verify(storedFileMapper, never()).deleteById(any(UUID.class));
     }

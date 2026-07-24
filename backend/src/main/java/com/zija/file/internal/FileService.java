@@ -82,17 +82,18 @@ class FileService implements FileApi {
 
     /**
      * 释放文件引用，引用计数归零时自动删除物理文件和数据库记录。
+     * <p>
+     * 使用原子 SQL 操作 {@code UPDATE ... SET reference_count = reference_count - 1 WHERE reference_count > 0 RETURNING}
+     * 将递减和条件检查合并为单次数据库调用，消除并发竞态条件。
      */
     @Override
     @Transactional
     public void release(UUID householdId, UUID fileId) {
-        var entity = storedFileMapper.selectById(fileId);
-        if (entity == null || !entity.getHouseholdId().equals(householdId)) {
-            return;
+        var updated = storedFileMapper.decrementReferenceCountIfPositive(fileId, householdId);
+        if (updated == null) {
+            return; // 引用计数已为 0 或文件不存在/不属于该家庭
         }
-        storedFileMapper.decrementReferenceCount(fileId, householdId);
-        var updated = storedFileMapper.selectById(fileId);
-        if (updated != null && updated.getReferenceCount() <= 0) {
+        if (updated.getReferenceCount() == 0) {
             try {
                 fileStorage.delete(updated.getStorageKey());
             } catch (IOException e) {
