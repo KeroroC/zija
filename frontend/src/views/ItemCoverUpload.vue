@@ -145,7 +145,7 @@ async function doUpload(file: File) {
   }, 200)
 
   try {
-    const result: UploadedFile = await uploadItemCover(props.itemId, file)
+    const result: UploadedFile = await uploadItemCover(props.itemId, file, props.version)
     clearInterval(progressTimer)
     progress.value = 100
 

@@ -11,7 +11,7 @@ export interface UploadedFile {
   url: string
 }
 
-export async function uploadItemCover(itemId: string, file: File): Promise<UploadedFile> {
+export async function uploadItemCover(itemId: string, file: File, version: number): Promise<UploadedFile> {
   await ensureCsrf()
   const formData = new FormData()
   formData.append('file', file)
@@ -23,7 +23,7 @@ export async function uploadItemCover(itemId: string, file: File): Promise<Uploa
   }
 
   const baseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
-  const response = await fetch(`${baseUrl}/api/v1/items/${itemId}/cover`, {
+  const response = await fetch(`${baseUrl}/api/v1/items/${itemId}/cover?version=${version}`, {
     method: 'POST',
     credentials: 'same-origin',
     headers,
