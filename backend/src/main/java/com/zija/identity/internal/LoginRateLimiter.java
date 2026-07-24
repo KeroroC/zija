@@ -1,5 +1,6 @@
 package com.zija.identity.internal;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -33,6 +34,7 @@ class LoginRateLimiter {
     private final Map<String, Bucket> ipBuckets =
             new LinkedHashMap<>(16, 0.75f, true);
 
+    @Autowired
     LoginRateLimiter(
             @Value("${zija.login.rate-limit.account-threshold:5}") int accountThreshold,
             @Value("${zija.login.rate-limit.account-window-minutes:5}") int accountWindowMinutes,

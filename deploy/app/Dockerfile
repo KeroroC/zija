@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 WORKDIR /app
 COPY --from=build --chown=zija:zija /workspace/backend/target/*.jar /app/zija.jar
 
+RUN mkdir -p /var/lib/zija/files && chown -R zija:zija /var/lib/zija
 USER zija
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/zija.jar"]
