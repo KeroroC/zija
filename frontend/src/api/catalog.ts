@@ -98,6 +98,10 @@ export async function archiveBrand(id: string, version: number): Promise<void> {
   return postJson<void>(`/api/v1/brands/${id}/archive`, { version })
 }
 
+export async function renameBrand(id: string, name: string, version: number): Promise<void> {
+  return putJson<void>(`/api/v1/brands/${id}`, { name, version })
+}
+
 export async function restoreBrand(id: string, version: number): Promise<void> {
   return postJson<void>(`/api/v1/brands/${id}/restore`, { version })
 }
@@ -113,6 +117,14 @@ export async function createUnit(data: { name: string; decimalScale: number }): 
 
 export async function renameUnit(id: string, name: string, version: number): Promise<Unit> {
   return putJson<Unit>(`/api/v1/units/${id}`, { name, version })
+}
+
+export async function archiveUnit(id: string, version: number): Promise<void> {
+  return postJson<void>(`/api/v1/units/${id}/archive`, { version })
+}
+
+export async function restoreUnit(id: string, version: number): Promise<void> {
+  return postJson<void>(`/api/v1/units/${id}/restore`, { version })
 }
 
 // Tags

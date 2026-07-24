@@ -155,6 +155,16 @@ class CatalogDictionaryService {
     }
 
     @Transactional
+    public void restoreBrand(UUID householdId, UUID id, Integer version) {
+        var entity = requireBrand(householdId, id);
+        entity.setStatus("ACTIVE");
+        if (brandMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "BRAND_RESTORED", id);
+    }
+
+    @Transactional
     public void updateBrand(UUID householdId, UUID id, String name, Integer version) {
         var entity = requireBrand(householdId, id);
         String normalized = normalizeName(name);
@@ -202,6 +212,26 @@ class CatalogDictionaryService {
         audit(householdId, "UNIT_UPDATED", id);
     }
 
+    @Transactional
+    public void archiveUnit(UUID householdId, UUID id, Integer version) {
+        var entity = requireUnit(householdId, id);
+        entity.setStatus("ARCHIVED");
+        if (unitMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "UNIT_ARCHIVED", id);
+    }
+
+    @Transactional
+    public void restoreUnit(UUID householdId, UUID id, Integer version) {
+        var entity = requireUnit(householdId, id);
+        entity.setStatus("ACTIVE");
+        if (unitMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "UNIT_RESTORED", id);
+    }
+
     // --- Tags ---
 
     @Transactional
@@ -241,6 +271,16 @@ class CatalogDictionaryService {
             throw new CatalogVersionConflictException();
         }
         audit(householdId, "TAG_UPDATED", id);
+    }
+
+    @Transactional
+    public void restoreTag(UUID householdId, UUID id, Integer version) {
+        var entity = requireTag(householdId, id);
+        entity.setStatus("ACTIVE");
+        if (tagMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+        audit(householdId, "TAG_RESTORED", id);
     }
 
     // --- Query ---

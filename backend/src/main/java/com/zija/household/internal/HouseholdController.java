@@ -70,7 +70,8 @@ class HouseholdController {
 
     public record CurrentMemberResponse(
             UUID householdId, UUID memberId, UUID accountId,
-            String username, String displayName, String role, String status
+            String username, String displayName, String role, String status,
+            String householdName
     ) {
     }
 
@@ -125,10 +126,13 @@ class HouseholdController {
         var principal = (ZijaPrincipal) SecurityContextHolder
                 .getContext().getAuthentication().getPrincipal();
         var member = householdService.requireActiveMember(principal.getAccountId());
+        String householdName = householdService.findHousehold()
+                .map(com.zija.household.HouseholdApi.HouseholdInfo::name)
+                .orElse(null);
         return new CurrentMemberResponse(
                 member.householdId(), member.id(), member.accountId(),
                 principal.getUsername(), principal.getDisplayName(),
-                member.role().name(), member.status());
+                member.role().name(), member.status(), householdName);
     }
 
     /**

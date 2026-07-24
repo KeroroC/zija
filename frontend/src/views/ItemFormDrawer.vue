@@ -110,11 +110,13 @@
         v-if="form.expiryReminderMode === 'CUSTOM'"
         label="提醒天数"
       >
-        <el-input-number
+        <el-select
           v-model="form.expiryReminderDays"
-          :min="1"
-          :max="365"
-          placeholder="到期前多少天提醒"
+          multiple
+          filterable
+          allow-create
+          default-first-option
+          placeholder="输入天数后回车添加（1–3650）"
           style="width: 100%"
         />
       </el-form-item>
@@ -137,7 +139,7 @@
         >
           <template #append>
             <span style="color: var(--el-text-color-secondary); font-size: 12px">
-              请根据单位精度输入
+              {{ selectedUnitDecimalScale !== null ? `精度：${selectedUnitDecimalScale} 位小数` : '请根据单位精度输入' }}
             </span>
           </template>
         </el-input>
@@ -215,9 +217,15 @@ const defaultForm = () => ({
   tagIds: [] as string[],
   memo: '',
   expiryReminderMode: 'INHERIT' as string,
-  expiryReminderDays: undefined as number | undefined,
+  expiryReminderDays: [] as number[],
   lowStockMode: 'INHERIT' as string,
   lowStockThreshold: '' as string,
+})
+
+const selectedUnitDecimalScale = computed(() => {
+  if (!form.unitId) return null
+  const unit = units.value.find(u => u.id === form.unitId)
+  return unit ? unit.decimalScale : null
 })
 
 const form = reactive(defaultForm())
@@ -282,7 +290,7 @@ function fillForm(item: CatalogItem) {
   form.tagIds = item.tagIds ? [...item.tagIds] : []
   form.memo = item.memo || ''
   form.expiryReminderMode = item.expiryReminderMode
-  form.expiryReminderDays = item.expiryReminderDays?.[0]
+  form.expiryReminderDays = item.expiryReminderDays ? [...item.expiryReminderDays] : []
   form.lowStockMode = item.lowStockMode
   form.lowStockThreshold = item.lowStockThreshold || ''
 }
@@ -352,8 +360,8 @@ function buildSubmitData() {
     tagIds: form.tagIds.length > 0 ? form.tagIds : undefined,
     memo: form.memo || undefined,
     expiryReminderMode: form.expiryReminderMode,
-    expiryReminderDays: form.expiryReminderMode === 'CUSTOM' && form.expiryReminderDays
-      ? [form.expiryReminderDays]
+    expiryReminderDays: form.expiryReminderMode === 'CUSTOM' && form.expiryReminderDays.length > 0
+      ? [...form.expiryReminderDays].sort((a, b) => b - a)
       : undefined,
     lowStockMode: form.lowStockMode,
     lowStockThreshold: form.lowStockMode === 'CUSTOM' && form.lowStockThreshold

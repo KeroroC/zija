@@ -27,6 +27,7 @@
               <span class="tree-node-actions">
                 <el-button size="small" text @click.stop="openCreateCategory(data.id, data.name)">+</el-button>
                 <el-button size="small" text @click.stop="openRename('category', data)">重命名</el-button>
+                <el-button size="small" text @click.stop="openMoveCategory(data)">移动</el-button>
                 <el-button v-if="data.status === 'ACTIVE'" size="small" text type="danger" @click.stop="handleArchiveCategory(data)">归档</el-button>
                 <el-button v-if="data.status === 'ARCHIVED'" size="small" text type="success" @click.stop="handleRestoreCategory(data)">恢复</el-button>
               </span>
@@ -53,8 +54,9 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="120" fixed="right">
+          <el-table-column label="操作" width="180" fixed="right">
             <template #default="{ row }">
+              <el-button size="small" text @click="openRename('brand', row)">重命名</el-button>
               <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveBrand(row)">归档</el-button>
               <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreBrand(row)">恢复</el-button>
             </template>
@@ -82,9 +84,11 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="120" fixed="right">
+          <el-table-column label="操作" width="180" fixed="right">
             <template #default="{ row }">
               <el-button size="small" text @click="openRename('unit', row)">重命名</el-button>
+              <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveUnit(row)">归档</el-button>
+              <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreUnit(row)">恢复</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -135,7 +139,7 @@
       </template>
     </el-dialog>
 
-    <!-- Rename Dialog (category / unit / tag) -->
+    <!-- Rename Dialog (category / brand / unit / tag) -->
     <el-dialog v-model="renameDialogVisible" :title="renameDialogTitle" width="400px">
       <el-form :model="renameForm" label-width="80px">
         <el-form-item label="名称">
@@ -147,6 +151,29 @@
         <el-button type="primary" @click="submitRename">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- Move Category Dialog -->
+    <el-dialog v-model="moveCategoryVisible" title="移动分类" width="500px">
+      <el-form label-width="80px">
+        <el-form-item label="目标父级">
+          <el-tree-select
+            v-model="moveCategoryForm.newParentId"
+            :data="moveCategoryTreeData"
+            :props="{ label: 'name', value: 'id', children: 'children' } as any"
+            placeholder="选择目标父级（留空为根节点）"
+            clearable
+            check-strictly
+          />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="moveCategoryForm.newSortOrder" :min="0" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="moveCategoryVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitMoveCategory" :disabled="!moveCategoryForm.targetSelected">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -154,9 +181,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  fetchCategories, createCategory, renameCategory, archiveCategory, restoreCategory,
-  fetchBrands, createBrand, archiveBrand, restoreBrand,
-  fetchUnits, createUnit, renameUnit,
+  fetchCategories, createCategory, renameCategory, moveCategory, archiveCategory, restoreCategory,
+  fetchBrands, createBrand, renameBrand, archiveBrand, restoreBrand,
+  fetchUnits, createUnit, renameUnit, archiveUnit, restoreUnit,
   fetchTags, createTag, renameTag, archiveTag, restoreTag,
 } from '../api/catalog'
 import type { Category, Brand, Unit, Tag } from '../types/catalog'
@@ -212,14 +239,34 @@ const createCategoryTitle = computed(() =>
     : '添加根分类',
 )
 
-// Rename dialog (shared for category / unit / tag)
+// Rename dialog (shared for category / brand / unit / tag)
 const renameDialogVisible = ref(false)
 const renameDialogTitle = ref('')
 const renameForm = reactive({
-  type: '' as 'category' | 'unit' | 'tag',
+  type: '' as 'category' | 'brand' | 'unit' | 'tag',
   id: '',
   name: '',
   version: 0,
+})
+
+// Move category dialog
+const moveCategoryVisible = ref(false)
+const moveCategoryForm = reactive({
+  id: '',
+  version: 0,
+  newParentId: null as string | null,
+  newSortOrder: 0,
+  targetSelected: false,
+})
+const moveCategoryTreeData = computed(() => {
+  // Exclude the node being moved and its descendants from target options
+  const excludeId = moveCategoryForm.id
+  function filterTree(nodes: CategoryTreeNode[]): CategoryTreeNode[] {
+    return nodes
+      .filter(n => n.id !== excludeId)
+      .map(n => ({ ...n, children: n.children ? filterTree(n.children) : [] }))
+  }
+  return filterTree(categoryTree.value)
 })
 
 // --------------- Computed ---------------
@@ -338,6 +385,33 @@ async function handleRestoreCategory(cat: CategoryTreeNode) {
   }
 }
 
+// --------------- Category move ---------------
+
+function openMoveCategory(cat: CategoryTreeNode) {
+  moveCategoryForm.id = cat.id
+  moveCategoryForm.version = cat.version
+  moveCategoryForm.newParentId = cat.parentId
+  moveCategoryForm.newSortOrder = cat.sortOrder
+  moveCategoryForm.targetSelected = true
+  moveCategoryVisible.value = true
+}
+
+async function submitMoveCategory() {
+  try {
+    await moveCategory(
+      moveCategoryForm.id,
+      moveCategoryForm.newParentId,
+      moveCategoryForm.newSortOrder,
+      moveCategoryForm.version,
+    )
+    moveCategoryVisible.value = false
+    await loadCategories()
+    ElMessage.success('已移动')
+  } catch (e: any) {
+    ElMessage.error(e.title || '移动失败')
+  }
+}
+
 // --------------- Brand actions ---------------
 
 async function handleCreateBrand() {
@@ -394,6 +468,27 @@ async function handleCreateUnit() {
   }
 }
 
+async function handleArchiveUnit(unit: any) {
+  await ElMessageBox.confirm(`确定归档单位"${unit.name}"？`, '确认')
+  try {
+    await archiveUnit(unit.id, unit.version)
+    await loadUnits()
+    ElMessage.success('已归档')
+  } catch (e: any) {
+    ElMessage.error(e.title || '归档失败')
+  }
+}
+
+async function handleRestoreUnit(unit: any) {
+  try {
+    await restoreUnit(unit.id, unit.version)
+    await loadUnits()
+    ElMessage.success('已恢复')
+  } catch (e: any) {
+    ElMessage.error(e.title || '恢复失败')
+  }
+}
+
 // --------------- Tag actions ---------------
 
 async function handleCreateTag() {
@@ -434,13 +529,14 @@ async function handleRestoreTag(tag: any) {
 
 // --------------- Rename dialog ---------------
 
-function openRename(type: 'category' | 'unit' | 'tag', item: any) {
+function openRename(type: 'category' | 'brand' | 'unit' | 'tag', item: any) {
   renameForm.type = type
   renameForm.id = item.id
   renameForm.name = item.name
   renameForm.version = item.version
   const titles: Record<string, string> = {
     category: '重命名分类',
+    brand: '重命名品牌',
     unit: '重命名单位',
     tag: '重命名标签',
   }
@@ -457,6 +553,9 @@ async function submitRename() {
     if (renameForm.type === 'category') {
       await renameCategory(renameForm.id, renameForm.name.trim(), renameForm.version)
       await loadCategories()
+    } else if (renameForm.type === 'brand') {
+      await renameBrand(renameForm.id, renameForm.name.trim(), renameForm.version)
+      await loadBrands()
     } else if (renameForm.type === 'unit') {
       await renameUnit(renameForm.id, renameForm.name.trim(), renameForm.version)
       await loadUnits()

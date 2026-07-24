@@ -30,9 +30,17 @@
 
       <div class="location-detail-panel" v-if="selectedLocation">
         <h3>{{ selectedLocation.name }}</h3>
+        <p><strong>路径：</strong>{{ ancestorPath }}</p>
         <p>ID: {{ selectedLocation.id }}</p>
         <p>版本: {{ selectedLocation.version }}</p>
         <p>已引用: {{ selectedLocation.everReferenced ? '是' : '否' }}</p>
+        <template v-if="selectedLocation.children?.length">
+          <el-divider />
+          <p><strong>子位置：</strong></p>
+          <ul class="child-list">
+            <li v-for="child in selectedLocation.children" :key="child.id">{{ child.name }}</li>
+          </ul>
+        </template>
         <el-divider />
         <p class="placeholder-text">库存将在阶段四启用</p>
       </div>
@@ -82,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchLocationTree, createLocation, renameLocation, deleteLocation, moveLocation } from '../api/location'
 import type { LocationNode } from '../types/location'
@@ -97,6 +105,28 @@ const targetSortOrder = ref(0)
 const nameDialogVisible = ref(false)
 const nameDialogTitle = ref('')
 const nameForm = reactive({ name: '', parentId: null as string | null, editingId: null as string | null, version: 0 })
+
+// Build a flat map for ancestor path lookup
+function buildNodeMap(nodes: LocationNode[], parentPath: string[] = []): Map<string, string[]> {
+  const map = new Map<string, string[]>()
+  for (const node of nodes) {
+    const path = [...parentPath, node.name]
+    map.set(node.id, path)
+    if (node.children?.length) {
+      for (const [id, p] of buildNodeMap(node.children, path)) {
+        map.set(id, p)
+      }
+    }
+  }
+  return map
+}
+
+const ancestorPath = computed(() => {
+  if (!selectedLocation.value) return ''
+  const nodeMap = buildNodeMap(treeData.value)
+  const path = nodeMap.get(selectedLocation.value.id)
+  return path ? path.join(' / ') : selectedLocation.value.name
+})
 
 async function loadTree() {
   const res = await fetchLocationTree()
@@ -171,6 +201,10 @@ async function submitMove() {
 }
 
 async function deleteNode(node: LocationNode) {
+  if (node.children?.length) {
+    ElMessage.warning(`该位置下有 ${node.children.length} 个子位置，请先删除子位置`)
+    return
+  }
   await ElMessageBox.confirm(`确定删除位置"${node.name}"？`, '确认')
   try {
     await deleteLocation(node.id, node.version)
@@ -220,5 +254,12 @@ onMounted(loadTree)
 .placeholder-text {
   color: var(--el-text-color-secondary);
   font-style: italic;
+}
+.child-list {
+  margin: 0;
+  padding-left: 20px;
+}
+.child-list li {
+  line-height: 1.8;
 }
 </style>

@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Pattern;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -46,7 +47,7 @@ class MemberController {
 
     public record MemberResponse(
             UUID id, UUID accountId, String username, String displayName,
-            String role, String status) {
+            String role, String status, OffsetDateTime createdAt) {
     }
 
     public record UpdateRoleRequest(
@@ -83,7 +84,7 @@ class MemberController {
                             m.getId(), m.getAccountId(),
                             account != null ? account.username() : null,
                             account != null ? account.displayName() : null,
-                            m.getRole(), m.getStatus());
+                            m.getRole(), m.getStatus(), m.getCreatedAt());
                 })
                 .toList();
     }

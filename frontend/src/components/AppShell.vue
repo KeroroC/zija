@@ -29,7 +29,7 @@
 
     <el-container>
       <el-header class="app-header">
-        <span class="header-context">家庭：我的家</span>
+        <span class="header-context">家庭：{{ householdName }}</span>
         <el-tag effect="plain" type="success">
           {{ roleLabel }}
         </el-tag>
@@ -48,13 +48,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useSessionStore } from "../stores/session";
+import { householdApi } from "../api/household";
 
 const router = useRouter();
 const session = useSessionStore();
+const householdName = ref("我的家");
+
+onMounted(async () => {
+  try {
+    const member = await householdApi.getCurrentMember();
+    if (member.householdName) {
+      householdName.value = member.householdName;
+    }
+  } catch {
+    // fallback to default
+  }
+});
 
 const roleLabel = computed(() => {
   switch (session.role) {

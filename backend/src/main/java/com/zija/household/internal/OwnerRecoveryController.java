@@ -3,6 +3,7 @@ package com.zija.household.internal;
 import com.zija.Utf8ByteLength;
 import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
+import com.zija.identity.IdentityApi;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -28,13 +29,16 @@ class OwnerRecoveryController {
 
     private final OwnerRecoveryService recoveryService;
     private final ZijaSessionAuthenticationSupport sessionAuth;
+    private final IdentityApi identityApi;
 
     OwnerRecoveryController(
             OwnerRecoveryService recoveryService,
-            ZijaSessionAuthenticationSupport sessionAuth
+            ZijaSessionAuthenticationSupport sessionAuth,
+            IdentityApi identityApi
     ) {
         this.recoveryService = recoveryService;
         this.sessionAuth = sessionAuth;
+        this.identityApi = identityApi;
     }
 
     public record InspectRequest(@NotBlank @Size(max = 200) String token) {
@@ -57,7 +61,11 @@ class OwnerRecoveryController {
     @PostMapping("/inspect")
     InspectResponse inspect(@Valid @RequestBody InspectRequest request) {
         Optional<OwnerRecoveryTokenEntity> token = recoveryService.inspect(request.token());
-        return new InspectResponse(token.isPresent(), null);
+        String ownerDisplayName = token
+                .flatMap(t -> identityApi.findById(t.getAccountId()))
+                .map(IdentityApi.AccountInfo::displayName)
+                .orElse(null);
+        return new InspectResponse(token.isPresent(), ownerDisplayName);
     }
 
     /**

@@ -17,6 +17,7 @@ export interface CurrentMember {
   displayName: string;
   role: "OWNER" | "ADMIN" | "MEMBER";
   status: "ACTIVE" | "DEACTIVATED";
+  householdName: string;
 }
 
 export interface MemberInfo {
