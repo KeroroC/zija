@@ -33,7 +33,7 @@ test("full catalog lifecycle: categories, brands, units, tags, and items", async
   await page.getByRole("tab", { name: "单位" }).click();
   await page.getByPlaceholder("新单位名称").fill(unitName);
   // el-input-number: clear and type the decimal scale value
-  const decimalInput = page.locator(".el-input-number input");
+  const decimalInput = page.getByPlaceholder("小数位");
   await decimalInput.click();
   await decimalInput.press("Control+a");
   await decimalInput.press("Backspace");

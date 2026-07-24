@@ -28,19 +28,19 @@ test("location management lifecycle", async ({ page }) => {
 
   // --- Step 3: Create a child location under root ---
   const rootNode = page.locator(".tree-node", { hasText: rootName }).first();
-  await rootNode.getByRole("button", { name: "+" }).click();
+  await rootNode.locator('[data-testid="loc-add"]').click();
   await fillNameDialogAndSubmit(childName);
   await expect(page.locator(".tree-node", { hasText: childName })).toBeVisible();
 
   // --- Step 4: Create a grandchild location under child ---
   const childNode = page.locator(".tree-node", { hasText: childName }).first();
-  await childNode.getByRole("button", { name: "+" }).click();
+  await childNode.locator('[data-testid="loc-add"]').click();
   await fillNameDialogAndSubmit(grandchildName);
   await expect(page.locator(".tree-node", { hasText: grandchildName })).toBeVisible();
 
   // --- Step 5: Rename the root location ---
   const nodeToRename = page.locator(".tree-node", { hasText: rootName }).first();
-  await nodeToRename.getByRole("button", { name: "✏" }).click();
+  await nodeToRename.locator('[data-testid="loc-rename"]').click();
   const renameDialog = page.locator(".el-dialog", { hasText: "重命名" });
   await expect(renameDialog).toBeVisible();
   await renameDialog.locator("input").clear();
@@ -53,7 +53,7 @@ test("location management lifecycle", async ({ page }) => {
   // --- Step 6: Move grandchild from under child to under root directly ---
   // Tree: root > child > grandchild  →  root > {child, grandchild}
   const gcNode = page.locator(".tree-node", { hasText: grandchildName }).first();
-  await gcNode.getByRole("button", { name: "↗" }).click();
+  await gcNode.locator('[data-testid="loc-move"]').click();
   const moveDialog = page.locator(".el-dialog", { hasText: "移动位置" });
   await expect(moveDialog).toBeVisible();
   // Select the root node in the move dialog tree as the target parent
@@ -67,7 +67,7 @@ test("location management lifecycle", async ({ page }) => {
   // Current tree: root > {child, grandchild}
   // Try moving root under child → circular (child is a descendant of root)
   const rootNodeForMove = page.locator(".tree-node", { hasText: renamedRoot }).first();
-  await rootNodeForMove.getByRole("button", { name: "↗" }).click();
+  await rootNodeForMove.locator('[data-testid="loc-move"]').click();
   const circDialog = page.locator(".el-dialog", { hasText: "移动位置" });
   await expect(circDialog).toBeVisible();
   await circDialog
@@ -82,7 +82,7 @@ test("location management lifecycle", async ({ page }) => {
   // --- Step 8: Delete an empty leaf node ---
   // child has no children (grandchild was moved out) → can be deleted
   const childForDelete = page.locator(".tree-node", { hasText: childName }).first();
-  await childForDelete.getByRole("button", { name: "×" }).click();
+  await childForDelete.locator('[data-testid="loc-delete"]').click();
   // Element MessageBox confirmation dialog appears
   await page.locator(".el-message-box").getByRole("button", { name: "确定" }).click();
   await expect(page.getByText("已删除")).toBeVisible();
@@ -91,18 +91,18 @@ test("location management lifecycle", async ({ page }) => {
   // --- Step 9: Verify a node with children cannot be deleted ---
   // Root now has grandchild as a child
   const rootForDelete = page.locator(".tree-node", { hasText: renamedRoot }).first();
-  await rootForDelete.getByRole("button", { name: "×" }).click();
+  await rootForDelete.locator('[data-testid="loc-delete"]').click();
   // Client-side check: warning about child locations, no confirmation dialog
   await expect(page.getByText(/子位置.*请先删除/)).toBeVisible();
 
   // --- Cleanup: delete grandchild then root ---
   const gcForDelete = page.locator(".tree-node", { hasText: grandchildName }).first();
-  await gcForDelete.getByRole("button", { name: "×" }).click();
+  await gcForDelete.locator('[data-testid="loc-delete"]').click();
   await page.locator(".el-message-box").getByRole("button", { name: "确定" }).click();
   await expect(page.getByText("已删除")).toBeVisible();
 
   const rootFinal = page.locator(".tree-node", { hasText: renamedRoot }).first();
-  await rootFinal.getByRole("button", { name: "×" }).click();
+  await rootFinal.locator('[data-testid="loc-delete"]').click();
   await page.locator(".el-message-box").getByRole("button", { name: "确定" }).click();
   await expect(page.getByText("已删除")).toBeVisible();
 });

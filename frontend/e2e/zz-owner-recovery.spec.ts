@@ -36,7 +36,7 @@ test("owner recovery resets password and invalidates old credentials and session
   await expect(page.getByRole("heading", { name: "重置所有者密码" })).toBeVisible();
   await expect(page.getByText("请为所有者账户设置新密码。")).toBeVisible({ timeout: 15_000 });
 
-  const inputs = page.locator(".recovery-page input");
+  const inputs = page.locator(".auth-card input");
   await inputs.nth(0).fill("N3wPassw0rd!");
   await inputs.nth(1).fill("N3wPassw0rd!");
   await page.getByRole("button", { name: "重置密码" }).click();
