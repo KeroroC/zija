@@ -1,12 +1,15 @@
 <template>
-  <div class="items-page">
-    <div class="items-header">
-      <h2>物品资料</h2>
+  <div class="page-container">
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">物品资料</h2>
+        <p class="page-subtitle">维护家庭物品的主数据</p>
+      </div>
       <el-button type="primary" @click="openCreate">新建物品</el-button>
     </div>
 
     <div class="items-filters">
-      <el-input v-model="filters.q" placeholder="搜索物品" clearable @input="debouncedFetch" />
+      <el-input v-model="filters.q" placeholder="搜索物品" clearable class="filter-search" @input="debouncedFetch" />
       <el-select v-model="filters.managementType" placeholder="管理类型" clearable @change="fetchItems">
         <el-option label="消耗品" value="CONSUMABLE" />
         <el-option label="耐用品" value="DURABLE" />
@@ -18,7 +21,7 @@
       <el-tree-select
         v-model="filters.categoryId"
         :data="categoryTree"
-        :props="{ label: 'name', value: 'id', children: 'children' }"
+        :props="({ label: 'name', value: 'id', children: 'children' } as any)"
         placeholder="分类"
         clearable
         check-strictly
@@ -40,7 +43,7 @@
       </el-select>
     </div>
 
-    <el-table :data="items" v-loading="loading" @row-click="(row: any) => openDetail(row as CatalogItem)">
+    <el-table :data="items" v-loading="loading" class="items-table table-clickable" @row-click="(row: any) => openDetail(row as CatalogItem)">
       <el-table-column label="封面" width="60" class-name="col-cover">
         <template #default="{ row }">
           <img v-if="row.coverUrl" :src="row.coverUrl" class="cover-thumb" alt="封面" />
@@ -48,53 +51,55 @@
         </template>
       </el-table-column>
       <el-table-column prop="name" label="名称" min-width="150" />
-      <el-table-column prop="managementType" label="类型" width="100">
+      <el-table-column prop="managementType" label="类型" width="90">
         <template #default="{ row }">
-          <el-tag :type="row.managementType === 'CONSUMABLE' ? 'warning' : 'success'" size="small">
-            {{ row.managementType === 'CONSUMABLE' ? '消耗品' : '耐用品' }}
-          </el-tag>
+          <span :class="row.managementType === 'CONSUMABLE' ? 'zj-dot zj-dot-warn' : 'zj-dot zj-dot-pine'"></span>{{ row.managementType === 'CONSUMABLE' ? '消耗品' : '耐用品' }}
         </template>
       </el-table-column>
-      <el-table-column label="分类" width="120" class-name="col-secondary">
-        <template #default="{ row }">{{ categoryMap[row.categoryId] || '—' }}</template>
+      <el-table-column label="分类" width="110" class-name="col-secondary">
+        <template #default="{ row }"><span class="cell-secondary">{{ categoryMap[(row.categoryId as string)] || '—' }}</span></template>
       </el-table-column>
-      <el-table-column label="品牌" width="100" class-name="col-secondary">
-        <template #default="{ row }">{{ brandMap[row.brandId] || '—' }}</template>
+      <el-table-column label="品牌" width="90" class-name="col-secondary">
+        <template #default="{ row }"><span class="cell-secondary">{{ brandMap[(row.brandId as string)] || '—' }}</span></template>
       </el-table-column>
-      <el-table-column label="单位" width="80" class-name="col-secondary">
-        <template #default="{ row }">{{ unitMap[row.unitId] || '—' }}</template>
+      <el-table-column label="单位" width="70" class-name="col-secondary">
+        <template #default="{ row }"><span class="cell-secondary">{{ unitMap[row.unitId] || '—' }}</span></template>
       </el-table-column>
-      <el-table-column label="标签" width="150" class-name="col-secondary">
+      <el-table-column label="标签" width="125" class-name="col-secondary">
         <template #default="{ row }">
           <template v-if="row.tagIds?.length">
-            <el-tag v-for="tid in row.tagIds.slice(0, 2)" :key="tid" size="small" class="tag-item">
+            <el-tag v-for="tid in row.tagIds.slice(0, 2)" :key="tid" size="small" effect="plain" class="tag-item">
               {{ tagMap[tid] || tid }}
             </el-tag>
-            <el-tag v-if="row.tagIds.length > 2" size="small" type="info">+{{ row.tagIds.length - 2 }}</el-tag>
+            <el-tag v-if="row.tagIds.length > 2" size="small" type="info" effect="plain">+{{ row.tagIds.length - 2 }}</el-tag>
           </template>
-          <span v-else>—</span>
+          <span v-else class="cell-secondary">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="低库存阈值" width="110" class-name="col-secondary">
+      <el-table-column label="低库存阈值" width="100" class-name="col-secondary">
         <template #default="{ row }">
-          {{ row.managementType === 'CONSUMABLE' && row.lowStockThreshold ? row.lowStockThreshold : '—' }}
+          <span class="cell-secondary zj-num">{{ row.managementType === 'CONSUMABLE' && row.lowStockThreshold ? row.lowStockThreshold : '—' }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="status" label="状态" width="80">
         <template #default="{ row }">
-          <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
-            {{ row.status === 'ACTIVE' ? '活跃' : '归档' }}
-          </el-tag>
+          <span :class="row.status === 'ACTIVE' ? 'zj-dot zj-dot-pine' : 'zj-dot zj-dot-off'"></span>{{ row.status === 'ACTIVE' ? '活跃' : '归档' }}
         </template>
       </el-table-column>
-      <el-table-column prop="updatedAt" label="更新时间" width="180">
-        <template #default="{ row }">{{ formatDate(row.updatedAt) }}</template>
+      <el-table-column prop="updatedAt" label="更新时间" width="165">
+        <template #default="{ row }"><span class="cell-secondary zj-num">{{ formatDate(row.updatedAt) }}</span></template>
       </el-table-column>
-      <el-table-column label="操作" width="120" fixed="right">
+      <el-table-column label="操作" width="70" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click.stop="openEdit(row as CatalogItem)">编辑</el-button>
+          <el-button size="small" text @click.stop="openEdit(row as CatalogItem)">编辑</el-button>
         </template>
       </el-table-column>
+      <template #empty>
+        <div class="table-empty">
+          <p class="table-empty-title">还没有物品</p>
+          <p class="table-empty-hint">从新建第一件物品开始，让每一件物品都有迹可循。</p>
+        </div>
+      </template>
     </el-table>
 
     <el-pagination
@@ -110,14 +115,14 @@
     <el-drawer v-model="detailVisible" title="物品详情" size="400px">
       <div v-if="selectedItem">
         <img v-if="selectedItem.coverUrl" :src="selectedItem.coverUrl" class="detail-cover" alt="封面" />
-        <h3>{{ selectedItem.name }}</h3>
-        <p>类型：{{ selectedItem.managementType === 'CONSUMABLE' ? '消耗品' : '耐用品' }}</p>
-        <p>状态：{{ selectedItem.status === 'ACTIVE' ? '活跃' : '归档' }}</p>
-        <p>分类：{{ categoryMap[selectedItem.categoryId] || '—' }}</p>
-        <p>品牌：{{ brandMap[selectedItem.brandId] || '—' }}</p>
-        <p>单位：{{ unitMap[selectedItem.unitId] || '—' }}<span v-if="unitDetailMap[selectedItem.unitId]">（精度：{{ unitDetailMap[selectedItem.unitId] }} 位小数）</span></p>
-        <p>标签：<template v-if="selectedItem.tagIds?.length">
-          <el-tag v-for="tid in selectedItem.tagIds" :key="tid" size="small" class="tag-item">{{ tagMap[tid] || tid }}</el-tag>
+        <h3 class="detail-name">{{ selectedItem.name }}</h3>
+        <p class="detail-row">类型：{{ selectedItem.managementType === 'CONSUMABLE' ? '消耗品' : '耐用品' }}</p>
+        <p class="detail-row">状态：{{ selectedItem.status === 'ACTIVE' ? '活跃' : '归档' }}</p>
+        <p class="detail-row">分类：{{ categoryMap[(selectedItem.categoryId as string)] || '—' }}</p>
+        <p class="detail-row">品牌：{{ brandMap[(selectedItem.brandId as string)] || '—' }}</p>
+        <p class="detail-row">单位：{{ unitMap[selectedItem.unitId] || '—' }}<span v-if="unitDetailMap[selectedItem.unitId]">（精度：{{ unitDetailMap[selectedItem.unitId] }} 位小数）</span></p>
+        <p class="detail-row">标签：<template v-if="selectedItem.tagIds?.length">
+          <el-tag v-for="tid in selectedItem.tagIds" :key="tid" size="small" effect="plain" class="tag-item">{{ tagMap[tid] || tid }}</el-tag>
         </template><template v-else>—</template></p>
         <p v-if="selectedItem.expiryReminderMode">临期提醒：{{ selectedItem.expiryReminderMode }}{{ selectedItem.expiryReminderDays?.length ? `（${selectedItem.expiryReminderDays.join(', ')} 天）` : '' }}</p>
         <p v-if="selectedItem.lowStockMode">低库存：{{ selectedItem.lowStockMode }}{{ selectedItem.lowStockThreshold ? `（阈值：${selectedItem.lowStockThreshold}）` : '' }}</p>
@@ -169,7 +174,7 @@ const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 // Lookup maps
 const categoryMap = computed(() => {
   const map: Record<string, string> = {}
-  function walk(nodes: Category[]) {
+  function walk(nodes: (Category & { children?: Category[] })[]) {
     for (const n of nodes) {
       map[n.id] = n.name
       if (n.children) walk(n.children)
@@ -298,7 +303,9 @@ async function restoreItem(item: CatalogItem) {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('zh-CN')
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 onMounted(() => {
@@ -308,20 +315,57 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.items-page {
-  padding: 20px;
-}
-.items-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
 .items-filters {
   display: flex;
   gap: 12px;
   margin-bottom: 16px;
+  padding: 10px 12px;
   flex-wrap: wrap;
+  background: var(--zj-surface-sunken);
+  border-radius: var(--zj-radius-md);
+}
+.filter-search {
+  width: 200px;
+}
+.items-filters .el-select {
+  width: 130px;
+}
+.items-filters .el-tree-select {
+  width: 160px;
+}
+.items-table {
+  border-radius: var(--zj-radius-md);
+  overflow: hidden;
+  box-shadow: var(--zj-shadow-sm);
+}
+.cell-secondary {
+  color: var(--zj-ink-600);
+}
+.table-empty {
+  padding: 40px 0 44px;
+}
+.table-empty-title {
+  margin: 0;
+  font-family: var(--zj-serif);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--zj-ink-900);
+}
+.table-empty-hint {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--zj-ink-400);
+}
+.detail-name {
+  margin: 0 0 12px;
+  font-family: var(--zj-serif);
+  font-size: 20px;
+  font-weight: 600;
+}
+.detail-row {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.7;
 }
 .detail-actions {
   margin-top: 20px;
@@ -332,16 +376,16 @@ onMounted(() => {
   width: 36px;
   height: 36px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--zj-radius-sm);
 }
 .cover-placeholder {
-  color: #c0c4cc;
+  color: var(--zj-ink-300);
 }
 .detail-cover {
   width: 100%;
   max-height: 200px;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: var(--zj-radius-md);
   margin-bottom: 12px;
 }
 .tag-item {

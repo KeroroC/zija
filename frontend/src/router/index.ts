@@ -11,21 +11,23 @@ import AuditLogPage from "../views/AuditLogPage.vue";
 import ItemsPage from "../views/ItemsPage.vue";
 import LocationsPage from "../views/LocationsPage.vue";
 import CatalogSettingsPage from "../views/CatalogSettingsPage.vue";
+import NotFoundPage from "../views/NotFoundPage.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", name: "home", component: SystemStatusView },
-    { path: "/bootstrap", name: "bootstrap", component: BootstrapPage },
-    { path: "/login", name: "login", component: LoginPage },
-    { path: "/invitation/redeem", name: "invitation-redeem", component: InvitationRedeemPage },
-    { path: "/members", name: "members", component: MembersPage },
-    { path: "/audit-logs", name: "audit-logs", component: AuditLogPage },
-    { path: "/profile", name: "profile", component: ProfilePage },
-    { path: "/owner-recovery", name: "owner-recovery", component: OwnerRecoveryPage },
-    { path: "/items", name: "items", component: ItemsPage },
-    { path: "/locations", name: "locations", component: LocationsPage },
-    { path: "/settings/catalog", name: "catalog-settings", component: CatalogSettingsPage }
+    { path: "/", name: "home", component: SystemStatusView, meta: { title: "系统状态" } },
+    { path: "/bootstrap", name: "bootstrap", component: BootstrapPage, meta: { title: "初始化" } },
+    { path: "/login", name: "login", component: LoginPage, meta: { title: "登录" } },
+    { path: "/invitation/redeem", name: "invitation-redeem", component: InvitationRedeemPage, meta: { title: "加入家庭" } },
+    { path: "/members", name: "members", component: MembersPage, meta: { title: "成员管理" } },
+    { path: "/audit-logs", name: "audit-logs", component: AuditLogPage, meta: { title: "审计日志" } },
+    { path: "/profile", name: "profile", component: ProfilePage, meta: { title: "个人资料" } },
+    { path: "/owner-recovery", name: "owner-recovery", component: OwnerRecoveryPage, meta: { title: "重置密码" } },
+    { path: "/items", name: "items", component: ItemsPage, meta: { title: "物品资料" } },
+    { path: "/locations", name: "locations", component: LocationsPage, meta: { title: "位置管理" } },
+    { path: "/settings/catalog", name: "catalog-settings", component: CatalogSettingsPage, meta: { title: "目录设置" } },
+    { path: "/:pathMatch(.*)*", name: "not-found", component: NotFoundPage, meta: { title: "页面不存在" } }
   ]
 });
 
@@ -44,4 +46,9 @@ router.beforeEach(async (to) => {
   if (!session.authenticated) {
     return { name: "login", query: { redirect: to.fullPath } };
   }
+});
+
+router.afterEach((to) => {
+  const title = to.meta.title as string | undefined;
+  document.title = title ? `${title} · 知家` : "知家 · zija";
 });

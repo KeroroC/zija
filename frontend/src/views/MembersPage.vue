@@ -1,8 +1,8 @@
 <template>
-  <div class="members-page">
+  <div class="page-container">
     <div class="page-header">
       <div>
-        <h2>成员管理</h2>
+        <h2 class="page-title">成员管理</h2>
         <p class="page-subtitle">管理家庭成员的角色与权限</p>
       </div>
       <el-button v-if="canInvite" type="primary" data-testid="create-invite" @click="openInvite">
@@ -37,12 +37,12 @@
       </el-table-column>
       <el-table-column label="角色" width="120">
         <template #default="{ row }">
-          <span class="badge" :class="'badge-role-' + row.role.toLowerCase()">{{ roleLabel(row.role) }}</span>
+          <span class="zj-badge" :class="roleBadgeClass(row.role)">{{ roleLabel(row.role) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
-          <span class="status-dot" :class="row.status === 'ACTIVE' ? 'dot-active' : 'dot-inactive'"></span>
+          <span class="zj-dot" :class="row.status === 'ACTIVE' ? 'zj-dot-pine' : 'zj-dot-off'"></span>
           {{ row.status === "ACTIVE" ? "活跃" : "已停用" }}
         </template>
       </el-table-column>
@@ -138,7 +138,7 @@ const isOwner = computed(() => session.role === "OWNER");
 const isAdmin = computed(() => session.role === "OWNER" || session.role === "ADMIN");
 const canInvite = computed(() => isAdmin.value);
 
-const AVATAR_COLORS = ["#264f46", "#397262", "#4a9a80", "#1a5c4a", "#2e7d60"];
+const AVATAR_COLORS = ["#1C3A2F", "#24493B", "#2E5D4B"];
 
 function initials(m: MemberInfo): string {
   return (m.displayName || m.username).slice(0, 1).toUpperCase();
@@ -152,6 +152,14 @@ function avatarColor(m: MemberInfo): string {
 
 function roleLabel(role: string): string {
   return { OWNER: "所有者", ADMIN: "管理员", MEMBER: "成员" }[role] ?? role;
+}
+
+function roleBadgeClass(role: string): string {
+  return {
+    OWNER: "zj-badge-pine",
+    ADMIN: "zj-badge-ink",
+    MEMBER: "zj-badge-plain"
+  }[role] ?? "zj-badge-plain";
 }
 
 function rowClass({ row }: { row: MemberInfo }) {
@@ -262,45 +270,30 @@ onMounted(load);
 </script>
 
 <style scoped>
-.members-page {
-  max-width: 960px;
-  margin: 2rem auto;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-}
-
-.page-header h2 {
-  margin: 0;
-}
-
-.page-subtitle {
-  margin: 4px 0 0;
-  color: #65756f;
-  font-size: 14px;
-}
-
 .invite-alert {
   margin-bottom: 16px;
 }
 
 .invite-link {
+  display: inline-block;
   word-break: break-all;
   margin: 0.5rem 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 6px 10px;
+  border-radius: var(--zj-radius-sm);
+  background: var(--zj-surface-sunken);
+  font-family: var(--zj-mono);
+  font-size: 12.5px;
+  color: var(--zj-ink-600);
 }
 
 .members-table {
-  border-radius: 12px;
+  border-radius: var(--zj-radius-md);
   overflow: hidden;
+  box-shadow: var(--zj-shadow-sm);
 }
 
-.members-table :deep(.row-inactive) {
-  opacity: 0.55;
+.members-table :deep(.row-inactive) td {
+  color: var(--zj-ink-400);
 }
 
 .member-cell {
@@ -310,12 +303,12 @@ onMounted(load);
 }
 
 .cell-avatar {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   color: #ffffff;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -328,53 +321,13 @@ onMounted(load);
 }
 
 .cell-name {
-  font-weight: 600;
-  color: #20312c;
+  font-weight: 500;
+  color: var(--zj-ink-900);
 }
 
 .cell-username {
   font-size: 12px;
-  color: #65756f;
-}
-
-.badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.badge-role-owner {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.badge-role-admin {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.badge-role-member {
-  background: #f0fdf4;
-  color: #166534;
-}
-
-.status-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 6px;
-  vertical-align: middle;
-}
-
-.dot-active {
-  background: #22c55e;
-}
-
-.dot-inactive {
-  background: #9ca3af;
+  color: var(--zj-ink-400);
 }
 
 .action-btns {

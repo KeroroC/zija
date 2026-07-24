@@ -1,7 +1,12 @@
 <template>
-  <div class="bootstrap-page">
-    <el-card>
-      <h2>初始化你的家庭</h2>
+  <div class="auth-stage">
+    <div class="auth-card auth-card-wide">
+      <div class="auth-brand">
+        <div class="auth-brand-cn">知家</div>
+        <div class="auth-brand-en">HOUSEHOLD LEDGER</div>
+        <div class="auth-brand-rule"></div>
+      </div>
+      <h2 class="auth-title">初始化你的家庭</h2>
       <el-form :model="form" label-position="top" @submit.prevent="submit">
         <el-form-item label="家庭名称">
           <el-input v-model="form.householdName" required />
@@ -22,7 +27,8 @@
           创建家庭
         </el-button>
       </el-form>
-    </el-card>
+    </div>
+    <p class="auth-foot">家庭物品管理系统 · 让每一件物品都有迹可循</p>
   </div>
 </template>
 
@@ -63,8 +69,4 @@ async function submit() {
 </script>
 
 <style scoped>
-.bootstrap-page {
-  max-width: 480px;
-  margin: 4rem auto;
-}
 </style>

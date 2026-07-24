@@ -1,7 +1,7 @@
 <template>
-  <div class="profile-page">
+  <div class="page-container-narrow">
     <el-card>
-      <h2>修改密码</h2>
+      <h2 class="auth-title">修改密码</h2>
       <el-form :model="form" label-position="top" @submit.prevent="submit">
         <el-form-item label="当前密码">
           <el-input v-model="form.currentPassword" type="password" required show-password />
@@ -43,8 +43,4 @@ async function submit() {
 </script>
 
 <style scoped>
-.profile-page {
-  max-width: 400px;
-  margin: 4rem auto;
-}
 </style>

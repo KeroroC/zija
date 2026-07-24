@@ -1,7 +1,10 @@
 <template>
-  <div class="catalog-settings-page">
+  <div class="page-container catalog-settings-page">
     <div class="page-header">
-      <h2>目录设置</h2>
+      <div>
+        <h2 class="page-title">目录设置</h2>
+        <p class="page-subtitle">分类、品牌、单位与标签的字典维护</p>
+      </div>
     </div>
 
     <el-tabs v-model="activeTab">
@@ -87,7 +90,7 @@
           <el-table-column label="操作" width="260" fixed="right">
             <template #default="{ row }">
               <el-button size="small" text @click="openRename('unit', row)">重命名</el-button>
-              <el-button size="small" text @click="openDecimalScaleDialog(row)">修改小数位</el-button>
+              <el-button size="small" text @click="openDecimalScaleDialog(row as Unit)">修改小数位</el-button>
               <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveUnit(row)">归档</el-button>
               <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreUnit(row)">恢复</el-button>
             </template>
@@ -686,12 +689,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.catalog-settings-page {
-  padding: 20px;
-}
-.page-header {
-  margin-bottom: 20px;
-}
 .tab-toolbar {
   display: flex;
   align-items: center;

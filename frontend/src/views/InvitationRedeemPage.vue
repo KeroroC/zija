@@ -1,10 +1,15 @@
 <template>
-  <div class="invitation-page">
-    <el-card>
-      <h2>加入家庭</h2>
+  <div class="auth-stage">
+    <div class="auth-card auth-card-wide">
+      <div class="auth-brand">
+        <div class="auth-brand-cn">知家</div>
+        <div class="auth-brand-en">HOUSEHOLD LEDGER</div>
+        <div class="auth-brand-rule"></div>
+      </div>
+      <h2 class="auth-title">加入家庭</h2>
       <template v-if="info?.valid">
-        <p>家庭：{{ info.householdName }}</p>
-        <p>角色：{{ info.role }}</p>
+        <p class="invite-meta">家庭：{{ info.householdName }}</p>
+        <p class="invite-meta">角色：{{ info.role }}</p>
         <el-form :model="form" label-position="top" @submit.prevent="redeem">
           <el-form-item label="用户名">
             <el-input v-model="form.username" required />
@@ -22,9 +27,10 @@
         </el-form>
       </template>
       <template v-else>
-        <p>邀请链接无效或已过期。</p>
+        <p class="invite-meta">邀请链接无效或已过期。</p>
       </template>
-    </el-card>
+    </div>
+    <p class="auth-foot">家庭物品管理系统 · 让每一件物品都有迹可循</p>
   </div>
 </template>
 
@@ -83,8 +89,9 @@ async function redeem() {
 </script>
 
 <style scoped>
-.invitation-page {
-  max-width: 480px;
-  margin: 4rem auto;
+.invite-meta {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--zj-ink-600);
 }
 </style>

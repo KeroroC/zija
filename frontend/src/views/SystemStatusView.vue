@@ -29,8 +29,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section>
-    <h1>系统状态</h1>
+  <section class="page-container">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">系统状态</h1>
+        <p class="page-subtitle">后端与数据库连接情况</p>
+      </div>
+    </div>
 
     <el-card v-if="loading">
       <el-skeleton :rows="4" animated />

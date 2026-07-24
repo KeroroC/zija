@@ -37,7 +37,8 @@ describe("AppShell", () => {
       username: "admin",
       displayName: "Admin",
       role: "ADMIN",
-      status: "ACTIVE"
+      status: "ACTIVE",
+      householdName: "测试家庭"
     };
 
     const router = createRouter({
@@ -109,7 +110,8 @@ describe("AppShell", () => {
       username: "admin",
       displayName: "Admin",
       role: "ADMIN",
-      status: "ACTIVE"
+      status: "ACTIVE",
+      householdName: "测试家庭"
     };
     vi.spyOn(session, "logout").mockRejectedValue(new Error("logout unavailable"));
     const router = createRouter({

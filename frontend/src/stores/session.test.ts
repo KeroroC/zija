@@ -40,7 +40,8 @@ const currentMember: CurrentMember = {
   username: "owner",
   displayName: "户主",
   role: "OWNER",
-  status: "ACTIVE"
+  status: "ACTIVE",
+  householdName: "测试家庭"
 };
 
 const initializeCsrfMock = vi.mocked(authApi.initializeCsrf);

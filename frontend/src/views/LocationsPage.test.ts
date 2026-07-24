@@ -107,8 +107,8 @@ describe("LocationsPage", () => {
     wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
     await flushPromises();
 
-    // Click the "+" button on the root node to open create-child dialog
-    const createButtons = wrapper.findAll("button").filter((b) => b.text() === "+");
+    // Click the add button on the root node to open create-child dialog
+    const createButtons = wrapper.findAll('[data-testid="loc-add"]');
     await createButtons[0].trigger("click");
     await flushPromises();
 
@@ -134,8 +134,8 @@ describe("LocationsPage", () => {
     wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
     await flushPromises();
 
-    // Click the rename (pencil) button on the root node (first in DOM order)
-    const renameButtons = wrapper.findAll("button").filter((b) => b.text() === "✏");
+    // Click the rename button on the root node (first in DOM order)
+    const renameButtons = wrapper.findAll('[data-testid="loc-rename"]');
     await renameButtons[0].trigger("click");
     await flushPromises();
 
@@ -160,7 +160,7 @@ describe("LocationsPage", () => {
     await flushPromises();
 
     // Click the move button on the root node (first in DOM order)
-    const moveButtons = wrapper.findAll("button").filter((b) => b.text() === "↗");
+    const moveButtons = wrapper.findAll('[data-testid="loc-move"]');
     await moveButtons[0].trigger("click");
     await flushPromises();
 
@@ -193,7 +193,7 @@ describe("LocationsPage", () => {
 
     // The root node "家" is everReferenced so has no delete button.
     // The child node "卧室" (loc-child) has a delete button.
-    const deleteButtons = wrapper.findAll("button").filter((b) => b.text() === "×");
+    const deleteButtons = wrapper.findAll('[data-testid="loc-delete"]');
     expect(deleteButtons).toHaveLength(1);
     await deleteButtons[0].trigger("click");
     await flushPromises();
@@ -215,7 +215,7 @@ describe("LocationsPage", () => {
     await flushPromises();
 
     // Open create dialog
-    const createButtons = wrapper.findAll("button").filter((b) => b.text() === "+");
+    const createButtons = wrapper.findAll('[data-testid="loc-add"]');
     await createButtons[0].trigger("click");
     await flushPromises();
 
@@ -262,8 +262,8 @@ describe("LocationsPage", () => {
     wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
     await flushPromises();
 
-    // Click the delete button (×) on the parent node
-    const deleteButtons = wrapper.findAll("button").filter((b) => b.text() === "×");
+    // Click the delete button on the parent node
+    const deleteButtons = wrapper.findAll('[data-testid="loc-delete"]');
     expect(deleteButtons.length).toBeGreaterThan(0);
     await deleteButtons[0].trigger("click");
     await flushPromises();

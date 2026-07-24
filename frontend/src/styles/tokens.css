@@ -1,0 +1,133 @@
+/* 知家设计令牌（松间账册） + Element Plus 主题变量覆盖
+ * 规范来源：docs/design/redesign-visual-spec.md §4
+ */
+
+:root {
+  /* ---- 知家令牌 ---- */
+  --zj-canvas: #F6F5F1;
+  --zj-surface: #FFFFFF;
+  --zj-surface-sunken: #EFEDE6;
+  --zj-ink-900: #1F2721;
+  --zj-ink-600: #5A655D;
+  --zj-ink-400: #98A29A;
+  --zj-ink-300: #B9BDB5;
+  --zj-line: #E5E3DB;
+  --zj-line-strong: #D6D3C8;
+
+  --zj-pine-800: #1C3A2F;
+  --zj-pine-700: #24493B;
+  --zj-pine-600: #2E5D4B;
+  --zj-pine-500: #3D7260;
+  --zj-pine-100: #DDE9E2;
+  --zj-pine-50: #EFF4F0;
+
+  --zj-warning: #9C7426;
+  --zj-danger: #A3492F;
+
+  --zj-on-dark-100: #E8EEE9;
+  --zj-on-dark-400: #93A99C;
+
+  --zj-shadow-sm: 0 1px 2px rgba(31, 39, 33, 0.05);
+  --zj-shadow-md:
+    0 1px 2px rgba(31, 39, 33, 0.04),
+    0 8px 24px rgba(31, 39, 33, 0.07);
+  --zj-shadow-lg:
+    0 2px 6px rgba(28, 58, 47, 0.06),
+    0 24px 48px rgba(28, 58, 47, 0.12);
+
+  --zj-radius-sm: 6px;
+  --zj-radius-md: 10px;
+  --zj-radius-lg: 14px;
+
+  --zj-serif: "Noto Serif SC Variable", "Noto Serif SC", "Songti SC", "STSong", serif;
+  --zj-sans: "Inter Variable", "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --zj-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --zj-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --zj-dur-fast: 150ms;
+  --zj-dur-med: 240ms;
+
+  /* ---- Element Plus 变量覆盖 ---- */
+  --el-font-family: var(--zj-sans);
+
+  --el-color-primary: var(--zj-pine-600);
+  --el-color-primary-light-3: #6D8E81;
+  --el-color-primary-light-5: #96AEA5;
+  --el-color-primary-light-7: #C0CEC9;
+  --el-color-primary-light-8: #D5DFDB;
+  --el-color-primary-light-9: #EAEFED;
+  --el-color-primary-dark-2: #254A3C;
+
+  --el-color-success: var(--zj-pine-600);
+  --el-color-success-light-3: #6D8E81;
+  --el-color-success-light-5: #96AEA5;
+  --el-color-success-light-7: #C0CEC9;
+  --el-color-success-light-8: #D5DFDB;
+  --el-color-success-light-9: #EAEFED;
+  --el-color-success-dark-2: #254A3C;
+
+  --el-color-warning: var(--zj-warning);
+  --el-color-warning-light-3: #BA9E67;
+  --el-color-warning-light-5: #CDB993;
+  --el-color-warning-light-7: #E5D8C0;
+  --el-color-warning-light-8: #EEE4D3;
+  --el-color-warning-light-9: #F6F1E9;
+  --el-color-warning-dark-2: #7D5D1E;
+
+  --el-color-danger: var(--zj-danger);
+  --el-color-danger-light-3: #BF806D;
+  --el-color-danger-light-5: #D1A497;
+  --el-color-danger-light-7: #E3C9C1;
+  --el-color-danger-light-8: #EBD9D4;
+  --el-color-danger-light-9: #F6EDEA;
+  --el-color-danger-dark-2: #823A26;
+
+  --el-color-error: var(--zj-danger);
+  --el-color-error-light-3: #BF806D;
+  --el-color-error-light-5: #D1A497;
+  --el-color-error-light-7: #E3C9C1;
+  --el-color-error-light-8: #EBD9D4;
+  --el-color-error-light-9: #F6EDEA;
+  --el-color-error-dark-2: #823A26;
+
+  --el-text-color-primary: var(--zj-ink-900);
+  --el-text-color-regular: var(--zj-ink-900);
+  --el-text-color-secondary: var(--zj-ink-600);
+  --el-text-color-placeholder: var(--zj-ink-400);
+  --el-text-color-disabled: var(--zj-ink-300);
+
+  --el-border-color: var(--zj-line-strong);
+  --el-border-color-light: var(--zj-line);
+  --el-border-color-lighter: #ECEAE2;
+  --el-border-color-extra-light: #F1EFE9;
+
+  --el-fill-color: var(--zj-surface-sunken);
+  --el-fill-color-light: #F3F1EB;
+  --el-fill-color-lighter: #F8F7F3;
+  --el-fill-color-extra-light: #FBFAF7;
+  --el-fill-color-blank: var(--zj-surface);
+
+  --el-bg-color: var(--zj-surface);
+  --el-bg-color-page: var(--zj-canvas);
+  --el-bg-color-overlay: var(--zj-surface);
+
+  --el-border-radius-base: var(--zj-radius-sm);
+  --el-border-radius-small: 4px;
+  --el-border-radius-round: 999px;
+
+  --el-box-shadow: var(--zj-shadow-md);
+  --el-box-shadow-light: var(--zj-shadow-sm);
+  --el-box-shadow-lighter: var(--zj-shadow-sm);
+  --el-box-shadow-dark: var(--zj-shadow-lg);
+
+  --el-disabled-bg-color: var(--zj-surface-sunken);
+  --el-disabled-text-color: var(--zj-ink-300);
+  --el-disabled-border-color: var(--zj-line);
+
+  /* 表格 */
+  --el-table-header-text-color: var(--zj-ink-400);
+  --el-table-header-bg-color: var(--zj-surface);
+  --el-table-row-hover-bg-color: var(--zj-pine-50);
+  --el-table-border-color: var(--zj-line);
+  --el-table-tr-bg-color: var(--zj-surface);
+}

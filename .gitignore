@@ -2,11 +2,15 @@
 .superpowers/
 .worktrees/
 
+# design artifacts (高保真稿与 PNG 仅供评审使用，不入库)
+docs/design/mockups/
+
 # IDE and operating system files
 .idea/
 *.iml
 .vscode/
 .DS_Store
+docs/design/.DS_Store
 
 # Secrets and local configuration
 .env

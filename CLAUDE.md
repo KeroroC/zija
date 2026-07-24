@@ -92,7 +92,7 @@ src/
   views/        # Page-level components
   router/       # Vue Router configuration
   types/        # TypeScript interfaces for API responses
-  styles/       # Global CSS
+  styles/       # Global CSS — tokens.css (design tokens + Element Plus variable overrides) and index.css (shell, components)
   test/         # Test setup
 ```
 

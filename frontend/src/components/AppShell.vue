@@ -13,32 +13,69 @@
         class="app-menu"
         :default-active="$route.path"
       >
-        <el-menu-item index="/">首页</el-menu-item>
-        <el-menu-item index="/members">成员管理</el-menu-item>
-        <el-menu-item index="/audit-logs">审计日志</el-menu-item>
-        <el-menu-item index="/profile">个人资料</el-menu-item>
-        <el-menu-item index="/items">物品资料</el-menu-item>
-        <el-menu-item index="/inventory" disabled>库存管理</el-menu-item>
-        <el-menu-item index="/locations">位置管理</el-menu-item>
-        <el-menu-item index="/reminders" disabled>提醒中心</el-menu-item>
-        <el-menu-item index="/reports" disabled>报表与导出</el-menu-item>
-        <el-menu-item v-if="session.role === 'OWNER' || session.role === 'ADMIN'" index="/settings/catalog">家庭设置</el-menu-item>
-        <el-menu-item v-else index="/settings" disabled>家庭设置</el-menu-item>
+        <el-menu-item index="/">
+          <el-icon><House /></el-icon>
+          <span>首页</span>
+        </el-menu-item>
+        <div class="nav-group-label">物品</div>
+        <el-menu-item index="/items">
+          <el-icon><Box /></el-icon>
+          <span>物品资料</span>
+        </el-menu-item>
+        <el-menu-item index="/inventory" disabled>
+          <el-icon><Files /></el-icon>
+          <span>库存管理</span>
+        </el-menu-item>
+        <el-menu-item index="/locations">
+          <el-icon><Location /></el-icon>
+          <span>位置管理</span>
+        </el-menu-item>
+        <el-menu-item index="/reminders" disabled>
+          <el-icon><Bell /></el-icon>
+          <span>提醒中心</span>
+        </el-menu-item>
+        <el-menu-item index="/reports" disabled>
+          <el-icon><TrendCharts /></el-icon>
+          <span>报表与导出</span>
+        </el-menu-item>
+        <div class="nav-group-label">家庭</div>
+        <el-menu-item index="/members">
+          <el-icon><User /></el-icon>
+          <span>成员管理</span>
+        </el-menu-item>
+        <el-menu-item index="/audit-logs">
+          <el-icon><Document /></el-icon>
+          <span>审计日志</span>
+        </el-menu-item>
+        <el-menu-item index="/profile">
+          <el-icon><Postcard /></el-icon>
+          <span>个人资料</span>
+        </el-menu-item>
+        <el-menu-item v-if="session.role === 'OWNER' || session.role === 'ADMIN'" index="/settings/catalog">
+          <el-icon><Setting /></el-icon>
+          <span>家庭设置</span>
+        </el-menu-item>
+        <el-menu-item v-else index="/settings" disabled>
+          <el-icon><Setting /></el-icon>
+          <span>家庭设置</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
     <el-container>
-      <el-header class="app-header">
+      <el-header class="app-header" height="56px">
         <span class="header-context">家庭：{{ householdName }}</span>
-        <el-tag effect="plain" type="success">
-          {{ roleLabel }}
-        </el-tag>
-        <el-button
-          size="small"
-          @click="onLogout"
-        >
-          登出
-        </el-button>
+        <div class="header-right">
+          <span class="zj-badge zj-badge-plain">{{ roleLabel }}</span>
+          <el-button
+            size="small"
+            text
+            @click="onLogout"
+          >
+            <el-icon style="margin-right: 4px"><SwitchButton /></el-icon>
+            登出
+          </el-button>
+        </div>
       </el-header>
       <el-main class="app-main">
         <router-view />
@@ -51,6 +88,19 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
+import {
+  House,
+  Box,
+  Files,
+  Location,
+  Bell,
+  TrendCharts,
+  User,
+  Document,
+  Postcard,
+  Setting,
+  SwitchButton
+} from "@element-plus/icons-vue";
 import { useSessionStore } from "../stores/session";
 import { householdApi } from "../api/household";
 

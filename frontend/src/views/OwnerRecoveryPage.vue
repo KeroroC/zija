@@ -1,9 +1,14 @@
 <template>
-  <div class="recovery-page">
-    <el-card>
-      <h2>重置所有者密码</h2>
+  <div class="auth-stage">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="auth-brand-cn">知家</div>
+        <div class="auth-brand-en">HOUSEHOLD LEDGER</div>
+        <div class="auth-brand-rule"></div>
+      </div>
+      <h2 class="auth-title">重置所有者密码</h2>
       <template v-if="info?.valid">
-        <p>请为所有者账户设置新密码。</p>
+        <p class="recovery-meta">请为所有者账户设置新密码。</p>
         <el-form :model="form" label-position="top" @submit.prevent="reset">
           <el-form-item label="新密码">
             <el-input v-model="form.newPassword" type="password" required show-password />
@@ -17,9 +22,10 @@
         </el-form>
       </template>
       <template v-else-if="info !== null">
-        <p>恢复链接无效或已过期。</p>
+        <p class="recovery-meta">恢复链接无效或已过期。</p>
       </template>
-    </el-card>
+    </div>
+    <p class="auth-foot">家庭物品管理系统 · 让每一件物品都有迹可循</p>
   </div>
 </template>
 
@@ -82,8 +88,9 @@ async function reset() {
 </script>
 
 <style scoped>
-.recovery-page {
-  max-width: 400px;
-  margin: 4rem auto;
+.recovery-meta {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--zj-ink-600);
 }
 </style>
