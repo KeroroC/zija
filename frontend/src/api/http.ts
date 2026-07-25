@@ -91,10 +91,11 @@ export function clearCsrf(): void {
   csrfPromise = null;
 }
 
-async function request<T>(
+async function coreRequest<T>(
   method: string,
   path: string,
-  body?: unknown
+  body?: unknown,
+  extra?: Record<string, string>
 ): Promise<T> {
   if (method !== "GET") {
     await ensureCsrf();
@@ -111,6 +112,9 @@ async function request<T>(
     csrfToken = cookieToken;
   } else if (csrfToken && method !== "GET") {
     headers["X-XSRF-TOKEN"] = csrfToken;
+  }
+  if (extra) {
+    Object.assign(headers, extra);
   }
 
   const response = await fetch(baseUrl() + path, {
@@ -148,18 +152,18 @@ async function request<T>(
 }
 
 export async function getJson<T>(path: string): Promise<T> {
-  return request<T>("GET", path);
+  return coreRequest<T>("GET", path);
 }
 
 export async function postJson<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>("POST", path, body);
+  return coreRequest<T>("POST", path, body);
 }
 
 export async function postJsonAndRefreshCsrf<T>(
   path: string,
   body?: unknown
 ): Promise<T> {
-  const result = await request<T>("POST", path, body);
+  const result = await coreRequest<T>("POST", path, body);
   clearCsrf();
   try {
     await ensureCsrf();
@@ -170,9 +174,25 @@ export async function postJsonAndRefreshCsrf<T>(
 }
 
 export async function putJson<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>("PUT", path, body);
+  return coreRequest<T>("PUT", path, body);
 }
 
 export async function deleteJson<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>("DELETE", path, body);
+  return coreRequest<T>("DELETE", path, body);
+}
+
+export async function postJsonWithIdempotency<T>(
+  path: string,
+  body: unknown,
+  idempotencyKey: string
+): Promise<T> {
+  return coreRequest<T>("POST", path, body, { "Idempotency-Key": idempotencyKey });
+}
+
+export async function putJsonWithIdempotency<T>(
+  path: string,
+  body: unknown,
+  idempotencyKey: string
+): Promise<T> {
+  return coreRequest<T>("PUT", path, body, { "Idempotency-Key": idempotencyKey });
 }

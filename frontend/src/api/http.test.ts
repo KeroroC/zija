@@ -5,7 +5,9 @@ import {
   ensureCsrf,
   postJson,
   postJsonAndRefreshCsrf,
-  putJson
+  postJsonWithIdempotency,
+  putJson,
+  putJsonWithIdempotency
 } from "./http";
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
@@ -245,5 +247,36 @@ describe("CSRF refresh", () => {
     expect(fetchMock.mock.calls[5][1]?.headers).toMatchObject({
       "X-XSRF-TOKEN": "newest-token"
     });
+  });
+});
+
+describe("Idempotency-Key header", () => {
+  beforeEach(() => {
+    clearCsrf();
+  });
+
+  afterEach(() => {
+    clearCsrf();
+    vi.unstubAllGlobals();
+  });
+
+  it("sends Idempotency-Key header with postJsonWithIdempotency", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ token: "csrf-token" }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    await postJsonWithIdempotency("/api/v1/x", { a: 1 }, "key-123");
+    const init = fetchMock.mock.calls[1][1] as RequestInit;
+    expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("key-123");
+  });
+
+  it("sends Idempotency-Key header with putJsonWithIdempotency", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ token: "csrf-token" }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    await putJsonWithIdempotency("/api/v1/x/1", { b: 2 }, "key-456");
+    const init = fetchMock.mock.calls[1][1] as RequestInit;
+    expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("key-456");
   });
 });
