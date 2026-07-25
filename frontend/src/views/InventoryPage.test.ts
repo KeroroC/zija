@@ -22,6 +22,7 @@ vi.mock("../stores/session", () => ({
 
 vi.mock("../api/inventory", () => ({
   fetchStockPositions: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
+  fetchLots: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
   fetchMovements: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
 }));
 

@@ -29,9 +29,12 @@ export interface LotSummary {
   itemName: string
   unitName: string
   totalQuantity: string
+  purchaseDate: string | null
+  productionDate: string | null
   expiryDate: string | null
   lotNumber: string | null
   serialNumber: string | null
+  memo: string | null
   positions: {
     locationId: string
     locationName: string
