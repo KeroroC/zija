@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.inventory.internal.persistence.MovementMapper">
+
+    <select id="countReversalOf" resultType="int">
+        SELECT COUNT(*) FROM inventory_movement
+        WHERE household_id = #{householdId} AND reversal_of = #{originalId}
+    </select>
+
+    <select id="findByLot" resultType="com.zija.inventory.internal.persistence.MovementEntity">
+        SELECT id, household_id, lot_id, item_id, type, quantity, from_location_id, to_location_id,
+               reason, memo, operator_account_id, business_time, created_at, idempotency_key, reversal_of
+        FROM inventory_movement
+        WHERE household_id = #{householdId} AND lot_id = #{lotId}
+        ORDER BY created_at
+    </select>
+
+    <select id="findPage" resultType="com.zija.inventory.internal.persistence.MovementEntity">
+        SELECT id, household_id, lot_id, item_id, type, quantity, from_location_id, to_location_id,
+               reason, memo, operator_account_id, business_time, created_at, idempotency_key, reversal_of
+        FROM inventory_movement
+        <where>
+            household_id = #{householdId}
+            <if test="type != null and type != ''">AND type = #{type}</if>
+            <if test="itemId != null">AND item_id = #{itemId}</if>
+            <if test="locationId != null">AND (from_location_id = #{locationId} OR to_location_id = #{locationId})</if>
+            <if test="operatorAccountId != null">AND operator_account_id = #{operatorAccountId}</if>
+            <if test="from != null">AND business_time &gt;= #{from}</if>
+            <if test="to != null">AND business_time &lt; #{to}</if>
+        </where>
+        ORDER BY ${orderBy}
+    </select>
+
+</mapper>

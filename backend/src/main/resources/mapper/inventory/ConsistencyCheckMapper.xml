@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.inventory.internal.persistence.ConsistencyCheckMapper">
+
+    <select id="currentPositions" resultType="com.zija.inventory.internal.persistence.StockPositionEntity">
+        SELECT id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at
+        FROM inventory_stock_position
+        <where>
+            household_id = #{householdId}
+            <if test="itemId != null">
+                AND EXISTS (SELECT 1 FROM inventory_lot l WHERE l.id = inventory_stock_position.lot_id AND l.item_id = #{itemId})
+            </if>
+        </where>
+    </select>
+
+    <!--
+        按 (lot_id, location_id) 聚合流水，计算每个库存位应有的数量。
+        规则：
+          - 所有 quantity 字段恒正（V11 CHECK quantity > 0）
+          - 方向由 type + endpoint 决定
+          - to_location_id 非空 → 该位置增加（INBOUND / TRANSFER(to) / ADJUSTMENT(increase) / REVERSAL(+to)）
+          - from_location_id 非空 → 该位置减少（CONSUME / LOSS / TRANSFER(from) / ADJUSTMENT(decrease) / REVERSAL(-from)）
+    -->
+    <select id="expectedFromMovements" resultType="com.zija.inventory.internal.persistence.StockPositionEntity">
+        SELECT
+            lot_id AS lotId,
+            location_id AS locationId,
+            SUM(delta) AS quantity
+        FROM (
+            SELECT lot_id, to_location_id AS location_id,
+                   SUM(quantity) AS delta
+            FROM inventory_movement
+            WHERE household_id = #{householdId}
+              AND to_location_id IS NOT NULL
+              <if test="itemId != null">AND item_id = #{itemId}</if>
+            GROUP BY lot_id, to_location_id
+
+            UNION ALL
+
+            SELECT lot_id, from_location_id AS location_id,
+                   SUM(-quantity) AS delta
+            FROM inventory_movement
+            WHERE household_id = #{householdId}
+              AND from_location_id IS NOT NULL
+              <if test="itemId != null">AND item_id = #{itemId}</if>
+            GROUP BY lot_id, from_location_id
+        ) AS combined
+        GROUP BY lot_id, location_id
+    </select>
+
+</mapper>

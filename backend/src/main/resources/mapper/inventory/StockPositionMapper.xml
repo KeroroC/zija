@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.inventory.internal.persistence.StockPositionMapper">
+
+    <select id="lockOne" resultType="com.zija.inventory.internal.persistence.StockPositionEntity">
+        SELECT id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at
+        FROM inventory_stock_position
+        WHERE household_id = #{householdId} AND lot_id = #{lotId} AND location_id = #{locationId}
+        FOR UPDATE
+    </select>
+
+    <update id="addQuantity">
+        UPDATE inventory_stock_position
+        SET quantity = quantity + #{delta},
+            revision = revision + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE household_id = #{householdId} AND lot_id = #{lotId} AND location_id = #{locationId}
+    </update>
+
+    <update id="subtractIfSufficient">
+        UPDATE inventory_stock_position
+        SET quantity = quantity - #{delta},
+            revision = revision + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE household_id = #{householdId}
+          AND lot_id = #{lotId}
+          AND location_id = #{locationId}
+          AND quantity - #{delta} >= 0
+    </update>
+
+    <select id="findPage" resultType="com.zija.inventory.internal.persistence.StockPositionEntity">
+        SELECT sp.id, sp.household_id, sp.lot_id, sp.location_id, sp.quantity, sp.revision,
+               sp.created_at, sp.updated_at
+        FROM inventory_stock_position sp
+        <where>
+            sp.household_id = #{householdId}
+            <if test="itemId != null">AND EXISTS (SELECT 1 FROM inventory_lot l WHERE l.id = sp.lot_id AND l.item_id = #{itemId})</if>
+            <if test="locationId != null">AND sp.location_id = #{locationId}</if>
+        </where>
+        ORDER BY ${orderBy}
+    </select>
+
+</mapper>
