@@ -184,6 +184,8 @@ class InventoryController {
             @RequestParam(required = false) String type,
             @RequestParam(required = false) UUID itemId,
             @RequestParam(required = false) UUID locationId,
+            @RequestParam(required = false) LocalDate from,
+            @RequestParam(required = false) LocalDate to,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize
     ) {
@@ -191,6 +193,9 @@ class InventoryController {
         if (pageSize > 100) pageSize = 100;
         if (pageSize < 1) pageSize = 20;
         if (page < 1) page = 1;
+
+        OffsetDateTime fromDt = from != null ? from.atStartOfDay().atOffset(java.time.ZoneOffset.UTC) : null;
+        OffsetDateTime toDt = to != null ? to.plusDays(1).atStartOfDay().atOffset(java.time.ZoneOffset.UTC) : null;
 
         // If lotId is specified, use the simple findByLot; otherwise use paged query
         if (lotId != null) {
@@ -204,7 +209,7 @@ class InventoryController {
         }
 
         var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.zija.inventory.internal.persistence.MovementEntity>(page, pageSize);
-        var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, (UUID) null, (OffsetDateTime) null, (OffsetDateTime) null, "created_at DESC");
+        var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, (UUID) null, fromDt, toDt, "created_at DESC");
 
         var response = new LinkedHashMap<String, Object>();
         response.put("items", result.getRecords().stream().map(m -> {

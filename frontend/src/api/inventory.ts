@@ -81,6 +81,8 @@ export function fetchMovements(params?: {
   type?: string
   itemId?: string
   locationId?: string
+  from?: string
+  to?: string
   page?: number
   pageSize?: number
 }): Promise<MovementListResponse> {
@@ -89,6 +91,8 @@ export function fetchMovements(params?: {
   if (params?.type) query.set("type", params.type)
   if (params?.itemId) query.set("itemId", params.itemId)
   if (params?.locationId) query.set("locationId", params.locationId)
+  if (params?.from) query.set("from", params.from)
+  if (params?.to) query.set("to", params.to)
   if (params?.page) query.set("page", String(params.page))
   if (params?.pageSize) query.set("pageSize", String(params.pageSize))
   const qs = query.toString()

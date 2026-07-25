@@ -28,10 +28,17 @@ vi.mock("../api/inventory", () => ({
 
 vi.mock("../api/catalog", () => ({
   fetchItems: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
+  fetchUnits: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../api/location", () => ({
   fetchLocationTree: vi.fn().mockResolvedValue({ roots: [] }),
+}));
+
+vi.mock("../api/member", () => ({
+  memberApi: {
+    list: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 const pushMock = vi.fn();
