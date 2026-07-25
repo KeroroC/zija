@@ -8,6 +8,7 @@ import com.zija.inventory.InventoryApi;
 import com.zija.inventory.internal.persistence.LotEntity;
 import com.zija.inventory.internal.persistence.LotMapper;
 import com.zija.inventory.internal.persistence.MovementMapper;
+import com.zija.inventory.internal.persistence.StockPositionEntity;
 import com.zija.inventory.internal.persistence.StockPositionMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
@@ -91,7 +92,7 @@ class InventoryController {
         if (pageSize < 1) pageSize = 20;
         if (page < 1) page = 1;
 
-        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, pageSize);
+        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<StockPositionEntity>(page, pageSize);
         var result = stockPositionMapper.findPage(pageObj, member.householdId(), itemId, locationId, "sp.updated_at DESC");
 
         var response = new LinkedHashMap<String, Object>();
@@ -130,7 +131,7 @@ class InventoryController {
                 .eq(LotEntity::getHouseholdId, member.householdId())
                 .eq(itemId != null, LotEntity::getItemId, itemId)
                 .orderByDesc(LotEntity::getCreatedAt);
-        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, pageSize);
+        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<LotEntity>(page, pageSize);
         var result = lotMapper.selectPage(pageObj, wrapper);
 
         var response = new LinkedHashMap<String, Object>();

@@ -23,4 +23,22 @@
         FOR UPDATE
     </select>
 
+    <insert id="insertIgnore">
+        INSERT INTO inventory_idempotency_record
+            (id, household_id, idempotency_key, request_hash, movement_id, response_payload, created_at)
+        VALUES
+            (#{entity.id}, #{entity.householdId}, #{entity.idempotencyKey}, #{entity.requestHash},
+             #{entity.movementId},
+             #{entity.responsePayload, typeHandler=com.zija.system.internal.persistence.JsonbTypeHandler},
+             #{entity.createdAt})
+        ON CONFLICT (household_id, idempotency_key) DO NOTHING
+    </insert>
+
+    <update id="updateResult">
+        UPDATE inventory_idempotency_record
+        SET movement_id = #{movementId},
+            response_payload = #{responsePayload, typeHandler=com.zija.system.internal.persistence.JsonbTypeHandler}
+        WHERE household_id = #{householdId} AND idempotency_key = #{key}
+    </update>
+
 </mapper>
