@@ -40,7 +40,7 @@ make recover-owner           # Generate owner recovery link
 ## Tech Stack
 
 - **Backend:** Java 25, Spring Boot 4.1.x, Spring Modulith 2.0.5, MyBatis-Plus 3.5.16, Flyway, PostgreSQL 17
-- **Frontend:** Vue 3, TypeScript, Vite 7, Vue Router 4, Pinia 3, Element Plus, Vitest, Playwright
+- **Frontend:** Vue 3, TypeScript, Vite 7, Vue Router 4, Pinia 3, Element Plus, Vitest, Playwright (e2e)
 - **Infra:** Docker Compose (postgres + app + web/nginx), Maven Wrapper, npm
 
 ## Architecture
@@ -59,7 +59,7 @@ com.zija.<module>/
     persistence/            # Mapper, Entity, XML — module-internal
 ```
 
-Existing modules: `system` (health check, installation info, audit), `identity` (auth, users), `household` (family management), `catalog` (item categories), `location` (storage places), `file` (file storage). Planned: `inventory`, `reminder`, `reporting`.
+Existing modules: `system` (health check, installation info, audit), `identity` (auth, users, sessions), `household` (family management, bootstrap, invitations), `catalog` (item categories), `location` (storage places), `file` (file storage), `inventory` (lots, stock movements, stocktake, idempotency, consistency checks). Planned: `reminder`, `reporting`.
 
 **Rules:**
 - External modules may only depend on another module's public `Api` interface and its public DTOs/records.
@@ -87,9 +87,10 @@ Existing modules: `system` (health check, installation info, audit), `identity` 
 
 ```
 src/
-  api/          # HTTP client (http.ts) and API functions (system.ts)
+  api/          # HTTP client (http.ts) + domain API modules (auth, catalog, file, household, inventory, invitation, location, member, owner-recovery, audit)
   components/   # Shared components (AppShell.vue)
-  views/        # Page-level components
+  views/        # Page-level components — see inventory/ subdirectory for stock/lot/movement/stocktake views
+  stores/       # Pinia stores (session.ts — auth/session state)
   router/       # Vue Router configuration
   types/        # TypeScript interfaces for API responses
   styles/       # Global CSS — tokens.css (design tokens + Element Plus variable overrides) and index.css (shell, components)
@@ -106,7 +107,7 @@ src/
 - All business endpoints under `/api/v1`.
 - Errors use RFC 7807 Problem Details with stable `errorCode`, `requestId`, and field-level validation errors.
 - `X-Request-Id` header is generated per request (UUID) if not supplied or if the supplied value is unsafe; it appears in response headers, MDC logging, and error responses.
-- Spring Security currently permits only `GET /api/v1/system/info` and actuator health endpoints; all other requests are denied. Auth will be added in the identity module phase.
+- Spring Security uses session-based auth. Permit-all endpoints: login (`POST /api/v1/auth/login`), CSRF (`GET /api/v1/auth/csrf`), household bootstrap/status, invitation inspect/redeem, owner recovery, system info, Swagger UI, actuator health. All other requests require authentication.
 
 ### Environment Configuration
 
@@ -133,6 +134,91 @@ src/
 - Vitest with jsdom environment.
 - `@vue/test-utils` `mount()` with Element Plus as a global plugin for component tests.
 - API modules mocked via `vi.mock()` at the module level.
+
+## Visual Design (松间账册 / Pine Ledger)
+
+Design spec: `docs/design/redesign-visual-spec.md`. Mockups: `docs/design/mockups/`.
+
+**Concept:** 高端、精致、宁静 — 一本装帧克制的家庭账册，不是鲜艳的 SaaS 后台。暖白纸面底色、极低饱和度、大量留白、单一深松绿强调色。
+
+### CSS Architecture
+
+```
+src/styles/
+  tokens.css    # 设计令牌 + Element Plus --el-* 变量覆盖（唯一色源）
+  index.css     # 全局样式：导入 tokens.css，应用骨架、通用组件、Element Plus 细节调制
+```
+
+- 所有颜色/间距/圆角/阴影/字体通过 `tokens.css` 的 CSS 变量定义，**禁止在组件中硬编码色值**。
+- Element Plus 主题通过覆盖 `--el-*` 变量实现，不修改组件源码。
+- 组件样式使用 `<style scoped>`，引用 `--zj-*` 令牌。
+
+### Color System
+
+唯一强调色：**松绿（pine）**。所有灰色统一偏暖绿一族，禁止纯黑。
+
+| 令牌 | 色值 | 用途 |
+|---|---|---|
+| `--zj-canvas` | `#F6F5F1` | 主区背景（暖纸白） |
+| `--zj-surface` | `#FFFFFF` | 卡片、表格、顶栏 |
+| `--zj-surface-sunken` | `#EFEDE6` | 凹陷区、筛选条底、禁用态 |
+| `--zj-ink-900` | `#1F2721` | 主文字（带绿墨感，非纯黑） |
+| `--zj-ink-600` | `#5A655D` | 次级文字 |
+| `--zj-ink-400` | `#98A29A` | 占位、辅助 |
+| `--zj-line` | `#E5E3DB` | 发丝边框 |
+| `--zj-pine-800` | `#1C3A2F` | 侧边栏底、登录页底 |
+| `--zj-pine-600` | `#2E5D4B` | 主按钮/主色 |
+| `--zj-pine-50` | `#EFF4F0` | 行 hover 底 |
+| `--zj-warning` | `#9C7426` | 低饱和赭金（仅警告） |
+| `--zj-danger` | `#A3492F` | 低饱和砖红（仅删除/失败） |
+
+规则：不引入第二种强调色；语义色去饱和；阴影带松绿/墨色调，禁止纯黑。
+
+### Typography
+
+字体通过 `@fontsource-variable` 自托管打包（私有部署，不走 CDN）。
+
+| 角色 | 字体栈 | 用途 |
+|---|---|---|
+| 展示/标题 | `"Noto Serif SC Variable", serif` | 品牌字标、h1/h2、页标题 |
+| 界面正文 | `"Inter Variable", "PingFang SC", system-ui, sans-serif` | 组件、表格、表单 |
+| 数字/代码 | `"JetBrains Mono", ui-monospace, monospace` | 邀请链接、安装 ID、IP、表格数字列 |
+
+规则：标题用衬线体（书卷气）；表格数字列用 `font-variant-numeric: tabular-nums`。
+
+### Spacing & Layout
+
+- **4px 网格**：间距令牌 `4 / 8 / 12 / 16 / 24 / 32 / 48 / 64`。
+- **统一页面骨架**：主区 `padding: 32px 40px`；页面容器 `.page-container`（`max-width: 1120px`）；窄表单页 `.page-container-narrow`（`max-width: 440px`）。
+- **页头**：`.page-header`（flex，两端对齐）+ 衬线 `.page-title`（22px）+ `.page-subtitle`（13px），下距 24px。
+- 卡片内边距 24px；表格行高 ≥ 52px。
+
+### Radius & Shadow
+
+| 令牌 | 值 | 用途 |
+|---|---|---|
+| `--zj-radius-sm` | 6px | 输入框、按钮、标签 |
+| `--zj-radius-md` | 10px | 卡片、表格容器 |
+| `--zj-radius-lg` | 14px | 抽屉、弹窗、登录卡 |
+
+规则：容器圆角 > 内部元素圆角；优先用底色分层，边框仅 `--zj-line` 发丝级。
+
+### Animation
+
+- 缓动：`--zj-ease-out: cubic-bezier(0.22, 1, 0.36, 1)`
+- 时长：`--zj-dur-fast: 150ms`（hover/焦点），`--zj-dur-med: 240ms`（抽屉/弹窗）
+- 按钮按下 `transform: scale(0.98)`
+- 尊重 `prefers-reduced-motion`（全局关闭非必要动效）
+
+### Key UI Patterns
+
+- **深色登录/入口页**：`.auth-stage`（全屏 `--zj-pine-800` 底 + 噪点 + 微弱径向提亮）居中 `.auth-card`（实色暖白卡，`--zj-shadow-lg`）。
+- **侧边栏**：`--zj-pine-800` 底；激活项 = 4px 左指示条 + `--zj-pine-100` 文字 + 8% 白底；菜单分两组（物品/家庭），组间 `.nav-group-label`（11px 全大写）。
+- **顶栏**：56px 高；左侧家庭名；右侧角色徽章（`.zj-badge` 描边药丸）+ 登出文字按钮。
+- **全局噪点**：`body::after` 固定定位 SVG noise，3% 不透明度，`pointer-events: none`，消除平面感。
+- **可点击表格行**：`.table-clickable` → `cursor: pointer` + hover `--zj-pine-50`。
+- **徽章**：`.zj-badge`（描边药丸）+ `.zj-badge-pine` / `.zj-badge-ink` / `.zj-badge-plain`。
+- **状态点**：`.zj-dot`（7px 圆点）+ `.zj-dot-pine` / `.zj-dot-warn` / `.zj-dot-danger` / `.zj-dot-off`。
 
 ## Code Style
 
