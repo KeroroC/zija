@@ -314,6 +314,75 @@ class StockCommandServiceIntegrationTest {
         assertThat(movements.get(0).getType()).isEqualTo("CONSUME");
     }
 
+    // --- Test point 1 (loss): loss deducts stock, revision+1 ---
+    @Test
+    void loss_deductsStockAndIncrementsRevision() {
+        UUID lotId = seedLot(householdId, itemId);
+
+        // First: inbound some stock
+        newTx().executeWithoutResult(s ->
+                stockCommandService.inboundExistingLot(householdId, UUID.randomUUID(),
+                        locationId, lotId, BigDecimal.TEN, null, null));
+
+        // Lose 4 units
+        UUID accountId = seedAccount();
+        var result = newTx().execute(s ->
+                stockCommandService.loss(householdId, accountId, lotId, locationId,
+                        BigDecimal.valueOf(4), "过期报废", null, null));
+
+        assertThat(result).isNotNull();
+        assertThat(result.lotId()).isEqualTo(lotId);
+        assertThat(result.locationId()).isEqualTo(locationId);
+        assertThat(result.movementId()).isNotNull();
+        assertThat(result.quantityAfter()).isEqualByComparingTo(BigDecimal.valueOf(6));
+
+        // Verify stock position: 10 - 4 = 6, revision = 2
+        var sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(sp).isNotNull();
+        assertThat(sp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(6));
+        assertThat(sp.getRevision()).isEqualTo(2L);
+
+        // Verify LOSS movement
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(2); // INBOUND + LOSS
+        var lossMv = movements.stream()
+                .filter(m -> m.getType().equals("LOSS"))
+                .findFirst().orElseThrow();
+        assertThat(lossMv.getFromLocationId()).isEqualTo(locationId);
+        assertThat(lossMv.getToLocationId()).isNull();
+        assertThat(lossMv.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(4));
+        assertThat(lossMv.getLotId()).isEqualTo(lotId);
+        assertThat(lossMv.getReason()).isEqualTo("过期报废");
+    }
+
+    // --- Test point 2 (loss): archived items can be lost (uses requireItem, not requireActiveItem) ---
+    @Test
+    void loss_archivedItem_succeeds() {
+        UUID archivedItemId = seedArchivedItem(householdId, unitId);
+        UUID lotId = seedLot(householdId, archivedItemId);
+
+        // Seed stock position directly (can't use inboundExistingLot since it rejects archived items)
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        // Lose from archived item should succeed
+        UUID accountId = seedAccount();
+        var result = newTx().execute(s ->
+                stockCommandService.loss(householdId, accountId, lotId, locationId,
+                        BigDecimal.valueOf(3), "归档物品报废", null, null));
+
+        assertThat(result).isNotNull();
+        assertThat(result.quantityAfter()).isEqualByComparingTo(BigDecimal.valueOf(7));
+
+        // Verify LOSS movement exists
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(1);
+        assertThat(movements.get(0).getType()).isEqualTo("LOSS");
+    }
+
     // --- Helpers ---
 
     private UUID seedHousehold() {
