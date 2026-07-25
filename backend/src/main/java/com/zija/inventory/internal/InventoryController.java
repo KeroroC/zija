@@ -106,19 +106,11 @@ class InventoryController {
         if (pageSize < 1) pageSize = 20;
         if (page < 1) page = 1;
 
-        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<StockPositionEntity>(page, pageSize);
+        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.zija.inventory.internal.persistence.StockPositionWithDetails>(page, pageSize);
         var result = stockPositionMapper.findPage(pageObj, member.householdId(), itemId, locationId, "sp.updated_at DESC");
 
         var response = new LinkedHashMap<String, Object>();
-        response.put("items", result.getRecords().stream().map(sp -> {
-            var m = new LinkedHashMap<String, Object>();
-            m.put("lotId", sp.getLotId());
-            m.put("locationId", sp.getLocationId());
-            m.put("quantity", sp.getQuantity());
-            m.put("revision", sp.getRevision());
-            m.put("updatedAt", sp.getUpdatedAt());
-            return m;
-        }).toList());
+        response.put("items", result.getRecords());
         response.put("total", result.getTotal());
         response.put("page", page);
         response.put("pageSize", pageSize);

@@ -37,13 +37,25 @@
         ORDER BY lot_id
     </select>
 
-    <select id="findPage" resultType="com.zija.inventory.internal.persistence.StockPositionEntity">
-        SELECT sp.id, sp.household_id, sp.lot_id, sp.location_id, sp.quantity, sp.revision,
-               sp.created_at, sp.updated_at
+    <select id="findPage" resultType="com.zija.inventory.internal.persistence.StockPositionWithDetails">
+        SELECT sp.lot_id AS "lotId",
+               sp.location_id AS "locationId",
+               sp.quantity,
+               sp.revision,
+               sp.updated_at AS "updatedAt",
+               i.name AS "itemName",
+               i.management_type AS "itemManagementType",
+               u.name AS "unitName",
+               l.lot_number AS "lotNumber",
+               l.serial_number AS "serialNumber",
+               l.expiry_date AS "expiryDate"
         FROM inventory_stock_position sp
+        JOIN inventory_lot l ON l.id = sp.lot_id
+        JOIN catalog_item i ON i.id = l.item_id
+        JOIN catalog_unit u ON u.id = i.unit_id
         <where>
             sp.household_id = #{householdId}
-            <if test="itemId != null">AND EXISTS (SELECT 1 FROM inventory_lot l WHERE l.id = sp.lot_id AND l.item_id = #{itemId})</if>
+            <if test="itemId != null">AND l.item_id = #{itemId}</if>
             <if test="locationId != null">AND sp.location_id = #{locationId}</if>
         </where>
         ORDER BY ${orderBy}

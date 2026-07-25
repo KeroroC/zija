@@ -30,11 +30,11 @@ public interface StockPositionMapper extends BaseMapper<StockPositionEntity> {
                              @Param("locationId") UUID locationId,
                              @Param("delta") BigDecimal delta);
 
-    IPage<StockPositionEntity> findPage(Page<StockPositionEntity> page,
-                                         @Param("householdId") UUID householdId,
-                                         @Param("itemId") UUID itemId,
-                                         @Param("locationId") UUID locationId,
-                                         @Param("orderBy") String orderBy);
+    IPage<StockPositionWithDetails> findPage(Page<StockPositionWithDetails> page,
+                                             @Param("householdId") UUID householdId,
+                                             @Param("itemId") UUID itemId,
+                                             @Param("locationId") UUID locationId,
+                                             @Param("orderBy") String orderBy);
 
     /** 查询指定家庭和位置下所有库存位（不含 FOR UPDATE）。 */
     List<StockPositionEntity> findByLocation(@Param("householdId") UUID householdId,
