@@ -216,6 +216,104 @@ class StockCommandServiceIntegrationTest {
         assertThat(movements).hasSize(2);
     }
 
+    // --- Test point 1 (consume): consume deducts stock, revision+1; deduction to 0 allowed ---
+    @Test
+    void consume_deductsStockAndIncrementsRevision() {
+        UUID lotId = seedLot(householdId, itemId);
+
+        // First: inbound some stock
+        newTx().executeWithoutResult(s ->
+                stockCommandService.inboundExistingLot(householdId, UUID.randomUUID(),
+                        locationId, lotId, BigDecimal.TEN, null, null));
+
+        // Consume 4 units
+        UUID accountId = seedAccount();
+        var result = newTx().execute(s ->
+                stockCommandService.consume(householdId, accountId, lotId, locationId,
+                        BigDecimal.valueOf(4), "日常领用", null, null));
+
+        assertThat(result).isNotNull();
+        assertThat(result.lotId()).isEqualTo(lotId);
+        assertThat(result.locationId()).isEqualTo(locationId);
+        assertThat(result.movementId()).isNotNull();
+        assertThat(result.quantityAfter()).isEqualByComparingTo(BigDecimal.valueOf(6));
+
+        // Verify stock position: 10 - 4 = 6, revision = 2
+        var sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(sp).isNotNull();
+        assertThat(sp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(6));
+        assertThat(sp.getRevision()).isEqualTo(2L);
+
+        // Verify CONSUME movement
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(2); // INBOUND + CONSUME
+        var consumeMv = movements.stream()
+                .filter(m -> m.getType().equals("CONSUME"))
+                .findFirst().orElseThrow();
+        assertThat(consumeMv.getFromLocationId()).isEqualTo(locationId);
+        assertThat(consumeMv.getToLocationId()).isNull();
+        assertThat(consumeMv.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(4));
+        assertThat(consumeMv.getLotId()).isEqualTo(lotId);
+    }
+
+    // --- Test point 2 (consume): over-consume throws INVENTORY_INSUFFICIENT_STOCK, no movement, stock unchanged ---
+    @Test
+    void consume_overConsume_throwsInsufficientStockException() {
+        UUID lotId = seedLot(householdId, itemId);
+
+        // Inbound 3 units
+        newTx().executeWithoutResult(s ->
+                stockCommandService.inboundExistingLot(householdId, UUID.randomUUID(),
+                        locationId, lotId, BigDecimal.valueOf(3), null, null));
+
+        // Try to consume 5 units (more than available)
+        UUID accountId = seedAccount();
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stockCommandService.consume(householdId, accountId, lotId, locationId,
+                                BigDecimal.valueOf(5), "超额领用", null, null))
+        ).isInstanceOf(InventoryInsufficientStockException.class);
+
+        // No CONSUME movement created (only the initial INBOUND)
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(1);
+        assertThat(movements.get(0).getType()).isEqualTo("INBOUND");
+
+        // Stock position unchanged
+        var sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(sp).isNotNull();
+        assertThat(sp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(3));
+        assertThat(sp.getRevision()).isEqualTo(1L);
+    }
+
+    // --- Test point 3 (consume): archived items can be consumed (uses requireItem, not requireActiveItem) ---
+    @Test
+    void consume_archivedItem_succeeds() {
+        UUID archivedItemId = seedArchivedItem(householdId, unitId);
+        UUID lotId = seedLot(householdId, archivedItemId);
+
+        // Seed stock position directly (can't use inboundExistingLot since it rejects archived items)
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        // Consume from archived item should succeed
+        UUID accountId = seedAccount();
+        var result = newTx().execute(s ->
+                stockCommandService.consume(householdId, accountId, lotId, locationId,
+                        BigDecimal.valueOf(3), "归档物品领用", null, null));
+
+        assertThat(result).isNotNull();
+        assertThat(result.quantityAfter()).isEqualByComparingTo(BigDecimal.valueOf(7));
+
+        // Verify CONSUME movement exists
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(1);
+        assertThat(movements.get(0).getType()).isEqualTo("CONSUME");
+    }
+
     // --- Helpers ---
 
     private UUID seedHousehold() {

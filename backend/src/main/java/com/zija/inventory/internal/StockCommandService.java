@@ -248,6 +248,102 @@ public class StockCommandService {
         return new InboundResult(lotId, locationId, movementId, validatedQty, false);
     }
 
+    /**
+     * 领用（消耗库存）。
+     * <p>
+     * 事务编排顺序：锁定批次 → 校验物品（允许归档物品） → 校验精度 → 校验位置 → 锁定库存位（不存在则不足） → 条件扣减（不足则拒绝） → 插入 CONSUME 流水 → 记录幂等 → 审计 → 发布事件。
+     */
+    @Transactional
+    public InboundResult consume(UUID householdId, UUID accountId, UUID lotId,
+                                 UUID locationId, BigDecimal quantity,
+                                 String reason, String memo, String idempotencyKey) {
+        // 1. Lock lot (stock position lockOne below provides the critical row-level lock)
+        var lot = lotMapper.selectById(lotId);
+        if (lot == null || !lot.getHouseholdId().equals(householdId)) {
+            throw new InventoryLotNotFoundException();
+        }
+        UUID itemId = lot.getItemId();
+
+        // 2. Validate item exists (allows archived items to be consumed)
+        CatalogApi.ItemInfo itemInfo;
+        try {
+            itemInfo = catalogApi.requireItem(householdId, itemId);
+        } catch (RuntimeException ex) {
+            throw new InventoryArchivedItemException("item is missing: " + itemId);
+        }
+
+        // 3. Validate quantity precision
+        var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
+        BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
+
+        // 4. Validate location
+        locationApi.requireLocation(householdId, locationId);
+
+        // 5. Lock stock position (must exist)
+        StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        if (sp == null) {
+            throw new InventoryInsufficientStockException();
+        }
+
+        // 6. Subtract if sufficient (returns 0 when insufficient)
+        int updated = stockPositionMapper.subtractIfSufficient(
+                householdId, lotId, locationId, validatedQty);
+        if (updated == 0) {
+            throw new InventoryInsufficientStockException();
+        }
+
+        // 7. Insert CONSUME movement
+        UUID idempotencyKeyUuid = idempotencyKey != null
+                ? UUID.fromString(idempotencyKey)
+                : UUID.randomUUID();
+        String idempotencyKeyStr = idempotencyKeyUuid.toString();
+        UUID movementId = UUID.randomUUID();
+        var movement = new MovementEntity();
+        movement.setId(movementId);
+        movement.setHouseholdId(householdId);
+        movement.setLotId(lotId);
+        movement.setItemId(itemId);
+        movement.setType("CONSUME");
+        movement.setQuantity(validatedQty);
+        movement.setFromLocationId(locationId);
+        movement.setToLocationId(null);
+        movement.setReason(reason);
+        movement.setMemo(memo);
+        movement.setOperatorAccountId(accountId);
+        movement.setBusinessTime(OffsetDateTime.now());
+        movement.setCreatedAt(OffsetDateTime.now());
+        movement.setIdempotencyKey(idempotencyKeyStr);
+        movement.setReversalOf(null);
+        movementMapper.insert(movement);
+
+        // 8. Record idempotency
+        if (idempotencyKey != null) {
+            String requestHash = RequestHashing.sha256("CONSUME:"
+                    + itemId + ":" + lotId + ":" + locationId + ":"
+                    + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros());
+            idempotencyService.recordSuccess(householdId, idempotencyKey,
+                    requestHash, movementId, Map.of("lotId", lotId, "movementId", movementId));
+        }
+
+        // 9. Audit
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                "INVENTORY_CONSUME", "SUCCESS",
+                householdId, accountId, null, null, null,
+                Map.of("lotId", lotId, "itemId", itemId,
+                        "locationId", locationId, "quantity", validatedQty)));
+
+        // 10. Publish event
+        eventPublisher.publish(new StockChangedEvent(
+                UUID.randomUUID(), householdId, lotId, itemId,
+                "CONSUME", validatedQty, locationId, null,
+                OffsetDateTime.now(), movementId, idempotencyKeyUuid));
+
+        // 11. Return result (quantity remaining after deduction)
+        var updatedSp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        BigDecimal quantityAfter = updatedSp != null ? updatedSp.getQuantity() : BigDecimal.ZERO;
+        return new InboundResult(lotId, locationId, movementId, quantityAfter, false);
+    }
+
     public record InboundNewLotCommand(
             UUID itemId,
             BigDecimal quantity,
