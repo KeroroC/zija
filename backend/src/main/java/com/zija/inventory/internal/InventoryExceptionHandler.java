@@ -54,6 +54,16 @@ class InventoryExceptionHandler {
         return problem(request, HttpStatus.CONFLICT, "撤销会导致库存为负", "INVENTORY_REVERSAL_WOULD_NEGATIVE");
     }
 
+    @ExceptionHandler(StocktakeStaleException.class)
+    ProblemDetail handleStocktakeStale(HttpServletRequest request) {
+        return problem(request, HttpStatus.CONFLICT, "盘点范围内库存已变化", "INVENTORY_STOCKTAKE_STALE");
+    }
+
+    @ExceptionHandler(StocktakeNotDraftException.class)
+    ProblemDetail handleStocktakeNotDraft(HttpServletRequest request) {
+        return problem(request, HttpStatus.CONFLICT, "盘点单不是草稿状态", "INVENTORY_STOCKTAKE_NOT_DRAFT");
+    }
+
     private ProblemDetail problem(HttpServletRequest request, HttpStatus status, String title, String errorCode) {
         var problem = ProblemDetail.forStatusAndDetail(status, title);
         problem.setTitle(title);
