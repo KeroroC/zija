@@ -14,6 +14,8 @@ import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -66,6 +68,26 @@ public class StockCommandService {
         }
         var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
         BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), cmd.quantity());
+
+        // 1.5. Check idempotency replay
+        if (cmd.idempotencyKey() != null) {
+            String requestHash = RequestHashing.sha256("INBOUND_NEW:"
+                    + cmd.itemId() + ":" + locationId + ":"
+                    + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros() + ":"
+                    + cmd.lotNumber() + ":" + cmd.serialNumber() + ":" + cmd.expiryDate());
+            var cached = idempotencyService.lockOrFind(householdId, cmd.idempotencyKey(), requestHash);
+            if (cached.isPresent()) {
+                var payload = cached.get().getResponsePayload();
+                UUID cachedLotId = UUID.fromString(payload.get("lotId").toString());
+                UUID cachedMovementId = UUID.fromString(payload.get("movementId").toString());
+                var sp = stockPositionMapper.selectOne(new LambdaQueryWrapper<StockPositionEntity>()
+                        .eq(StockPositionEntity::getHouseholdId, householdId)
+                        .eq(StockPositionEntity::getLotId, cachedLotId)
+                        .eq(StockPositionEntity::getLocationId, locationId));
+                BigDecimal quantityAfter = sp != null ? sp.getQuantity() : BigDecimal.ZERO;
+                return new InboundResult(cachedLotId, locationId, cachedMovementId, quantityAfter, false);
+            }
+        }
 
         // 2. Create new lot (validates item is active internally)
         UUID lotId = lotService.createLot(householdId, cmd.itemId(),
@@ -176,6 +198,25 @@ public class StockCommandService {
         var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
         BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
 
+        // 3.5. Check idempotency replay
+        if (idempotencyKey != null) {
+            String requestHash = RequestHashing.sha256("INBOUND_EXISTING:"
+                    + itemId + ":" + lotId + ":" + locationId + ":"
+                    + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros());
+            var cached = idempotencyService.lockOrFind(householdId, idempotencyKey, requestHash);
+            if (cached.isPresent()) {
+                var payload = cached.get().getResponsePayload();
+                UUID cachedLotId = UUID.fromString(payload.get("lotId").toString());
+                UUID cachedMovementId = UUID.fromString(payload.get("movementId").toString());
+                var sp0 = stockPositionMapper.selectOne(new LambdaQueryWrapper<StockPositionEntity>()
+                        .eq(StockPositionEntity::getHouseholdId, householdId)
+                        .eq(StockPositionEntity::getLotId, cachedLotId)
+                        .eq(StockPositionEntity::getLocationId, locationId));
+                BigDecimal quantityAfter = sp0 != null ? sp0.getQuantity() : BigDecimal.ZERO;
+                return new InboundResult(cachedLotId, locationId, cachedMovementId, quantityAfter, false);
+            }
+        }
+
         // 4. Validate location and mark referenced
         locationApi.requireLocation(householdId, locationId);
         locationApi.markReferenced(householdId, locationId);
@@ -276,6 +317,25 @@ public class StockCommandService {
         var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
         BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
 
+        // 3.5. Check idempotency replay
+        if (idempotencyKey != null) {
+            String requestHash = RequestHashing.sha256("CONSUME:"
+                    + itemId + ":" + lotId + ":" + locationId + ":"
+                    + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros());
+            var cached = idempotencyService.lockOrFind(householdId, idempotencyKey, requestHash);
+            if (cached.isPresent()) {
+                var payload = cached.get().getResponsePayload();
+                UUID cachedLotId = UUID.fromString(payload.get("lotId").toString());
+                UUID cachedMovementId = UUID.fromString(payload.get("movementId").toString());
+                var sp0 = stockPositionMapper.selectOne(new LambdaQueryWrapper<StockPositionEntity>()
+                        .eq(StockPositionEntity::getHouseholdId, householdId)
+                        .eq(StockPositionEntity::getLotId, cachedLotId)
+                        .eq(StockPositionEntity::getLocationId, locationId));
+                BigDecimal quantityAfter = sp0 != null ? sp0.getQuantity() : BigDecimal.ZERO;
+                return new InboundResult(cachedLotId, locationId, cachedMovementId, quantityAfter, false);
+            }
+        }
+
         // 4. Validate location
         locationApi.requireLocation(householdId, locationId);
 
@@ -371,6 +431,25 @@ public class StockCommandService {
         // 3. Validate quantity precision
         var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
         BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
+
+        // 3.5. Check idempotency replay
+        if (idempotencyKey != null) {
+            String requestHash = RequestHashing.sha256("LOSS:"
+                    + itemId + ":" + lotId + ":" + locationId + ":"
+                    + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros());
+            var cached = idempotencyService.lockOrFind(householdId, idempotencyKey, requestHash);
+            if (cached.isPresent()) {
+                var payload = cached.get().getResponsePayload();
+                UUID cachedLotId = UUID.fromString(payload.get("lotId").toString());
+                UUID cachedMovementId = UUID.fromString(payload.get("movementId").toString());
+                var sp0 = stockPositionMapper.selectOne(new LambdaQueryWrapper<StockPositionEntity>()
+                        .eq(StockPositionEntity::getHouseholdId, householdId)
+                        .eq(StockPositionEntity::getLotId, cachedLotId)
+                        .eq(StockPositionEntity::getLocationId, locationId));
+                BigDecimal quantityAfter = sp0 != null ? sp0.getQuantity() : BigDecimal.ZERO;
+                return new InboundResult(cachedLotId, locationId, cachedMovementId, quantityAfter, false);
+            }
+        }
 
         // 4. Validate location
         locationApi.requireLocation(householdId, locationId);
@@ -472,6 +551,25 @@ public class StockCommandService {
         // 4. Validate quantity precision
         var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
         BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
+
+        // 4.5. Check idempotency replay
+        if (idempotencyKey != null) {
+            String requestHash = RequestHashing.sha256("TRANSFER:"
+                    + itemId + ":" + lotId + ":" + fromLocationId + ":" + toLocationId + ":"
+                    + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros());
+            var cached = idempotencyService.lockOrFind(householdId, idempotencyKey, requestHash);
+            if (cached.isPresent()) {
+                var payload = cached.get().getResponsePayload();
+                UUID cachedLotId = UUID.fromString(payload.get("lotId").toString());
+                UUID cachedMovementId = UUID.fromString(payload.get("movementId").toString());
+                var sp0 = stockPositionMapper.selectOne(new LambdaQueryWrapper<StockPositionEntity>()
+                        .eq(StockPositionEntity::getHouseholdId, householdId)
+                        .eq(StockPositionEntity::getLotId, cachedLotId)
+                        .eq(StockPositionEntity::getLocationId, toLocationId));
+                BigDecimal quantityAfter = sp0 != null ? sp0.getQuantity() : BigDecimal.ZERO;
+                return new InboundResult(cachedLotId, toLocationId, cachedMovementId, quantityAfter, false);
+            }
+        }
 
         // 5. Validate locations
         locationApi.requireLocation(householdId, fromLocationId);

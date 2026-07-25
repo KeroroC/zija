@@ -1,12 +1,491 @@
 package com.zija.inventory.internal;
 
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.ZijaPrincipal;
+import com.zija.household.HouseholdApi;
+import com.zija.household.RequireMember;
+import com.zija.inventory.InventoryApi;
+import com.zija.inventory.internal.persistence.LotEntity;
+import com.zija.inventory.internal.persistence.LotMapper;
+import com.zija.inventory.internal.persistence.MovementMapper;
+import com.zija.inventory.internal.persistence.StockPositionMapper;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
- * 库存 REST 控制器占位 — 完整实现见 Task 17。
+ * 库存 REST 控制器，提供库存位、批次、流水的只读查询以及入库、领用、报损、移位、冲正等命令端点。
+ *
+ * <p>所有端点均要求当前用户为家庭的活跃成员（{@link RequireMember}）。
+ * 冲正与一致性检查额外要求管理员角色。</p>
+ *
+ * <p>端点概览：</p>
+ * <ul>
+ *   <li>{@code GET    /api/v1/inventory/stock-positions}               — 分页查询库存位</li>
+ *   <li>{@code GET    /api/v1/inventory/lots}                          — 分页查询批次</li>
+ *   <li>{@code GET    /api/v1/inventory/lots/{lotId}}                  — 批次详情</li>
+ *   <li>{@code GET    /api/v1/inventory/movements}                     — 分页查询流水</li>
+ *   <li>{@code GET    /api/v1/inventory/consistency-report}            — 一致性检查（管理员）</li>
+ *   <li>{@code POST   /api/v1/inventory/lots}                          — 新建批次入库</li>
+ *   <li>{@code POST   /api/v1/inventory/inbound}                       — 现有批次入库</li>
+ *   <li>{@code POST   /api/v1/inventory/consume}                       — 领用（消耗库存）</li>
+ *   <li>{@code POST   /api/v1/inventory/loss}                          — 报损</li>
+ *   <li>{@code POST   /api/v1/inventory/transfer}                      — 移位（库存转移）</li>
+ *   <li>{@code POST   /api/v1/inventory/movements/{id}/reverse}        — 冲正（管理员）</li>
+ *   <li>{@code PUT    /api/v1/inventory/lots/{id}}                     — 更新批次元数据</li>
+ * </ul>
  */
 @RestController
 @RequestMapping("/api/v1/inventory")
 class InventoryController {
+
+    private final InventoryService inventoryService;
+    private final InventoryApi inventoryApi;
+    private final HouseholdApi householdApi;
+    private final StockPositionMapper stockPositionMapper;
+    private final LotMapper lotMapper;
+    private final MovementMapper movementMapper;
+
+    InventoryController(InventoryService inventoryService,
+                        InventoryApi inventoryApi,
+                        HouseholdApi householdApi,
+                        StockPositionMapper stockPositionMapper,
+                        LotMapper lotMapper,
+                        MovementMapper movementMapper) {
+        this.inventoryService = inventoryService;
+        this.inventoryApi = inventoryApi;
+        this.householdApi = householdApi;
+        this.stockPositionMapper = stockPositionMapper;
+        this.lotMapper = lotMapper;
+        this.movementMapper = movementMapper;
+    }
+
+    // ==================== Read-only endpoints ====================
+
+    /**
+     * 分页查询库存位。
+     */
+    @RequireMember
+    @GetMapping("/stock-positions")
+    Map<String, Object> listStockPositions(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @RequestParam(required = false) UUID itemId,
+            @RequestParam(required = false) UUID locationId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        if (pageSize > 100) pageSize = 100;
+        if (pageSize < 1) pageSize = 20;
+        if (page < 1) page = 1;
+
+        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, pageSize);
+        var result = stockPositionMapper.findPage(pageObj, member.householdId(), itemId, locationId, "sp.updated_at DESC");
+
+        var response = new LinkedHashMap<String, Object>();
+        response.put("items", result.getRecords().stream().map(sp -> {
+            var m = new LinkedHashMap<String, Object>();
+            m.put("lotId", sp.getLotId());
+            m.put("locationId", sp.getLocationId());
+            m.put("quantity", sp.getQuantity());
+            m.put("revision", sp.getRevision());
+            m.put("updatedAt", sp.getUpdatedAt());
+            return m;
+        }).toList());
+        response.put("total", result.getTotal());
+        response.put("page", page);
+        response.put("pageSize", pageSize);
+        return response;
+    }
+
+    /**
+     * 分页查询批次。
+     */
+    @RequireMember
+    @GetMapping("/lots")
+    Map<String, Object> listLots(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @RequestParam(required = false) UUID itemId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        if (pageSize > 100) pageSize = 100;
+        if (pageSize < 1) pageSize = 20;
+        if (page < 1) page = 1;
+
+        var wrapper = new LambdaQueryWrapper<LotEntity>()
+                .eq(LotEntity::getHouseholdId, member.householdId())
+                .eq(itemId != null, LotEntity::getItemId, itemId)
+                .orderByDesc(LotEntity::getCreatedAt);
+        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, pageSize);
+        var result = lotMapper.selectPage(pageObj, wrapper);
+
+        var response = new LinkedHashMap<String, Object>();
+        response.put("items", result.getRecords().stream().map(this::toLotResponse).toList());
+        response.put("total", result.getTotal());
+        response.put("page", page);
+        response.put("pageSize", pageSize);
+        return response;
+    }
+
+    /**
+     * 查询单个批次详情。
+     */
+    @RequireMember
+    @GetMapping("/lots/{lotId}")
+    Map<String, Object> getLot(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID lotId
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var lot = lotMapper.selectById(lotId);
+        if (lot == null || !lot.getHouseholdId().equals(member.householdId())) {
+            throw new InventoryLotNotFoundException();
+        }
+        return toLotResponse(lot);
+    }
+
+    /**
+     * 分页查询库存流水。
+     */
+    @RequireMember
+    @GetMapping("/movements")
+    Map<String, Object> listMovements(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @RequestParam(required = false) UUID lotId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) UUID itemId,
+            @RequestParam(required = false) UUID locationId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        if (pageSize > 100) pageSize = 100;
+        if (pageSize < 1) pageSize = 20;
+        if (page < 1) page = 1;
+
+        // If lotId is specified, use the simple findByLot; otherwise use paged query
+        if (lotId != null) {
+            var movements = inventoryApi.movementsOfLot(member.householdId(), lotId);
+            var response = new LinkedHashMap<String, Object>();
+            response.put("items", movements.stream().map(this::toMovementResponse).toList());
+            response.put("total", (long) movements.size());
+            response.put("page", 1);
+            response.put("pageSize", movements.size());
+            return response;
+        }
+
+        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.zija.inventory.internal.persistence.MovementEntity>(page, pageSize);
+        var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, (UUID) null, (OffsetDateTime) null, (OffsetDateTime) null, "created_at DESC");
+
+        var response = new LinkedHashMap<String, Object>();
+        response.put("items", result.getRecords().stream().map(m -> {
+            var map = new LinkedHashMap<String, Object>();
+            map.put("id", m.getId());
+            map.put("lotId", m.getLotId());
+            map.put("itemId", m.getItemId());
+            map.put("type", m.getType());
+            map.put("quantity", m.getQuantity());
+            map.put("fromLocationId", m.getFromLocationId());
+            map.put("toLocationId", m.getToLocationId());
+            map.put("reason", m.getReason());
+            map.put("memo", m.getMemo());
+            map.put("operatorAccountId", m.getOperatorAccountId());
+            map.put("businessTime", m.getBusinessTime());
+            map.put("createdAt", m.getCreatedAt());
+            map.put("idempotencyKey", m.getIdempotencyKey());
+            map.put("reversalOf", m.getReversalOf());
+            return map;
+        }).toList());
+        response.put("total", result.getTotal());
+        response.put("page", page);
+        response.put("pageSize", pageSize);
+        return response;
+    }
+
+    /**
+     * 一致性检查（仅管理员）。
+     */
+    @RequireMember
+    @GetMapping("/consistency-report")
+    Map<String, Object> consistencyReport(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @RequestParam(required = false) UUID itemId
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var discrepancies = inventoryService.checkConsistency(
+                principal.getAccountId(), member.householdId(), itemId);
+
+        var response = new LinkedHashMap<String, Object>();
+        response.put("discrepancies", discrepancies.stream().map(d -> {
+            var m = new LinkedHashMap<String, Object>();
+            m.put("lotId", d.lotId());
+            m.put("locationId", d.locationId());
+            m.put("expected", d.expected());
+            m.put("actual", d.actual());
+            return m;
+        }).toList());
+        response.put("total", discrepancies.size());
+        return response;
+    }
+
+    // ==================== Write endpoints ====================
+
+    /**
+     * 新建批次入库。
+     */
+    @RequireMember
+    @PostMapping("/lots")
+    Map<String, Object> inboundNewLot(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @Valid @RequestBody InboundNewLotRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var cmd = new StockCommandService.InboundNewLotCommand(
+                request.itemId(), request.quantity(),
+                request.purchaseDate(), request.productionDate(), request.expiryDate(),
+                request.lotNumber(), request.serialNumber(), request.memo(),
+                idempotencyKey);
+        var result = inventoryService.inboundNewLot(
+                principal.getAccountId(), member.householdId(), request.locationId(), cmd);
+        return toInboundResponse(result);
+    }
+
+    /**
+     * 现有批次入库。
+     */
+    @RequireMember
+    @PostMapping("/inbound")
+    Map<String, Object> inboundExistingLot(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @Valid @RequestBody InboundExistingLotRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var result = inventoryService.inboundExistingLot(
+                principal.getAccountId(), member.householdId(),
+                request.locationId(), request.lotId(),
+                request.quantity(), request.memo(), idempotencyKey);
+        return toInboundResponse(result);
+    }
+
+    /**
+     * 领用（消耗库存）。
+     */
+    @RequireMember
+    @PostMapping("/consume")
+    Map<String, Object> consume(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @Valid @RequestBody ConsumeRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var result = inventoryService.consume(
+                principal.getAccountId(), member.householdId(),
+                request.lotId(), request.locationId(),
+                request.quantity(), request.reason(), request.memo(), idempotencyKey);
+        return toInboundResponse(result);
+    }
+
+    /**
+     * 报损（报废/过期等损耗）。
+     */
+    @RequireMember
+    @PostMapping("/loss")
+    Map<String, Object> loss(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @Valid @RequestBody LossRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var result = inventoryService.loss(
+                principal.getAccountId(), member.householdId(),
+                request.lotId(), request.locationId(),
+                request.quantity(), request.reason(), request.memo(), idempotencyKey);
+        return toInboundResponse(result);
+    }
+
+    /**
+     * 移位（库存转移）。
+     */
+    @RequireMember
+    @PostMapping("/transfer")
+    Map<String, Object> transfer(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @Valid @RequestBody TransferRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var result = inventoryService.transfer(
+                principal.getAccountId(), member.householdId(),
+                request.lotId(), request.fromLocationId(), request.toLocationId(),
+                request.quantity(), request.memo(), idempotencyKey);
+        return toInboundResponse(result);
+    }
+
+    /**
+     * 冲正（撤销）一笔库存流水。仅管理员可执行。
+     */
+    @RequireMember
+    @PostMapping("/movements/{id}/reverse")
+    Map<String, Object> reverse(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody ReverseRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var result = inventoryService.reverse(
+                principal.getAccountId(), member.householdId(),
+                id, request.reason(), request.memo(), idempotencyKey);
+        var response = new LinkedHashMap<String, Object>();
+        response.put("reversalMovementId", result.reversalMovementId());
+        response.put("lotId", result.lotId());
+        return response;
+    }
+
+    /**
+     * 更新批次元数据。
+     */
+    @RequireMember
+    @PutMapping("/lots/{id}")
+    Map<String, Object> updateLotMeta(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateLotMetaRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var lot = inventoryService.updateLotMeta(
+                principal.getAccountId(), member.householdId(), id,
+                request.version(),
+                request.purchaseDate(), request.productionDate(), request.expiryDate(),
+                request.lotNumber(), request.serialNumber(), request.memo());
+        return toLotResponse(lot);
+    }
+
+    // ==================== Response helpers ====================
+
+    private Map<String, Object> toInboundResponse(StockCommandService.InboundResult result) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("lotId", result.lotId());
+        map.put("locationId", result.locationId());
+        map.put("movementId", result.movementId());
+        map.put("quantityAfter", result.quantityAfter());
+        map.put("serialDuplicated", result.serialDuplicated());
+        return map;
+    }
+
+    private Map<String, Object> toLotResponse(com.zija.inventory.internal.persistence.LotEntity lot) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("id", lot.getId());
+        map.put("householdId", lot.getHouseholdId());
+        map.put("itemId", lot.getItemId());
+        map.put("purchaseDate", lot.getPurchaseDate());
+        map.put("productionDate", lot.getProductionDate());
+        map.put("expiryDate", lot.getExpiryDate());
+        map.put("lotNumber", lot.getLotNumber());
+        map.put("serialNumber", lot.getSerialNumber());
+        map.put("memo", lot.getMemo());
+        map.put("version", lot.getVersion());
+        map.put("createdAt", lot.getCreatedAt());
+        map.put("updatedAt", lot.getUpdatedAt());
+        return map;
+    }
+
+    private Map<String, Object> toMovementResponse(InventoryApi.MovementInfo m) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("id", m.id());
+        map.put("lotId", m.lotId());
+        map.put("itemId", m.itemId());
+        map.put("type", m.type());
+        map.put("quantity", m.quantity());
+        map.put("fromLocationId", m.fromLocationId());
+        map.put("toLocationId", m.toLocationId());
+        map.put("reason", m.reason());
+        map.put("operatorAccountId", m.operatorAccountId());
+        map.put("businessTime", m.businessTime());
+        map.put("createdAt", m.createdAt());
+        map.put("idempotencyKey", m.idempotencyKey());
+        map.put("reversalOf", m.reversalOf());
+        return map;
+    }
+
+    // ==================== Request DTOs ====================
+
+    record InboundNewLotRequest(
+            @NotNull UUID itemId,
+            @NotNull @Positive BigDecimal quantity,
+            @NotNull UUID locationId,
+            LocalDate purchaseDate,
+            LocalDate productionDate,
+            LocalDate expiryDate,
+            String lotNumber,
+            String serialNumber,
+            String memo
+    ) {}
+
+    record InboundExistingLotRequest(
+            @NotNull UUID lotId,
+            @NotNull UUID locationId,
+            @NotNull @Positive BigDecimal quantity,
+            String memo
+    ) {}
+
+    record ConsumeRequest(
+            @NotNull UUID lotId,
+            @NotNull UUID locationId,
+            @NotNull @Positive BigDecimal quantity,
+            String reason,
+            String memo
+    ) {}
+
+    record LossRequest(
+            @NotNull UUID lotId,
+            @NotNull UUID locationId,
+            @NotNull @Positive BigDecimal quantity,
+            @NotBlank String reason,
+            String memo
+    ) {}
+
+    record TransferRequest(
+            @NotNull UUID lotId,
+            @NotNull UUID fromLocationId,
+            @NotNull UUID toLocationId,
+            @NotNull @Positive BigDecimal quantity,
+            String memo
+    ) {
+        @AssertTrue(message = "fromLocationId and toLocationId must be different")
+        private boolean isDifferentLocations() {
+            return fromLocationId == null || toLocationId == null || !fromLocationId.equals(toLocationId);
+        }
+    }
+
+    record ReverseRequest(
+            String reason,
+            String memo
+    ) {}
+
+    record UpdateLotMetaRequest(
+            @NotNull Integer version,
+            LocalDate purchaseDate,
+            LocalDate productionDate,
+            LocalDate expiryDate,
+            String lotNumber,
+            String serialNumber,
+            String memo
+    ) {}
 }

@@ -4,7 +4,18 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.zija.inventory.internal.persistence.IdempotencyRecordMapper">
 
-    <select id="lockByKey" resultType="com.zija.inventory.internal.persistence.IdempotencyRecordEntity">
+    <resultMap id="idempotencyRecordResultMap" type="com.zija.inventory.internal.persistence.IdempotencyRecordEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="idempotencyKey" column="idempotency_key"/>
+        <result property="requestHash" column="request_hash"/>
+        <result property="movementId" column="movement_id"/>
+        <result property="responsePayload" column="response_payload"
+                typeHandler="com.zija.system.internal.persistence.JsonbTypeHandler"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="lockByKey" resultMap="idempotencyRecordResultMap">
         SELECT id, household_id, idempotency_key, request_hash, movement_id,
                response_payload, created_at
         FROM inventory_idempotency_record

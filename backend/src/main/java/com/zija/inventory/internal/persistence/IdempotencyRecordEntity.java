@@ -7,7 +7,7 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
 
-@TableName("inventory_idempotency_record")
+@TableName(value = "inventory_idempotency_record", autoResultMap = true)
 public class IdempotencyRecordEntity {
     @TableId private UUID id;
     private UUID householdId;
