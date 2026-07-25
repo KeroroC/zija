@@ -1,0 +1,164 @@
+package com.zija.inventory.internal;
+
+import com.zija.catalog.CatalogApi;
+import com.zija.inventory.StockChangedEvent;
+import com.zija.inventory.internal.event.InventoryEventPublisher;
+import com.zija.inventory.internal.persistence.MovementEntity;
+import com.zija.inventory.internal.persistence.MovementMapper;
+import com.zija.inventory.internal.persistence.StockPositionEntity;
+import com.zija.inventory.internal.persistence.StockPositionMapper;
+import com.zija.location.LocationApi;
+import com.zija.system.SystemApi;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.Map;
+import java.util.UUID;
+
+@Service
+public class StockCommandService {
+
+    private final LotService lotService;
+    private final CatalogApi catalogApi;
+    private final LocationApi locationApi;
+    private final StockPositionMapper stockPositionMapper;
+    private final MovementMapper movementMapper;
+    private final IdempotencyService idempotencyService;
+    private final SystemApi systemApi;
+    private final InventoryEventPublisher eventPublisher;
+
+    public StockCommandService(LotService lotService, CatalogApi catalogApi,
+                               LocationApi locationApi, StockPositionMapper stockPositionMapper,
+                               MovementMapper movementMapper, IdempotencyService idempotencyService,
+                               SystemApi systemApi, InventoryEventPublisher eventPublisher) {
+        this.lotService = lotService;
+        this.catalogApi = catalogApi;
+        this.locationApi = locationApi;
+        this.stockPositionMapper = stockPositionMapper;
+        this.movementMapper = movementMapper;
+        this.idempotencyService = idempotencyService;
+        this.systemApi = systemApi;
+        this.eventPublisher = eventPublisher;
+    }
+
+    /**
+     * 新建批次入库。
+     * <p>
+     * 事务编排顺序：校验精度 → 创建批次 → 校验位置并标记引用 → 锁定/创建库存位 → 增加数量 → 插入流水 → 记录幂等 → 审计 → 发布事件。
+     */
+    @Transactional
+    public InboundResult inboundNewLot(UUID householdId, UUID accountId,
+                                       UUID locationId, InboundNewLotCommand cmd) {
+        // 1. Validate quantity precision (need unit's decimal scale)
+        CatalogApi.ItemInfo itemInfo;
+        try {
+            itemInfo = catalogApi.requireActiveItem(householdId, cmd.itemId());
+        } catch (RuntimeException ex) {
+            throw new InventoryArchivedItemException("item is archived or missing: " + cmd.itemId());
+        }
+        var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
+        BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), cmd.quantity());
+
+        // 2. Create new lot (validates item is active internally)
+        UUID lotId = lotService.createLot(householdId, cmd.itemId(),
+                cmd.purchaseDate(), cmd.productionDate(), cmd.expiryDate(),
+                cmd.lotNumber(), cmd.serialNumber(), cmd.memo());
+
+        // 3. Validate location and mark referenced
+        locationApi.requireLocation(householdId, locationId);
+        locationApi.markReferenced(householdId, locationId);
+
+        // 4. Lock or create stock position
+        StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        if (sp == null) {
+            sp = new StockPositionEntity();
+            sp.setId(UUID.randomUUID());
+            sp.setHouseholdId(householdId);
+            sp.setLotId(lotId);
+            sp.setLocationId(locationId);
+            sp.setQuantity(BigDecimal.ZERO);
+            sp.setRevision(0L);
+            sp.setCreatedAt(OffsetDateTime.now());
+            sp.setUpdatedAt(OffsetDateTime.now());
+            stockPositionMapper.insert(sp);
+        }
+
+        // 5. Add quantity to stock position
+        stockPositionMapper.addQuantity(householdId, lotId, locationId, validatedQty);
+
+        // 6. Insert INBOUND movement
+        UUID idempotencyKeyUuid = cmd.idempotencyKey() != null
+                ? UUID.fromString(cmd.idempotencyKey())
+                : UUID.randomUUID();
+        String idempotencyKey = idempotencyKeyUuid.toString();
+        UUID movementId = UUID.randomUUID();
+        var movement = new MovementEntity();
+        movement.setId(movementId);
+        movement.setHouseholdId(householdId);
+        movement.setLotId(lotId);
+        movement.setItemId(cmd.itemId());
+        movement.setType("INBOUND");
+        movement.setQuantity(validatedQty);
+        movement.setFromLocationId(null);
+        movement.setToLocationId(locationId);
+        movement.setReason(null);
+        movement.setMemo(cmd.memo());
+        movement.setOperatorAccountId(accountId);
+        movement.setBusinessTime(OffsetDateTime.now());
+        movement.setCreatedAt(OffsetDateTime.now());
+        movement.setIdempotencyKey(idempotencyKey);
+        movement.setReversalOf(null);
+        movementMapper.insert(movement);
+
+        // 7. Record idempotency
+        if (cmd.idempotencyKey() != null) {
+            String requestHash = RequestHashing.sha256("INBOUND_NEW:"
+                    + cmd.itemId() + ":" + locationId + ":"
+                    + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros() + ":"
+                    + cmd.lotNumber() + ":" + cmd.serialNumber() + ":" + cmd.expiryDate());
+            idempotencyService.recordSuccess(householdId, cmd.idempotencyKey(),
+                    requestHash, movementId, Map.of("lotId", lotId, "movementId", movementId));
+        }
+
+        // 8. Audit
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                "INVENTORY_INBOUND", "SUCCESS",
+                householdId, accountId, null, null, null,
+                Map.of("lotId", lotId, "itemId", cmd.itemId(),
+                        "locationId", locationId, "quantity", validatedQty)));
+
+        // 9. Publish event
+        eventPublisher.publish(new StockChangedEvent(
+                UUID.randomUUID(), householdId, lotId, cmd.itemId(),
+                "INBOUND", validatedQty, null, locationId,
+                OffsetDateTime.now(), movementId, idempotencyKeyUuid));
+
+        // 10. Return result
+        boolean serialDuplicated = cmd.serialNumber() != null
+                && lotService.serialNumberDuplicated(householdId, cmd.itemId(), cmd.serialNumber());
+        return new InboundResult(lotId, locationId, movementId, validatedQty, serialDuplicated);
+    }
+
+    public record InboundNewLotCommand(
+            UUID itemId,
+            BigDecimal quantity,
+            LocalDate purchaseDate,
+            LocalDate productionDate,
+            LocalDate expiryDate,
+            String lotNumber,
+            String serialNumber,
+            String memo,
+            String idempotencyKey
+    ) {}
+
+    public record InboundResult(
+            UUID lotId,
+            UUID locationId,
+            UUID movementId,
+            BigDecimal quantityAfter,
+            boolean serialDuplicated
+    ) {}
+}
