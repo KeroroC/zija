@@ -49,4 +49,44 @@
         ORDER BY ${orderBy}
     </select>
 
+    <select id="findPageEnriched" resultType="java.util.LinkedHashMap">
+        SELECT
+            sp.id,
+            sp.lot_id AS lotId,
+            sp.location_id AS locationId,
+            sp.quantity,
+            sp.revision,
+            sp.created_at AS createdAt,
+            sp.updated_at AS updatedAt,
+            l.item_id AS itemId,
+            l.lot_number AS lotNumber,
+            l.serial_number AS serialNumber,
+            l.expiry_date AS expiryDate,
+            i.name AS itemName,
+            i.management_type AS itemManagementType,
+            u.name AS unitName
+        FROM inventory_stock_position sp
+        JOIN inventory_lot l ON l.id = sp.lot_id AND l.household_id = sp.household_id
+        JOIN catalog_item i ON i.id = l.item_id AND i.household_id = l.household_id
+        LEFT JOIN catalog_unit u ON u.id = i.unit_id AND u.household_id = i.household_id
+        <where>
+            sp.household_id = #{householdId}
+            <if test="itemId != null">AND l.item_id = #{itemId}</if>
+            <if test="locationId != null">AND sp.location_id = #{locationId}</if>
+        </where>
+        ORDER BY ${orderBy}
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countEnriched" resultType="long">
+        SELECT COUNT(*)
+        FROM inventory_stock_position sp
+        JOIN inventory_lot l ON l.id = sp.lot_id AND l.household_id = sp.household_id
+        <where>
+            sp.household_id = #{householdId}
+            <if test="itemId != null">AND l.item_id = #{itemId}</if>
+            <if test="locationId != null">AND sp.location_id = #{locationId}</if>
+        </where>
+    </select>
+
 </mapper>

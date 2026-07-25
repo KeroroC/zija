@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Mapper
@@ -35,6 +36,19 @@ public interface StockPositionMapper extends BaseMapper<StockPositionEntity> {
                                          @Param("itemId") UUID itemId,
                                          @Param("locationId") UUID locationId,
                                          @Param("orderBy") String orderBy);
+
+    /** 分页查询库存位，JOIN 批次和物品表返回完整信息。 */
+    List<Map<String, Object>> findPageEnriched(@Param("householdId") UUID householdId,
+                                                @Param("itemId") UUID itemId,
+                                                @Param("locationId") UUID locationId,
+                                                @Param("orderBy") String orderBy,
+                                                @Param("offset") int offset,
+                                                @Param("limit") int limit);
+
+    /** 查询库存位总数（带筛选条件）。 */
+    long countEnriched(@Param("householdId") UUID householdId,
+                       @Param("itemId") UUID itemId,
+                       @Param("locationId") UUID locationId);
 
     /** 查询指定家庭和位置下所有库存位（不含 FOR UPDATE）。 */
     List<StockPositionEntity> findByLocation(@Param("householdId") UUID householdId,
