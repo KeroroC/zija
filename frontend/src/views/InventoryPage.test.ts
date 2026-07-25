@@ -20,6 +20,19 @@ vi.mock("../stores/session", () => ({
   }),
 }));
 
+vi.mock("../api/inventory", () => ({
+  fetchStockPositions: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
+  fetchMovements: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
+}));
+
+vi.mock("../api/catalog", () => ({
+  fetchItems: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
+}));
+
+vi.mock("../api/location", () => ({
+  fetchLocationTree: vi.fn().mockResolvedValue({ roots: [] }),
+}));
+
 const pushMock = vi.fn();
 
 vi.mock("vue-router", () => ({
@@ -77,7 +90,7 @@ describe("InventoryPage", () => {
     wrapper = mount(InventoryPage, { global: { plugins: [ElementPlus] } });
     await flushPromises();
 
-    // The active tab pane should contain the CurrentStockTab content
-    expect(wrapper.text()).toContain("TODO: 当前库存");
+    // The active tab pane should contain the CurrentStockTab content (filter bar)
+    expect(wrapper.text()).toContain("筛选物品");
   });
 });
