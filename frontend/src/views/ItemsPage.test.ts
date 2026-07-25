@@ -10,6 +10,7 @@ import {
   fetchUnits,
   fetchTags,
 } from "../api/catalog";
+import { fetchStockPositions, fetchLots } from "../api/inventory";
 import { useSessionStore } from "../stores/session";
 import ItemsPage from "./ItemsPage.vue";
 import type { CatalogItem, Category, Brand, Unit, Tag } from "../types/catalog";
@@ -24,12 +25,19 @@ vi.mock("../api/catalog", () => ({
   fetchTags: vi.fn(),
 }));
 
+vi.mock("../api/inventory", () => ({
+  fetchStockPositions: vi.fn(),
+  fetchLots: vi.fn(),
+}));
+
 vi.mock("../stores/session", () => ({
   useSessionStore: vi.fn(),
 }));
 
+const pushMock = vi.fn();
+
 vi.mock("vue-router", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
 }));
 
 const fetchItemsMock = vi.mocked(fetchItems);
@@ -39,6 +47,8 @@ const fetchCategoriesMock = vi.mocked(fetchCategories);
 const fetchBrandsMock = vi.mocked(fetchBrands);
 const fetchUnitsMock = vi.mocked(fetchUnits);
 const fetchTagsMock = vi.mocked(fetchTags);
+const fetchStockPositionsMock = vi.mocked(fetchStockPositions);
+const fetchLotsMock = vi.mocked(fetchLots);
 
 const category: Category = {
   id: "cat-1",
@@ -140,6 +150,21 @@ describe("ItemsPage", () => {
     fetchBrandsMock.mockReset().mockResolvedValue([brand]);
     fetchUnitsMock.mockReset().mockResolvedValue([unit]);
     fetchTagsMock.mockReset().mockResolvedValue([tag, tag2]);
+    fetchStockPositionsMock.mockReset().mockResolvedValue({
+      items: [
+        { lotId: "lot-1", locationId: "loc-1", itemName: "耳机", itemManagementType: "DURABLE", unitName: "个", quantity: "3", revision: 0, expiryDate: null, lotNumber: null, serialNumber: null, updatedAt: "2026-01-01T00:00:00Z" },
+        { lotId: "lot-2", locationId: "loc-2", itemName: "耳机", itemManagementType: "DURABLE", unitName: "个", quantity: "2", revision: 0, expiryDate: null, lotNumber: null, serialNumber: null, updatedAt: "2026-01-01T00:00:00Z" },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 10000,
+    });
+    fetchLotsMock.mockReset().mockResolvedValue({
+      items: [],
+      total: 3,
+      page: 1,
+      pageSize: 1,
+    });
     vi.mocked(useSessionStore).mockReturnValue({ role: "OWNER" } as any);
   });
 
@@ -475,5 +500,28 @@ describe("ItemsPage", () => {
     expect(drawer.text()).toContain("7");
     expect(drawer.text()).toContain("阈值");
     expect(drawer.text()).toContain("10");
+  });
+
+  it("shows inventory summary and 入库 button in detail drawer", async () => {
+    wrapper = mount(ItemsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    const firstRow = wrapper.findAll("tbody tr")[0];
+    await firstRow.trigger("click");
+    await flushPromises();
+
+    const drawer = wrapper.findComponent({ name: "ElDrawer" });
+    expect(drawer.text()).toContain("库存总量");
+    expect(drawer.text()).toContain("5");
+    expect(drawer.text()).toContain("批次数");
+    expect(drawer.text()).toContain("3");
+
+    const inboundBtn = drawer.findAll(".el-button").find((b) => b.text().includes("入库"));
+    expect(inboundBtn).toBeTruthy();
+
+    await inboundBtn!.trigger("click");
+    await flushPromises();
+
+    expect(pushMock).toHaveBeenCalledWith({ name: "inventory", query: { action: "inbound", itemId: "item-1" } });
   });
 });

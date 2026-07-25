@@ -128,6 +128,12 @@
         <p v-if="selectedItem.lowStockMode">低库存：{{ selectedItem.lowStockMode }}{{ selectedItem.lowStockThreshold ? `（阈值：${selectedItem.lowStockThreshold}）` : '' }}</p>
         <p v-if="selectedItem.memo">备注：{{ selectedItem.memo }}</p>
         <p>创建时间：{{ formatDate(selectedItem.createdAt) }}</p>
+        <el-divider />
+        <div class="inventory-summary">
+          <p class="detail-row">库存总量：{{ inventoryTotal }}</p>
+          <p class="detail-row">批次数：{{ lotCount }}</p>
+          <el-button type="primary" size="small" @click="goToInbound">入库</el-button>
+        </div>
         <div class="detail-actions">
           <el-button v-if="selectedItem.status === 'ACTIVE'" @click="archiveItem(selectedItem)">归档</el-button>
           <el-button v-if="selectedItem.status === 'ARCHIVED'" @click="restoreItem(selectedItem)">恢复</el-button>
@@ -145,6 +151,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   fetchItems as apiFetchItems,
@@ -152,8 +159,11 @@ import {
   restoreItem as apiRestoreItem,
   fetchCategories, fetchBrands, fetchUnits, fetchTags
 } from '../api/catalog'
+import { fetchStockPositions, fetchLots } from '../api/inventory'
 import type { CatalogItem, Category, Brand, Unit, Tag } from '../types/catalog'
 import ItemFormDrawer from './ItemFormDrawer.vue'
+
+const router = useRouter()
 
 const items = ref<CatalogItem[]>([])
 const loading = ref(false)
@@ -161,6 +171,10 @@ const detailVisible = ref(false)
 const selectedItem = ref<CatalogItem | null>(null)
 const formDrawerVisible = ref(false)
 const editingItem = ref<CatalogItem | null>(null)
+
+// Inventory summary for detail drawer
+const inventoryTotal = ref(0)
+const lotCount = ref(0)
 
 // Dictionary data
 const categories = ref<Category[]>([])
@@ -284,9 +298,26 @@ function onFormSaved() {
   fetchItems()
 }
 
-function openDetail(item: CatalogItem) {
+async function openDetail(item: CatalogItem) {
   selectedItem.value = item
   detailVisible.value = true
+  inventoryTotal.value = 0
+  lotCount.value = 0
+  try {
+    const [pos, lots] = await Promise.all([
+      fetchStockPositions({ itemId: item.id, pageSize: 10000 }),
+      fetchLots({ itemId: item.id, pageSize: 1 }),
+    ])
+    inventoryTotal.value = pos.items.reduce((sum, p) => sum + Number(p.quantity), 0)
+    lotCount.value = lots.total
+  } catch {
+    // silently ignore — inventory module may not be available yet
+  }
+}
+
+function goToInbound() {
+  if (!selectedItem.value) return
+  router.push({ name: 'inventory', query: { action: 'inbound', itemId: selectedItem.value.id } })
 }
 
 async function archiveItem(item: CatalogItem) {
@@ -366,6 +397,9 @@ onMounted(() => {
   margin: 0 0 10px;
   font-size: 14px;
   line-height: 1.7;
+}
+.inventory-summary {
+  margin: 12px 0;
 }
 .detail-actions {
   margin-top: 20px;

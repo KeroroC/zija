@@ -2,6 +2,7 @@ import ElementPlus from "element-plus";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchLocationTree, createLocation, renameLocation, deleteLocation, moveLocation } from "../api/location";
+import { fetchStockPositions } from "../api/inventory";
 import LocationsPage from "./LocationsPage.vue";
 import type { LocationNode } from "../types/location";
 
@@ -11,6 +12,10 @@ vi.mock("../api/location", () => ({
   renameLocation: vi.fn(),
   deleteLocation: vi.fn(),
   moveLocation: vi.fn(),
+}));
+
+vi.mock("../api/inventory", () => ({
+  fetchStockPositions: vi.fn(),
 }));
 
 vi.mock("../stores/session", () => ({
@@ -30,8 +35,10 @@ vi.mock("../stores/session", () => ({
   }),
 }));
 
+const pushMock = vi.fn();
+
 vi.mock("vue-router", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
 }));
 
 const fetchTreeMock = vi.mocked(fetchLocationTree);
@@ -39,6 +46,7 @@ const createMock = vi.mocked(createLocation);
 const renameMock = vi.mocked(renameLocation);
 const deleteMock = vi.mocked(deleteLocation);
 const moveMock = vi.mocked(moveLocation);
+const fetchStockPositionsMock = vi.mocked(fetchStockPositions);
 
 const childNode: LocationNode = {
   id: "loc-child",
@@ -66,7 +74,16 @@ describe("LocationsPage", () => {
   let wrapper: VueWrapper | null = null;
 
   beforeEach(() => {
+    pushMock.mockReset();
     fetchTreeMock.mockReset().mockResolvedValue(treeResponse);
+    fetchStockPositionsMock.mockReset().mockResolvedValue({
+      items: [
+        { lotId: "lot-1", locationId: "loc-root", itemName: "耳机", itemManagementType: "DURABLE", unitName: "个", quantity: "5", revision: 0, expiryDate: null, lotNumber: null, serialNumber: null, updatedAt: "2026-01-01T00:00:00Z" },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 10000,
+    });
     createMock.mockReset().mockResolvedValue({
       id: "loc-new",
       householdId: "h1",
@@ -271,5 +288,39 @@ describe("LocationsPage", () => {
     // Should show warning message, not the confirmation dialog
     expect(document.querySelector(".el-message--warning")).toBeTruthy();
     expect(deleteMock).not.toHaveBeenCalled();
+  });
+
+  it("shows inventory summary instead of placeholder, with navigation buttons", async () => {
+    wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    // Click on the root node to select it
+    const treeNodes = wrapper.findAll(".el-tree-node__content");
+    await treeNodes[0].trigger("click");
+    await flushPromises();
+
+    // Inventory summary should be visible (not the old placeholder)
+    expect(wrapper.text()).toContain("库存记录");
+    expect(wrapper.text()).toContain("1 条");
+    expect(wrapper.text()).toContain("库存总量");
+    expect(wrapper.text()).toContain("5");
+    expect(wrapper.text()).not.toContain("库存将在阶段四启用");
+
+    // Buttons should exist
+    const viewBtn = wrapper.findAll(".el-button").find((b) => b.text().includes("查看库存"));
+    const stocktakeBtn = wrapper.findAll(".el-button").find((b) => b.text().includes("发起盘点"));
+    expect(viewBtn).toBeTruthy();
+    expect(stocktakeBtn).toBeTruthy();
+
+    // Click 查看库存 button
+    await viewBtn!.trigger("click");
+    await flushPromises();
+    expect(pushMock).toHaveBeenCalledWith({ name: "inventory", query: { locationId: "loc-root" } });
+
+    // Click 发起盘点 button
+    pushMock.mockClear();
+    await stocktakeBtn!.trigger("click");
+    await flushPromises();
+    expect(pushMock).toHaveBeenCalledWith({ name: "inventory", query: { action: "stocktake", locationId: "loc-root" } });
   });
 });

@@ -53,7 +53,14 @@
           </ul>
         </template>
         <el-divider />
-        <div class="empty-box">库存将在阶段四启用</div>
+        <div class="inventory-summary">
+          <p class="detail-meta">库存记录：{{ locationStockCount }} 条</p>
+          <p class="detail-meta">库存总量：{{ locationStockTotal }}</p>
+          <div class="inventory-actions">
+            <el-button size="small" type="primary" @click="goToLocationInventory">查看库存</el-button>
+            <el-button size="small" @click="goToStocktake">发起盘点</el-button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -102,13 +109,19 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, TopRight, Close } from '@element-plus/icons-vue'
 import { fetchLocationTree, createLocation, renameLocation, deleteLocation, moveLocation } from '../api/location'
+import { fetchStockPositions } from '../api/inventory'
 import type { LocationNode } from '../types/location'
+
+const router = useRouter()
 
 const treeData = ref<LocationNode[]>([])
 const selectedLocation = ref<LocationNode | null>(null)
+const locationStockCount = ref(0)
+const locationStockTotal = ref(0)
 const moveDialogVisible = ref(false)
 const movingNode = ref<LocationNode | null>(null)
 const targetParentId = ref<string | null>(null)
@@ -145,8 +158,27 @@ async function loadTree() {
   treeData.value = res.roots
 }
 
-function selectNode(data: LocationNode) {
+async function selectNode(data: LocationNode) {
   selectedLocation.value = data
+  locationStockCount.value = 0
+  locationStockTotal.value = 0
+  try {
+    const pos = await fetchStockPositions({ locationId: data.id, pageSize: 10000 })
+    locationStockCount.value = pos.total
+    locationStockTotal.value = pos.items.reduce((sum, p) => sum + Number(p.quantity), 0)
+  } catch {
+    // silently ignore
+  }
+}
+
+function goToLocationInventory() {
+  if (!selectedLocation.value) return
+  router.push({ name: 'inventory', query: { locationId: selectedLocation.value.id } })
+}
+
+function goToStocktake() {
+  if (!selectedLocation.value) return
+  router.push({ name: 'inventory', query: { action: 'stocktake', locationId: selectedLocation.value.id } })
 }
 
 function openCreate(parentId: string | null = null) {
@@ -260,13 +292,13 @@ onMounted(loadTree)
   margin: 0 0 8px;
   font-size: 13px;
 }
-.empty-box {
-  border: 1px dashed var(--zj-line-strong);
-  border-radius: var(--zj-radius-md);
-  padding: 22px 16px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--zj-ink-400);
+.inventory-summary {
+  margin-top: 8px;
+}
+.inventory-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
 }
 .tree-node {
   display: flex;
