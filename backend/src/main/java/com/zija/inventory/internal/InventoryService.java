@@ -218,6 +218,7 @@ class InventoryService implements InventoryApi {
      * 要求当前账户为管理员，否则抛出 403。
      */
     private void requireAdmin(UUID accountId) {
+        householdApi.requireActiveMember(accountId);
         if (!householdApi.hasAtLeastRole(accountId, HouseholdApi.MemberRole.ADMIN)) {
             throw new AccessDeniedException("需要管理员权限");
         }
