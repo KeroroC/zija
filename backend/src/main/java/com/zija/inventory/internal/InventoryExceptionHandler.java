@@ -64,6 +64,11 @@ class InventoryExceptionHandler {
         return problem(request, HttpStatus.CONFLICT, "盘点单不是草稿状态", "INVENTORY_STOCKTAKE_NOT_DRAFT");
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    ProblemDetail handleIllegalArgument(HttpServletRequest request) {
+        return problem(request, HttpStatus.BAD_REQUEST, "请求字段校验失败", "VALIDATION_FAILED");
+    }
+
     private ProblemDetail problem(HttpServletRequest request, HttpStatus status, String title, String errorCode) {
         var problem = ProblemDetail.forStatusAndDetail(status, title);
         problem.setTitle(title);

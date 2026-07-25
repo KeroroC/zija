@@ -1,5 +1,11 @@
 package com.zija.inventory.internal;
 
+import com.zija.inventory.StockChangedEvent;
+import com.zija.inventory.internal.event.InventoryEventPublisher;
+import com.zija.inventory.internal.persistence.LotEntity;
+import com.zija.inventory.internal.persistence.LotMapper;
+import com.zija.inventory.internal.persistence.MovementEntity;
+import com.zija.inventory.internal.persistence.MovementMapper;
 import com.zija.inventory.internal.persistence.StockPositionEntity;
 import com.zija.inventory.internal.persistence.StockPositionMapper;
 import com.zija.inventory.internal.persistence.StocktakeEntity;
@@ -7,12 +13,15 @@ import com.zija.inventory.internal.persistence.StocktakeItemEntity;
 import com.zija.inventory.internal.persistence.StocktakeItemMapper;
 import com.zija.inventory.internal.persistence.StocktakeMapper;
 import com.zija.location.LocationApi;
+import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -22,18 +31,30 @@ class StocktakeService {
     private final StocktakeItemMapper stocktakeItemMapper;
     private final StockPositionMapper stockPositionMapper;
     private final LotService lotService;
+    private final LotMapper lotMapper;
+    private final MovementMapper movementMapper;
     private final LocationApi locationApi;
+    private final SystemApi systemApi;
+    private final InventoryEventPublisher eventPublisher;
 
     StocktakeService(StocktakeMapper stocktakeMapper,
                      StocktakeItemMapper stocktakeItemMapper,
                      StockPositionMapper stockPositionMapper,
                      LotService lotService,
-                     LocationApi locationApi) {
+                     LotMapper lotMapper,
+                     MovementMapper movementMapper,
+                     LocationApi locationApi,
+                     SystemApi systemApi,
+                     InventoryEventPublisher eventPublisher) {
         this.stocktakeMapper = stocktakeMapper;
         this.stocktakeItemMapper = stocktakeItemMapper;
         this.stockPositionMapper = stockPositionMapper;
         this.lotService = lotService;
+        this.lotMapper = lotMapper;
+        this.movementMapper = movementMapper;
         this.locationApi = locationApi;
+        this.systemApi = systemApi;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -212,6 +233,127 @@ class StocktakeService {
     public List<StocktakeItemEntity> draftItems(UUID householdId, UUID stocktakeId) {
         return stocktakeItemMapper.findByStocktake(householdId, stocktakeId);
     }
+
+    /**
+     * 确认盘点：原子性校验库存未变，为差异生成 ADJUSTMENT 流水。
+     *
+     * @throws StocktakeNotDraftException              盘点单不是草稿状态
+     * @throws InventoryLotVersionConflictException     盘点单版本冲突
+     * @throws StocktakeStaleException                  盘点范围内库存已变化
+     * @throws IllegalArgumentException                 差异行项缺少原因
+     */
+    @Transactional
+    public ConfirmResult confirm(UUID householdId, UUID stocktakeId, int clientVersion, UUID accountId) {
+        // 1. 锁定盘点单，校验草稿状态
+        StocktakeEntity stocktake = stocktakeMapper.lockById(householdId, stocktakeId);
+        if (stocktake == null || !"DRAFT".equals(stocktake.getStatus())) {
+            throw new StocktakeNotDraftException();
+        }
+
+        // 2. 乐观锁版本检查
+        stocktake.setVersion(clientVersion);
+        int rows = stocktakeMapper.updateById(stocktake);
+        if (rows == 0) {
+            throw new InventoryLotVersionConflictException();
+        }
+
+        // 3. 锁定所有行项
+        List<StocktakeItemEntity> items = stocktakeItemMapper.lockByStocktake(householdId, stocktakeId);
+
+        // 4. 逐项校验库存位未变化
+        for (StocktakeItemEntity item : items) {
+            StockPositionEntity sp = stockPositionMapper.lockOne(
+                    householdId, item.getLotId(), item.getLocationId());
+            if (sp == null) {
+                if (item.getBookQuantity().compareTo(BigDecimal.ZERO) > 0) {
+                    throw new StocktakeStaleException();
+                }
+            } else {
+                if (sp.getQuantity().compareTo(item.getBookQuantity()) != 0
+                        || !sp.getRevision().equals(item.getPositionRevision())) {
+                    throw new StocktakeStaleException();
+                }
+            }
+        }
+
+        // 5. 处理差异：校验原因 → 生成 ADJUSTMENT 流水 → 更新库存位
+        OffsetDateTime now = OffsetDateTime.now();
+        int adjustedCount = 0;
+        for (StocktakeItemEntity item : items) {
+            int cmp = item.getActualQuantity().compareTo(item.getBookQuantity());
+            if (cmp == 0) {
+                continue;
+            }
+
+            // 差异必须有原因
+            if (item.getReason() == null || item.getReason().isBlank()) {
+                throw new IllegalArgumentException("盘点差异必须填写原因");
+            }
+
+            BigDecimal delta = item.getActualQuantity().subtract(item.getBookQuantity());
+            UUID lotId = item.getLotId();
+            UUID locId = item.getLocationId();
+
+            // 更新库存位
+            if (cmp > 0) {
+                stockPositionMapper.addQuantity(householdId, lotId, locId, delta);
+            } else {
+                stockPositionMapper.subtractIfSufficient(
+                        householdId, lotId, locId, delta.abs());
+            }
+
+            // 查询批次获取 itemId
+            LotEntity lot = lotMapper.selectById(lotId);
+            UUID itemId = lot.getItemId();
+
+            // 生成 ADJUSTMENT 流水
+            UUID movementId = UUID.randomUUID();
+            var movement = new MovementEntity();
+            movement.setId(movementId);
+            movement.setHouseholdId(householdId);
+            movement.setLotId(lotId);
+            movement.setItemId(itemId);
+            movement.setType("ADJUSTMENT");
+            movement.setQuantity(delta.abs());
+            movement.setFromLocationId(cmp < 0 ? locId : null);
+            movement.setToLocationId(cmp > 0 ? locId : null);
+            movement.setReason(item.getReason());
+            movement.setMemo(null);
+            movement.setOperatorAccountId(accountId);
+            movement.setBusinessTime(now);
+            movement.setCreatedAt(now);
+            movement.setIdempotencyKey(UUID.randomUUID().toString());
+            movement.setReversalOf(null);
+            movementMapper.insert(movement);
+
+            // 发布库存变更事件
+            eventPublisher.publish(new StockChangedEvent(
+                    UUID.randomUUID(), householdId, lotId, itemId,
+                    "ADJUSTMENT", delta.abs(),
+                    cmp < 0 ? locId : null, cmp > 0 ? locId : null,
+                    now, movementId, UUID.fromString(movement.getIdempotencyKey())));
+
+            adjustedCount++;
+        }
+
+        // 6. 盘点单状态 → COMPLETED
+        stocktake.setStatus("COMPLETED");
+        stocktake.setCompletedAt(now);
+        stocktakeMapper.updateById(stocktake);
+
+        // 7. 审计
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                "INVENTORY_STOCKTAKE_CONFIRM", "SUCCESS",
+                householdId, accountId, null, null, null,
+                Map.of("stocktakeId", stocktakeId, "adjustedCount", adjustedCount)));
+
+        return new ConfirmResult(stocktakeId, adjustedCount);
+    }
+
+    /**
+     * 盘点确认结果。
+     */
+    record ConfirmResult(UUID stocktakeId, int adjustedCount) {}
 
     /**
      * 盘点行项更新请求。

@@ -1,9 +1,14 @@
 package com.zija.inventory.internal;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.inventory.internal.persistence.LotMapper;
+import com.zija.inventory.internal.persistence.MovementEntity;
+import com.zija.inventory.internal.persistence.MovementMapper;
+import com.zija.inventory.internal.persistence.StockPositionEntity;
 import com.zija.inventory.internal.persistence.StockPositionMapper;
+import com.zija.inventory.internal.persistence.StocktakeItemEntity;
 import com.zija.inventory.internal.persistence.StocktakeItemMapper;
 import com.zija.inventory.internal.persistence.StocktakeMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +46,7 @@ class StocktakeServiceIntegrationTest {
     @Autowired StockPositionMapper stockPositionMapper;
     @Autowired StocktakeMapper stocktakeMapper;
     @Autowired StocktakeItemMapper stocktakeItemMapper;
+    @Autowired MovementMapper movementMapper;
     @Autowired StocktakeService stocktakeService;
     @Autowired PlatformTransactionManager txManager;
 
@@ -349,6 +355,225 @@ class StocktakeServiceIntegrationTest {
                 newTx().executeWithoutResult(s ->
                         stocktakeService.refreshDraft(householdId, stocktakeId, 0, locationId))
         ).isInstanceOf(StocktakeNotDraftException.class);
+    }
+
+    // --- confirm test case 1: no differences -> COMPLETED, no movements, adjustedCount=0 ---
+    @Test
+    void confirm_noDifferences_completesWithNoMovements() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        var result = newTx().execute(s ->
+                stocktakeService.confirm(householdId, stocktakeId, 0, accountId));
+
+        assertThat(result.stocktakeId()).isEqualTo(stocktakeId);
+        assertThat(result.adjustedCount()).isEqualTo(0);
+
+        // Verify stocktake is COMPLETED
+        var stocktake = stocktakeMapper.selectById(stocktakeId);
+        assertThat(stocktake.getStatus()).isEqualTo("COMPLETED");
+        assertThat(stocktake.getCompletedAt()).isNotNull();
+
+        // Verify no ADJUSTMENT movements
+        Long movementCount = movementMapper.selectCount(
+                new LambdaQueryWrapper<MovementEntity>()
+                        .eq(MovementEntity::getHouseholdId, householdId)
+                        .eq(MovementEntity::getType, "ADJUSTMENT"));
+        assertThat(movementCount).isEqualTo(0);
+
+        // Verify stock position unchanged
+        var sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(sp.getQuantity()).isEqualByComparingTo(BigDecimal.TEN);
+        assertThat(sp.getRevision()).isEqualTo(1L);
+    }
+
+    // --- confirm test case 2: with differences -> ADJUSTMENT movements, stock updated, revision+1 ---
+    @Test
+    void confirm_withDifferences_createsAdjustmentMovementsAndUpdatesStock() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId1 = seedLot(householdId, itemId);
+        UUID lotId2 = seedLot(householdId, itemId);
+
+        UUID spId1 = UUID.randomUUID();
+        UUID spId2 = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId1, householdId, lotId1, locationId);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 20, 2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId2, householdId, lotId2, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // Update: lot1 actual=7 (少了3), lot2 actual=25 (多了5)
+        var update1 = new StocktakeService.StocktakeItemUpdate(lotId1, locationId, BigDecimal.valueOf(7), "丢失3个");
+        var update2 = new StocktakeService.StocktakeItemUpdate(lotId2, locationId, BigDecimal.valueOf(25), "多出5个");
+        newTx().executeWithoutResult(s ->
+                stocktakeService.updateDraft(householdId, stocktakeId, 0, List.of(update1, update2)));
+
+        var result = newTx().execute(s ->
+                stocktakeService.confirm(householdId, stocktakeId, 1, accountId));
+
+        assertThat(result.adjustedCount()).isEqualTo(2);
+
+        // Verify stocktake is COMPLETED
+        var stocktake = stocktakeMapper.selectById(stocktakeId);
+        assertThat(stocktake.getStatus()).isEqualTo("COMPLETED");
+        assertThat(stocktake.getCompletedAt()).isNotNull();
+
+        // Verify 2 ADJUSTMENT movements
+        List<MovementEntity> movements = movementMapper.selectList(
+                new LambdaQueryWrapper<MovementEntity>()
+                        .eq(MovementEntity::getHouseholdId, householdId)
+                        .eq(MovementEntity::getType, "ADJUSTMENT")
+                        .orderByAsc(MovementEntity::getCreatedAt));
+        assertThat(movements).hasSize(2);
+
+        // lot1: actual < book -> from_location=location, quantity=3
+        var mov1 = movements.stream().filter(m -> m.getLotId().equals(lotId1)).findFirst().orElseThrow();
+        assertThat(mov1.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(3));
+        assertThat(mov1.getFromLocationId()).isEqualTo(locationId);
+        assertThat(mov1.getToLocationId()).isNull();
+        assertThat(mov1.getReason()).isEqualTo("丢失3个");
+
+        // lot2: actual > book -> to_location=location, quantity=5
+        var mov2 = movements.stream().filter(m -> m.getLotId().equals(lotId2)).findFirst().orElseThrow();
+        assertThat(mov2.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
+        assertThat(mov2.getFromLocationId()).isNull();
+        assertThat(mov2.getToLocationId()).isEqualTo(locationId);
+        assertThat(mov2.getReason()).isEqualTo("多出5个");
+
+        // Verify stock positions updated
+        var sp1 = stockPositionMapper.lockOne(householdId, lotId1, locationId);
+        assertThat(sp1.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(7));
+        assertThat(sp1.getRevision()).isEqualTo(2L);
+
+        var sp2 = stockPositionMapper.lockOne(householdId, lotId2, locationId);
+        assertThat(sp2.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(25));
+        assertThat(sp2.getRevision()).isEqualTo(3L);
+    }
+
+    // --- confirm test case 3: scope inventory changed after draft -> StocktakeStaleException ---
+    @Test
+    void confirm_scopeInventoryChanged_throwsStocktakeStale() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // Simulate stock change after draft
+        jdbc.update("""
+                UPDATE inventory_stock_position SET quantity = 15, revision = 2, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, spId);
+
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stocktakeService.confirm(householdId, stocktakeId, 0, accountId))
+        ).isInstanceOf(StocktakeStaleException.class);
+
+        // Verify still DRAFT (rolled back)
+        var stocktake = stocktakeMapper.selectById(stocktakeId);
+        assertThat(stocktake.getStatus()).isEqualTo("DRAFT");
+
+        // Verify no ADJUSTMENT movements
+        Long movementCount = movementMapper.selectCount(
+                new LambdaQueryWrapper<MovementEntity>()
+                        .eq(MovementEntity::getHouseholdId, householdId)
+                        .eq(MovementEntity::getType, "ADJUSTMENT"));
+        assertThat(movementCount).isEqualTo(0);
+    }
+
+    // --- confirm test case 4: difference reason missing -> IllegalArgumentException ---
+    @Test
+    void confirm_differenceWithoutReason_throwsIllegalArgument() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // Update actual without reason
+        var update = new StocktakeService.StocktakeItemUpdate(lotId, locationId, BigDecimal.valueOf(7), null);
+        newTx().executeWithoutResult(s ->
+                stocktakeService.updateDraft(householdId, stocktakeId, 0, List.of(update)));
+
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stocktakeService.confirm(householdId, stocktakeId, 1, accountId))
+        ).isInstanceOf(IllegalArgumentException.class);
+
+        // Verify still DRAFT
+        var stocktake = stocktakeMapper.selectById(stocktakeId);
+        assertThat(stocktake.getStatus()).isEqualTo("DRAFT");
+    }
+
+    // --- confirm test case 5: already COMPLETED -> StocktakeNotDraftException ---
+    @Test
+    void confirm_alreadyCompleted_throwsStocktakeNotDraft() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // Change status to COMPLETED
+        jdbc.update("UPDATE inventory_stocktake SET status = 'COMPLETED' WHERE id = ?", stocktakeId);
+
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stocktakeService.confirm(householdId, stocktakeId, 0, accountId))
+        ).isInstanceOf(StocktakeNotDraftException.class);
+    }
+
+    // --- confirm test case 6: version conflict -> InventoryLotVersionConflictException ---
+    @Test
+    void confirm_versionConflict_throwsVersionConflict() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // Simulate version bump by another operation
+        jdbc.update("UPDATE inventory_stocktake SET version = 5 WHERE id = ?", stocktakeId);
+
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stocktakeService.confirm(householdId, stocktakeId, 0, accountId))
+        ).isInstanceOf(InventoryLotVersionConflictException.class);
     }
 
     // --- Helpers ---
