@@ -68,7 +68,8 @@
           <el-tree-select
             v-model="form.toLocationId"
             :data="locationTreeData"
-            :props="{ label: 'name', value: 'id', children: 'children' }"
+            node-key="id"
+            :props="{ label: 'name', children: 'children' }"
             placeholder="选择目标位置"
             check-strictly
             style="width: 100%"

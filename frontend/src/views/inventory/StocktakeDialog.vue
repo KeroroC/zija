@@ -21,7 +21,8 @@
           <el-tree-select
             v-model="selectedLocationId"
             :data="locationTreeData"
-            :props="{ label: 'name', value: 'id', children: 'children' }"
+            node-key="id"
+            :props="{ label: 'name', children: 'children' }"
             placeholder="选择盘点位置"
             check-strictly
             style="width: 100%"
@@ -240,7 +241,7 @@ const refreshLoading = ref(false)
 const cancelLoading = ref(false)
 
 const stocktakeDetail = ref<StocktakeDetail | null>(null)
-const editItems = ref<(StocktakeItem & { actualQuantity: number })[]>([])
+const editItems = ref<(Omit<StocktakeItem, 'actualQuantity'> & { actualQuantity: number })[]>([])
 const lotNameMap = ref<Map<string, string>>(new Map())
 
 // Backfill state
@@ -254,9 +255,10 @@ const isStale = ref(false)
 
 const previewItems = computed(() => editItems.value)
 
-function computeDiff(row: { bookQuantity: string; actualQuantity: number }): string {
-  const book = parseFloat(row.bookQuantity)
-  const actual = row.actualQuantity
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function computeDiff(row: any): string {
+  const book = parseFloat(String(row.bookQuantity))
+  const actual = Number(row.actualQuantity)
   const diff = actual - book
   if (diff === 0) return '0'
   return diff > 0 ? `+${diff}` : String(diff)

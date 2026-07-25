@@ -220,10 +220,10 @@ describe("CurrentStockTab", () => {
     await mountAndWait();
 
     expect(fetchStockPositionsMock).toHaveBeenCalledOnce();
-    expect(wrapper.text()).toContain("洗衣液");
-    expect(wrapper.text()).toContain("LOT-001");
-    expect(wrapper.text()).toContain("5 瓶");
-    expect(wrapper.text()).toContain("毛巾");
+    expect(wrapper!.text()).toContain("洗衣液");
+    expect(wrapper!.text()).toContain("LOT-001");
+    expect(wrapper!.text()).toContain("5 瓶");
+    expect(wrapper!.text()).toContain("毛巾");
   });
 
   it("loads item and location name maps on mount", async () => {
@@ -237,16 +237,16 @@ describe("CurrentStockTab", () => {
     await mountAndWait();
 
     // loc-1 is "家", loc-2 is "卧室"
-    expect(wrapper.text()).toContain("家");
-    expect(wrapper.text()).toContain("卧室");
+    expect(wrapper!.text()).toContain("家");
+    expect(wrapper!.text()).toContain("卧室");
   });
 
   it("displays expiry date and dash for null", async () => {
     await mountAndWait();
 
-    expect(wrapper.text()).toContain("2026-12-31");
+    expect(wrapper!.text()).toContain("2026-12-31");
     // row2 has null expiryDate, should show dash
-    const cells = wrapper.findAll(".el-table__body td");
+    const cells = wrapper!.findAll(".el-table__body td");
     const expiryCells = cells.filter(
       (c) => c.text() === "-" || c.text().includes("2026-"),
     );
@@ -264,7 +264,7 @@ describe("CurrentStockTab", () => {
     });
 
     // Find the first el-select (item filter) and trigger change
-    const selects = wrapper.findAllComponents({ name: "ElSelect" });
+    const selects = wrapper!.findAllComponents({ name: "ElSelect" });
     expect(selects.length).toBeGreaterThanOrEqual(2);
     await selects[0].vm.$emit("update:modelValue", "item-1");
     await selects[0].vm.$emit("change", "item-1");
@@ -288,7 +288,7 @@ describe("CurrentStockTab", () => {
       pageSize: 20,
     });
 
-    const selects = wrapper.findAllComponents({ name: "ElSelect" });
+    const selects = wrapper!.findAllComponents({ name: "ElSelect" });
     expect(selects.length).toBeGreaterThanOrEqual(2);
     await selects[1].vm.$emit("update:modelValue", "loc-2");
     await selects[1].vm.$emit("change", "loc-2");
@@ -305,7 +305,7 @@ describe("CurrentStockTab", () => {
   it("opens drawer with movements when row is clicked", async () => {
     await mountAndWait();
 
-    const rows = wrapper.findAll(".el-table__body .el-table__row");
+    const rows = wrapper!.findAll(".el-table__body .el-table__row");
     expect(rows.length).toBeGreaterThan(0);
     await rows[0].trigger("click");
     await flushPromises();
@@ -315,9 +315,9 @@ describe("CurrentStockTab", () => {
       page: 1,
       pageSize: 20,
     });
-    expect(wrapper.text()).toContain("近期流水");
-    expect(wrapper.text()).toContain("入库");
-    expect(wrapper.text()).toContain("首批入库");
+    expect(wrapper!.text()).toContain("近期流水");
+    expect(wrapper!.text()).toContain("入库");
+    expect(wrapper!.text()).toContain("首批入库");
   });
 
   it("shows empty state when no stock positions", async () => {
@@ -325,7 +325,7 @@ describe("CurrentStockTab", () => {
 
     await mountAndWait();
 
-    const rows = wrapper.findAll(".el-table__body .el-table__row");
+    const rows = wrapper!.findAll(".el-table__body .el-table__row");
     expect(rows).toHaveLength(0);
   });
 
@@ -339,7 +339,7 @@ describe("CurrentStockTab", () => {
 
     await mountAndWait();
 
-    expect(wrapper.find(".el-pagination").exists()).toBe(true);
-    expect(wrapper.text()).toContain("50");
+    expect(wrapper!.find(".el-pagination").exists()).toBe(true);
+    expect(wrapper!.text()).toContain("50");
   });
 });

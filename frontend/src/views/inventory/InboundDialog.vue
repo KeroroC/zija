@@ -136,7 +136,8 @@
           <el-tree-select
             v-model="form.locationId"
             :data="locationTreeData"
-            :props="{ label: 'name', value: 'id', children: 'children' }"
+            node-key="id"
+            :props="{ label: 'name', children: 'children' }"
             placeholder="选择位置"
             check-strictly
             style="width: 100%"

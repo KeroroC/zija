@@ -201,12 +201,12 @@ describe("LotsTab", () => {
     await mountAndWait()
 
     expect(fetchLotsMock).toHaveBeenCalledOnce()
-    expect(wrapper.text()).toContain("洗衣液")
-    expect(wrapper.text()).toContain("LOT-001")
-    expect(wrapper.text()).toContain("5 瓶")
-    expect(wrapper.text()).toContain("2026-12-31")
-    expect(wrapper.text()).toContain("毛巾")
-    expect(wrapper.text()).toContain("SN-001")
+    expect(wrapper!.text()).toContain("洗衣液")
+    expect(wrapper!.text()).toContain("LOT-001")
+    expect(wrapper!.text()).toContain("5 瓶")
+    expect(wrapper!.text()).toContain("2026-12-31")
+    expect(wrapper!.text()).toContain("毛巾")
+    expect(wrapper!.text()).toContain("SN-001")
   })
 
   it("filters by item when item select changes", async () => {
@@ -219,7 +219,7 @@ describe("LotsTab", () => {
       pageSize: 20,
     })
 
-    const selects = wrapper.findAllComponents({ name: "ElSelect" })
+    const selects = wrapper!.findAllComponents({ name: "ElSelect" })
     expect(selects.length).toBeGreaterThanOrEqual(1)
     await selects[0].vm.$emit("update:modelValue", "item-1")
     await selects[0].vm.$emit("change", "item-1")
@@ -234,7 +234,7 @@ describe("LotsTab", () => {
   it("opens LotDetailDrawer when row is clicked", async () => {
     await mountAndWait()
 
-    const rows = wrapper.findAll(".el-table__body .el-table__row")
+    const rows = wrapper!.findAll(".el-table__body .el-table__row")
     expect(rows.length).toBeGreaterThan(0)
     await rows[0].trigger("click")
     await flushPromises()
@@ -257,7 +257,7 @@ describe("LotsTab", () => {
 
     await mountAndWait()
 
-    const rows = wrapper.findAll(".el-table__body .el-table__row")
+    const rows = wrapper!.findAll(".el-table__body .el-table__row")
     expect(rows).toHaveLength(0)
   })
 
@@ -271,8 +271,8 @@ describe("LotsTab", () => {
 
     await mountAndWait()
 
-    expect(wrapper.find(".el-pagination").exists()).toBe(true)
-    expect(wrapper.text()).toContain("50")
+    expect(wrapper!.find(".el-pagination").exists()).toBe(true)
+    expect(wrapper!.text()).toContain("50")
   })
 })
 
@@ -301,42 +301,42 @@ describe("LotDetailDrawer", () => {
   it("shows position distribution", async () => {
     await mountDrawer()
 
-    expect(wrapper.text()).toContain("库存分布")
-    expect(wrapper.text()).toContain("家")
-    expect(wrapper.text()).toContain("3 瓶")
-    expect(wrapper.text()).toContain("卧室")
-    expect(wrapper.text()).toContain("2 瓶")
+    expect(wrapper!.text()).toContain("库存分布")
+    expect(wrapper!.text()).toContain("家")
+    expect(wrapper!.text()).toContain("3 瓶")
+    expect(wrapper!.text()).toContain("卧室")
+    expect(wrapper!.text()).toContain("2 瓶")
   })
 
   it("shows lot metadata", async () => {
     await mountDrawer()
 
-    expect(wrapper.text()).toContain("批次信息")
-    expect(wrapper.text()).toContain("LOT-001")
-    expect(wrapper.text()).toContain("首批采购")
-    expect(wrapper.text()).toContain("2026-12-31")
-    expect(wrapper.text()).toContain("洗衣液")
-    expect(wrapper.text()).toContain("5 瓶")
+    expect(wrapper!.text()).toContain("批次信息")
+    expect(wrapper!.text()).toContain("LOT-001")
+    expect(wrapper!.text()).toContain("首批采购")
+    expect(wrapper!.text()).toContain("2026-12-31")
+    expect(wrapper!.text()).toContain("洗衣液")
+    expect(wrapper!.text()).toContain("5 瓶")
   })
 
   it("shows related movements", async () => {
     await mountDrawer()
 
-    expect(wrapper.text()).toContain("相关流水")
-    expect(wrapper.text()).toContain("入库")
-    expect(wrapper.text()).toContain("首批入库")
+    expect(wrapper!.text()).toContain("相关流水")
+    expect(wrapper!.text()).toContain("入库")
+    expect(wrapper!.text()).toContain("首批入库")
   })
 
   it("opens edit form when edit button is clicked", async () => {
     await mountDrawer()
 
-    const editBtn = wrapper.find("button.el-button--primary.is-link")
+    const editBtn = wrapper!.find("button.el-button--primary.is-link")
     expect(editBtn.exists()).toBe(true)
     await editBtn.trigger("click")
     await flushPromises()
 
     // Should show form inputs
-    expect(wrapper.find(".el-form").exists()).toBe(true)
+    expect(wrapper!.find(".el-form").exists()).toBe(true)
   })
 
   it("updates lot metadata on save", async () => {
@@ -351,12 +351,12 @@ describe("LotDetailDrawer", () => {
     await mountDrawer()
 
     // Click edit
-    const editBtn = wrapper.find("button.el-button--primary.is-link")
+    const editBtn = wrapper!.find("button.el-button--primary.is-link")
     await editBtn.trigger("click")
     await flushPromises()
 
     // Find and click save button
-    const buttons = wrapper.findAll(".el-form button")
+    const buttons = wrapper!.findAll(".el-form button")
     const saveBtn = buttons.find((b) => b.text().includes("保存"))
     expect(saveBtn).toBeDefined()
     await saveBtn!.trigger("click")
@@ -383,12 +383,12 @@ describe("LotDetailDrawer", () => {
     await mountDrawer()
 
     // Click edit
-    const editBtn = wrapper.find("button.el-button--primary.is-link")
+    const editBtn = wrapper!.find("button.el-button--primary.is-link")
     await editBtn.trigger("click")
     await flushPromises()
 
     // Click save
-    const buttons = wrapper.findAll(".el-form button")
+    const buttons = wrapper!.findAll(".el-form button")
     const saveBtn = buttons.find((b) => b.text().includes("保存"))
     await saveBtn!.trigger("click")
     await flushPromises()
@@ -403,15 +403,15 @@ describe("LotDetailDrawer", () => {
 
     await mountDrawer()
 
-    const editBtn = wrapper.find("button.el-button--primary.is-link")
+    const editBtn = wrapper!.find("button.el-button--primary.is-link")
     await editBtn.trigger("click")
     await flushPromises()
 
-    const buttons = wrapper.findAll(".el-form button")
+    const buttons = wrapper!.findAll(".el-form button")
     const saveBtn = buttons.find((b) => b.text().includes("保存"))
     await saveBtn!.trigger("click")
     await flushPromises()
 
-    expect(wrapper.emitted("updated")).toBeTruthy()
+    expect(wrapper!.emitted("updated")).toBeTruthy()
   })
 })
