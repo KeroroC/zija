@@ -67,6 +67,10 @@ describe("router session recovery", () => {
     await resetRouterAndPinia();
   });
 
+  it("resolves /inventory route to inventory page", async () => {
+    expect(router.resolve("/inventory").name).toBe("inventory");
+  });
+
   it("retries member synchronization in the guard after a failed initial applySession", async () => {
     const session = useSessionStore();
     getCurrentMemberMock

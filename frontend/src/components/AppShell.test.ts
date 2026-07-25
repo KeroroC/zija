@@ -71,6 +71,12 @@ describe("AppShell", () => {
     expect(wrapper.text()).toContain("家庭设置");
     expect(wrapper.text()).toContain("管理员");
     expect(wrapper.text()).toContain("登出");
+    expect(wrapper.text()).toContain("库存操作");
+
+    // inventory menu item should be enabled (not disabled)
+    const inventoryItem = wrapper.findAll(".el-menu-item").find(item => item.text().includes("库存管理"));
+    expect(inventoryItem).toBeDefined();
+    expect(inventoryItem!.classes()).not.toContain("is-disabled");
   });
 
   it("hides sidebar completely when not signed in", async () => {
@@ -128,7 +134,9 @@ describe("AppShell", () => {
       global: { plugins: [router, ElementPlus] }
     });
 
-    await wrapper.get("button").trigger("click");
+    const buttons = wrapper.findAll("button");
+    const logoutButton = buttons.find(b => b.text().includes("登出"))!;
+    await logoutButton.trigger("click");
     await flushPromises();
 
     expect(router.currentRoute.value.name).toBe("home");

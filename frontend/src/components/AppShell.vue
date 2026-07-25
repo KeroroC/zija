@@ -22,7 +22,7 @@
           <el-icon><Box /></el-icon>
           <span>物品资料</span>
         </el-menu-item>
-        <el-menu-item index="/inventory" disabled>
+        <el-menu-item index="/inventory">
           <el-icon><Files /></el-icon>
           <span>库存管理</span>
         </el-menu-item>
@@ -66,6 +66,21 @@
       <el-header class="app-header" height="56px">
         <span class="header-context">家庭：{{ householdName }}</span>
         <div class="header-right">
+          <el-dropdown trigger="click" @command="onInventoryCommand">
+            <el-button size="small" type="primary" plain>
+              库存操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="inbound">入库</el-dropdown-item>
+                <el-dropdown-item command="consume">领用</el-dropdown-item>
+                <el-dropdown-item command="loss">报损</el-dropdown-item>
+                <el-dropdown-item command="transfer">移位</el-dropdown-item>
+                <el-dropdown-item command="stocktake" divided>发起盘点</el-dropdown-item>
+                <el-dropdown-item command="consistency" v-if="isAdmin">一致性检查</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <span class="zj-badge zj-badge-plain">{{ roleLabel }}</span>
           <el-button
             size="small"
@@ -99,7 +114,8 @@ import {
   Document,
   Postcard,
   Setting,
-  SwitchButton
+  SwitchButton,
+  ArrowDown
 } from "@element-plus/icons-vue";
 import { useSessionStore } from "../stores/session";
 import { householdApi } from "../api/household";
@@ -118,6 +134,8 @@ onMounted(async () => {
     // fallback to default
   }
 });
+
+const isAdmin = computed(() => session.role === "OWNER" || session.role === "ADMIN");
 
 const roleLabel = computed(() => {
   switch (session.role) {
@@ -139,5 +157,10 @@ async function onLogout() {
   } catch {
     ElMessage.error("登出失败，请重试");
   }
+}
+
+function onInventoryCommand(command: string) {
+  // TODO: wire up inventory operation modals/dialogs
+  console.log("inventory command:", command);
 }
 </script>

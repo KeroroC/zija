@@ -11,6 +11,7 @@ import AuditLogPage from "../views/AuditLogPage.vue";
 import ItemsPage from "../views/ItemsPage.vue";
 import LocationsPage from "../views/LocationsPage.vue";
 import CatalogSettingsPage from "../views/CatalogSettingsPage.vue";
+import InventoryPage from "../views/InventoryPage.vue";
 import NotFoundPage from "../views/NotFoundPage.vue";
 
 export const router = createRouter({
@@ -27,6 +28,7 @@ export const router = createRouter({
     { path: "/items", name: "items", component: ItemsPage, meta: { title: "物品资料" } },
     { path: "/locations", name: "locations", component: LocationsPage, meta: { title: "位置管理" } },
     { path: "/settings/catalog", name: "catalog-settings", component: CatalogSettingsPage, meta: { title: "目录设置" } },
+    { path: "/inventory", name: "inventory", component: InventoryPage, meta: { title: "库存管理" } },
     { path: "/:pathMatch(.*)*", name: "not-found", component: NotFoundPage, meta: { title: "页面不存在" } }
   ]
 });
