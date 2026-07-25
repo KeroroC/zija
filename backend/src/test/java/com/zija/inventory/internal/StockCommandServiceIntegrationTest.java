@@ -132,6 +132,58 @@ class StockCommandServiceIntegrationTest {
         assertThat(everReferenced).isTrue();
     }
 
+    // --- Test point 1 (existing lot): inbound to existing lot accumulates quantity, revision+1 ---
+    @Test
+    void inboundExistingLot_accumulatesQuantityAndIncrementsRevision() {
+        UUID lotId = seedLot(householdId, itemId);
+
+        // First inbound
+        var result1 = newTx().execute(s ->
+                stockCommandService.inboundExistingLot(householdId, UUID.randomUUID(),
+                        locationId, lotId, BigDecimal.TEN, null, null));
+
+        assertThat(result1).isNotNull();
+        assertThat(result1.lotId()).isEqualTo(lotId);
+        assertThat(result1.quantityAfter()).isEqualByComparingTo(BigDecimal.TEN);
+
+        // Second inbound to same lot
+        var result2 = newTx().execute(s ->
+                stockCommandService.inboundExistingLot(householdId, UUID.randomUUID(),
+                        locationId, lotId, BigDecimal.valueOf(5), null, null));
+
+        assertThat(result2.quantityAfter()).isEqualByComparingTo(BigDecimal.valueOf(5));
+
+        // Verify stock position accumulated
+        var sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(sp).isNotNull();
+        assertThat(sp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(15));
+        assertThat(sp.getRevision()).isEqualTo(2L);
+
+        // Verify two INBOUND movements
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(2);
+        assertThat(movements).allMatch(m -> m.getType().equals("INBOUND"));
+        assertThat(movements).allMatch(m -> m.getLotId().equals(lotId));
+    }
+
+    // --- Test point 2 (existing lot): archived item inbound to existing lot is rejected ---
+    @Test
+    void inboundExistingLot_archivedItem_throwsArchivedItemException() {
+        UUID archivedItemId = seedArchivedItem(householdId, unitId);
+        UUID lotId = seedLot(householdId, archivedItemId);
+
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stockCommandService.inboundExistingLot(householdId, UUID.randomUUID(),
+                                locationId, lotId, BigDecimal.TEN, null, null))
+        ).isInstanceOf(InventoryArchivedItemException.class);
+
+        // No stock position created
+        assertThat(stockPositionMapper.selectList(null)).isEmpty();
+        // No movement created
+        assertThat(movementMapper.selectList(null)).isEmpty();
+    }
+
     // --- Test point 4: repeated inbound to new lots yields two different lots and stock positions ---
     @Test
     void inboundNewLot_twice_sameItem_twoDifferentLotsAndStockPositions() {
@@ -222,6 +274,15 @@ class StockCommandServiceIntegrationTest {
                 INSERT INTO location (id, household_id, name, name_normalized, sort_order, ever_referenced, version)
                 VALUES (?, ?, ?, ?, 0, false, 0)
                 """, id, householdId, name, name);
+        return id;
+    }
+
+    private UUID seedLot(UUID householdId, UUID itemId) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_lot (id, household_id, item_id, created_at, updated_at, version)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+                """, id, householdId, itemId);
         return id;
     }
 
