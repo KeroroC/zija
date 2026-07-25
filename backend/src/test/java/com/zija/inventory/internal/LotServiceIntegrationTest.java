@@ -1,6 +1,7 @@
 package com.zija.inventory.internal;
 
 import com.zija.catalog.CatalogApi;
+import com.zija.catalog.internal.CatalogArchivedDictionaryException;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.inventory.internal.persistence.LotEntity;
@@ -68,7 +69,7 @@ class LotServiceIntegrationTest {
                 .thenReturn(activeInfo);
 
         when(catalogApi.requireActiveItem(eq(householdId), eq(ARCHIVED_ITEM_ID)))
-                .thenThrow(new InventoryArchivedItemException());
+                .thenThrow(new CatalogArchivedDictionaryException("item", ARCHIVED_ITEM_ID));
     }
 
     // --- Test point 1: createLot validates item is active ---

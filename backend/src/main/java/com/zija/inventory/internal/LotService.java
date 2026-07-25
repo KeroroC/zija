@@ -32,8 +32,12 @@ public class LotService {
     public UUID createLot(UUID householdId, UUID itemId, LocalDate purchaseDate,
                           LocalDate productionDate, LocalDate expiryDate,
                           String lotNumber, String serialNumber, String memo) {
-        // Validate item is active (throws InventoryArchivedItemException if archived)
-        catalogApi.requireActiveItem(householdId, itemId);
+        // Validate item is active; translate catalog exception to inventory exception
+        try {
+            catalogApi.requireActiveItem(householdId, itemId);
+        } catch (RuntimeException ex) {
+            throw new InventoryArchivedItemException("item is archived or missing: " + itemId);
+        }
 
         var entity = new LotEntity();
         entity.setId(UUID.randomUUID());
@@ -69,6 +73,11 @@ public class LotService {
                                    LocalDate expiryDate, String lotNumber,
                                    String serialNumber, String memo) {
         var lot = requireLot(householdId, lotId);
+
+        // Explicit version check before attempting update
+        if (!lot.getVersion().equals(clientVersion)) {
+            throw new InventoryLotVersionConflictException();
+        }
 
         lot.setPurchaseDate(purchaseDate);
         lot.setProductionDate(productionDate);
