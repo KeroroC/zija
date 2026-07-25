@@ -65,7 +65,7 @@ CREATE TABLE inventory_movement (
     CONSTRAINT ck_inventory_movement_quantity_pos CHECK (quantity > 0),
     CONSTRAINT fk_inventory_movement_lot FOREIGN KEY (household_id, lot_id)
         REFERENCES inventory_lot(household_id, id),
-    CONSTRAINT fk_inventory_movement_reversal_of FOREIGN KEY (id)
+    CONSTRAINT fk_inventory_movement_reversal_of FOREIGN KEY (reversal_of)
         REFERENCES inventory_movement(id)
 );
 
