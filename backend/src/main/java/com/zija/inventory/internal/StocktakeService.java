@@ -80,6 +80,52 @@ class StocktakeService {
     }
 
     /**
+     * 刷新盘点草稿快照：删除所有行项，重新按位置快照当前库存位。
+     *
+     * @throws StocktakeNotDraftException 盘点单不是草稿状态
+     * @throws InventoryLotVersionConflictException 盘点单版本冲突
+     */
+    @Transactional
+    public void refreshDraft(UUID householdId, UUID stocktakeId, int clientVersion, UUID locationId) {
+        // 1. 锁定盘点单，校验草稿状态
+        StocktakeEntity stocktake = stocktakeMapper.lockById(householdId, stocktakeId);
+        if (stocktake == null || !"DRAFT".equals(stocktake.getStatus())) {
+            throw new StocktakeNotDraftException();
+        }
+
+        // 2. 乐观锁更新盘点单版本
+        stocktake.setVersion(clientVersion);
+        int rows = stocktakeMapper.updateById(stocktake);
+        if (rows == 0) {
+            throw new InventoryLotVersionConflictException();
+        }
+
+        // 3. 删除所有行项
+        stocktakeItemMapper.deleteByStocktake(stocktakeId);
+
+        // 4. 查询该位置下所有库存位
+        List<StockPositionEntity> positions = stockPositionMapper.findByLocation(householdId, locationId);
+
+        // 5. 为每个库存位生成盘点行项（与 createDraft 步骤 3-4 相同）
+        if (!positions.isEmpty()) {
+            List<StocktakeItemEntity> items = new ArrayList<>(positions.size());
+            for (StockPositionEntity sp : positions) {
+                StocktakeItemEntity item = new StocktakeItemEntity();
+                item.setId(UUID.randomUUID());
+                item.setStocktakeId(stocktakeId);
+                item.setHouseholdId(householdId);
+                item.setLotId(sp.getLotId());
+                item.setLocationId(locationId);
+                item.setBookQuantity(sp.getQuantity());
+                item.setActualQuantity(sp.getQuantity());
+                item.setPositionRevision(sp.getRevision());
+                items.add(item);
+            }
+            stocktakeItemMapper.batchInsert(items);
+        }
+    }
+
+    /**
      * 更新盘点草稿行项，支持补录账面为零的批次。
      *
      * @throws StocktakeNotDraftException          盘点单不是草稿状态，或补录时库存位数量 > 0 / 批次不存在
