@@ -1,7 +1,5 @@
 package com.zija.inventory.internal;
 
-import com.zija.catalog.CatalogApi;
-import com.zija.catalog.internal.CatalogArchivedDictionaryException;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.inventory.internal.persistence.LotEntity;
@@ -13,7 +11,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -25,8 +22,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @Testcontainers
@@ -42,8 +37,6 @@ class LotServiceIntegrationTest {
     @Autowired LotMapper lotMapper;
     @Autowired LotService lotService;
     @Autowired PlatformTransactionManager txManager;
-
-    @MockitoBean CatalogApi catalogApi;
 
     private static final UUID ARCHIVED_ITEM_ID = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
 
@@ -61,15 +54,6 @@ class LotServiceIntegrationTest {
         householdId = seedHousehold();
         UUID unitId = seedUnit(householdId);
         itemId = seedItem(householdId, unitId);
-
-        var activeInfo = new CatalogApi.ItemInfo(
-                itemId, householdId, "测试物品", "DURABLE",
-                null, null, unitId, null, "ACTIVE");
-        when(catalogApi.requireActiveItem(eq(householdId), eq(itemId)))
-                .thenReturn(activeInfo);
-
-        when(catalogApi.requireActiveItem(eq(householdId), eq(ARCHIVED_ITEM_ID)))
-                .thenThrow(new CatalogArchivedDictionaryException("item", ARCHIVED_ITEM_ID));
     }
 
     // --- Test point 1: createLot validates item is active ---
