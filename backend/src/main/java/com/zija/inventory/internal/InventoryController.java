@@ -133,15 +133,11 @@ class InventoryController {
         if (pageSize < 1) pageSize = 20;
         if (page < 1) page = 1;
 
-        var wrapper = new LambdaQueryWrapper<LotEntity>()
-                .eq(LotEntity::getHouseholdId, member.householdId())
-                .eq(itemId != null, LotEntity::getItemId, itemId)
-                .orderByDesc(LotEntity::getCreatedAt);
-        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<LotEntity>(page, pageSize);
-        var result = lotMapper.selectPage(pageObj, wrapper);
+        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.zija.inventory.internal.persistence.LotWithDetails>(page, pageSize);
+        var result = lotMapper.findPage(pageObj, member.householdId(), itemId);
 
         var response = new LinkedHashMap<String, Object>();
-        response.put("items", result.getRecords().stream().map(this::toLotResponse).toList());
+        response.put("items", result.getRecords());
         response.put("total", result.getTotal());
         response.put("page", page);
         response.put("pageSize", pageSize);

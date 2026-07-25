@@ -1,6 +1,8 @@
 package com.zija.inventory.internal.persistence;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -17,4 +19,9 @@ public interface LotMapper extends BaseMapper<LotEntity> {
     int countByItemAndSerial(@Param("householdId") UUID householdId,
                              @Param("itemId") UUID itemId,
                              @Param("serialNumber") String serialNumber);
+
+    /** 分页查询批次，包含物品名称、单位和总数量。 */
+    IPage<LotWithDetails> findPage(Page<LotWithDetails> page,
+                                   @Param("householdId") UUID householdId,
+                                   @Param("itemId") UUID itemId);
 }

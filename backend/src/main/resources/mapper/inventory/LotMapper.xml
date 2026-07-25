@@ -20,4 +20,33 @@
           AND serial_number = #{serialNumber}
     </select>
 
+    <select id="findPage" resultType="com.zija.inventory.internal.persistence.LotWithDetails">
+        SELECT l.id AS "lotId",
+               l.item_id AS "itemId",
+               i.name AS "itemName",
+               u.name AS "unitName",
+               COALESCE(SUM(sp.quantity), 0) AS "totalQuantity",
+               l.purchase_date AS "purchaseDate",
+               l.production_date AS "productionDate",
+               l.expiry_date AS "expiryDate",
+               l.lot_number AS "lotNumber",
+               l.serial_number AS "serialNumber",
+               l.memo,
+               l.version,
+               l.created_at AS "createdAt",
+               l.updated_at AS "updatedAt"
+        FROM inventory_lot l
+        JOIN catalog_item i ON i.id = l.item_id
+        JOIN catalog_unit u ON u.id = i.unit_id
+        LEFT JOIN inventory_stock_position sp ON sp.lot_id = l.id
+        <where>
+            l.household_id = #{householdId}
+            <if test="itemId != null">AND l.item_id = #{itemId}</if>
+        </where>
+        GROUP BY l.id, l.item_id, i.name, u.name, l.purchase_date, l.production_date,
+                 l.expiry_date, l.lot_number, l.serial_number, l.memo, l.version,
+                 l.created_at, l.updated_at
+        ORDER BY l.created_at DESC
+    </select>
+
 </mapper>
