@@ -20,6 +20,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -141,6 +142,122 @@ class StocktakeServiceIntegrationTest {
                 newTx().execute(s ->
                         stocktakeService.createDraft(householdId, accountId, nonExistentLocationId))
         ).isInstanceOf(Exception.class);
+    }
+
+    // --- updateDraft test case 1: update actualQuantity -> item actual changes, book unchanged ---
+    @Test
+    void updateDraft_existingItem_updatesActualQuantityOnly() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        var update = new StocktakeService.StocktakeItemUpdate(lotId, locationId, BigDecimal.valueOf(7), "盘点少了3个");
+        newTx().executeWithoutResult(s ->
+                stocktakeService.updateDraft(householdId, stocktakeId, 0, List.of(update)));
+
+        var items = newTx().execute(s ->
+                stocktakeService.draftItems(householdId, stocktakeId));
+        assertThat(items).hasSize(1);
+        var item = items.get(0);
+        assertThat(item.getLotId()).isEqualTo(lotId);
+        assertThat(item.getBookQuantity()).isEqualByComparingTo(BigDecimal.TEN);
+        assertThat(item.getActualQuantity()).isEqualByComparingTo(BigDecimal.valueOf(7));
+        assertThat(item.getReason()).isEqualTo("盘点少了3个");
+    }
+
+    // --- updateDraft test case 2: backfill zero-quantity lot -> draft item +1, book=0 ---
+    @Test
+    void updateDraft_backfillZeroQuantityLot_insertsNewItemWithBookZero() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        // No stock position for (lotId, locationId) -> backfill allowed
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        var update = new StocktakeService.StocktakeItemUpdate(lotId, locationId, BigDecimal.valueOf(5), "发现遗漏");
+        newTx().executeWithoutResult(s ->
+                stocktakeService.updateDraft(householdId, stocktakeId, 0, List.of(update)));
+
+        var items = newTx().execute(s ->
+                stocktakeService.draftItems(householdId, stocktakeId));
+        assertThat(items).hasSize(1);
+        var item = items.get(0);
+        assertThat(item.getLotId()).isEqualTo(lotId);
+        assertThat(item.getBookQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(item.getActualQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
+        assertThat(item.getReason()).isEqualTo("发现遗漏");
+        assertThat(item.getPositionRevision()).isEqualTo(0L);
+    }
+
+    // --- updateDraft test case 3: backfill lot with positive quantity -> StocktakeNotDraftException ---
+    @Test
+    void updateDraft_backfillLotWithPositiveQuantity_throwsStocktakeNotDraft() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 15, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // Remove the item from draft to simulate a lot not in draft but with positive stock
+        stocktakeItemMapper.deleteByStocktake(stocktakeId);
+
+        var update = new StocktakeService.StocktakeItemUpdate(lotId, locationId, BigDecimal.valueOf(10), "补录");
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stocktakeService.updateDraft(householdId, stocktakeId, 0, List.of(update)))
+        ).isInstanceOf(StocktakeNotDraftException.class);
+    }
+
+    // --- updateDraft test case 4: backfill non-existent lot -> StocktakeNotDraftException ---
+    @Test
+    void updateDraft_backfillNonExistentLot_throwsStocktakeNotDraft() {
+        UUID nonExistentLotId = UUID.randomUUID();
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        var update = new StocktakeService.StocktakeItemUpdate(nonExistentLotId, locationId, BigDecimal.ONE, "补录");
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stocktakeService.updateDraft(householdId, stocktakeId, 0, List.of(update)))
+        ).isInstanceOf(StocktakeNotDraftException.class);
+    }
+
+    // --- updateDraft test case 5: non-DRAFT status update -> StocktakeNotDraftException ---
+    @Test
+    void updateDraft_nonDraftStatus_throwsStocktakeNotDraft() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // Change status to COMPLETED
+        jdbc.update("UPDATE inventory_stocktake SET status = 'COMPLETED' WHERE id = ?", stocktakeId);
+
+        var update = new StocktakeService.StocktakeItemUpdate(lotId, locationId, BigDecimal.valueOf(8), "调整");
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stocktakeService.updateDraft(householdId, stocktakeId, 0, List.of(update)))
+        ).isInstanceOf(StocktakeNotDraftException.class);
     }
 
     // --- Helpers ---
