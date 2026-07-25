@@ -3,20 +3,30 @@
     <div class="page-header">
       <h2 class="page-title">库存管理</h2>
       <div class="page-actions">
-        <el-button type="primary" @click="openInbound">入库</el-button>
-        <el-button @click="openConsume">领用</el-button>
-        <el-button @click="openLoss">报损</el-button>
-        <el-button @click="openTransfer">移位</el-button>
-        <el-button @click="openStocktake">发起盘点</el-button>
+        <el-button type="primary" data-testid="btn-inbound" @click="openInbound">入库</el-button>
+        <el-button data-testid="btn-consume" @click="openConsume">领用</el-button>
+        <el-button data-testid="btn-loss" @click="openLoss">报损</el-button>
+        <el-button data-testid="btn-transfer" @click="openTransfer">移位</el-button>
+        <el-button data-testid="btn-stocktake" @click="openStocktake">发起盘点</el-button>
       </div>
     </div>
     <el-tabs v-model="activeTab">
-      <el-tab-pane label="当前库存" name="stock"><CurrentStockTab /></el-tab-pane>
-      <el-tab-pane label="批次" name="lots"><LotsTab /></el-tab-pane>
-      <el-tab-pane label="流水" name="movements"><MovementsTab /></el-tab-pane>
-      <el-tab-pane label="盘点" name="stocktakes"><StocktakesTab /></el-tab-pane>
+      <el-tab-pane label="当前库存" name="stock"><CurrentStockTab ref="stockTabRef" /></el-tab-pane>
+      <el-tab-pane label="批次" name="lots"><LotsTab ref="lotsTabRef" /></el-tab-pane>
+      <el-tab-pane label="流水" name="movements"><MovementsTab ref="movementsTabRef" /></el-tab-pane>
+      <el-tab-pane label="盘点" name="stocktakes"><StocktakesTab ref="stocktakesTabRef" /></el-tab-pane>
     </el-tabs>
-    <!-- Dialogs will be added in Task 38 -->
+
+    <InboundDialog v-model="showInbound" @done="onOperationDone" />
+    <ConsumeDialog v-model="showConsume" @done="onOperationDone" />
+    <LossDialog v-model="showLoss" @done="onOperationDone" />
+    <TransferDialog v-model="showTransfer" @done="onOperationDone" />
+    <StocktakeDialog
+      v-model="showStocktake"
+      :stocktake-id="null"
+      :start-step="0"
+      @saved="onStocktakeDone"
+    />
   </div>
 </template>
 
@@ -27,10 +37,26 @@ import CurrentStockTab from './inventory/CurrentStockTab.vue'
 import LotsTab from './inventory/LotsTab.vue'
 import MovementsTab from './inventory/MovementsTab.vue'
 import StocktakesTab from './inventory/StocktakesTab.vue'
+import InboundDialog from './inventory/InboundDialog.vue'
+import ConsumeDialog from './inventory/ConsumeDialog.vue'
+import LossDialog from './inventory/LossDialog.vue'
+import TransferDialog from './inventory/TransferDialog.vue'
+import StocktakeDialog from './inventory/StocktakeDialog.vue'
 
 const route = useRoute()
 
 const activeTab = ref('stock')
+
+const showInbound = ref(false)
+const showConsume = ref(false)
+const showLoss = ref(false)
+const showTransfer = ref(false)
+const showStocktake = ref(false)
+
+const stockTabRef = ref<InstanceType<typeof CurrentStockTab> | null>(null)
+const lotsTabRef = ref<InstanceType<typeof LotsTab> | null>(null)
+const movementsTabRef = ref<InstanceType<typeof MovementsTab> | null>(null)
+const stocktakesTabRef = ref<InstanceType<typeof StocktakesTab> | null>(null)
 
 // Listen to route.query.action to switch tabs or trigger dialogs
 watch(() => route.query.action, (action) => {
@@ -48,23 +74,36 @@ watch(() => route.query.action, (action) => {
 }, { immediate: true })
 
 function openInbound() {
-  // TODO: Task 38 - open inbound dialog
+  showInbound.value = true
 }
 
 function openConsume() {
-  // TODO: Task 38 - open consume dialog
+  showConsume.value = true
 }
 
 function openLoss() {
-  // TODO: Task 38 - open loss dialog
+  showLoss.value = true
 }
 
 function openTransfer() {
-  // TODO: Task 38 - open transfer dialog
+  showTransfer.value = true
 }
 
 function openStocktake() {
-  // TODO: Task 38 - open stocktake dialog
+  showStocktake.value = true
+}
+
+function onOperationDone() {
+  stockTabRef.value?.loadData?.()
+  lotsTabRef.value?.loadData?.()
+  movementsTabRef.value?.loadData?.()
+}
+
+function onStocktakeDone() {
+  stockTabRef.value?.loadData?.()
+  lotsTabRef.value?.loadData?.()
+  movementsTabRef.value?.loadData?.()
+  stocktakesTabRef.value?.loadData?.()
 }
 </script>
 

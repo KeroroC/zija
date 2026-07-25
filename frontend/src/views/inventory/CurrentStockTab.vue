@@ -227,6 +227,8 @@ function movementTypeLabel(type: MovementType): string {
   return MOVEMENT_TYPE_LABELS[type] ?? type
 }
 
+defineExpose({ loadData })
+
 onMounted(async () => {
   await loadNameMaps()
   await loadData()

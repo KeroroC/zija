@@ -305,6 +305,8 @@ function onRowClick(row: unknown) {
   drawerVisible.value = true
 }
 
+defineExpose({ loadData })
+
 onMounted(async () => {
   await loadNameMaps()
   await loadData()

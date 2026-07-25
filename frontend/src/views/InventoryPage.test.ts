@@ -25,6 +25,21 @@ vi.mock("../api/inventory", () => ({
   fetchLots: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
   fetchMovements: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
   fetchStocktakes: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
+  fetchStocktake: vi.fn().mockResolvedValue({ id: "s1", version: 1, status: "DRAFT", items: [] }),
+  fetchLot: vi.fn().mockResolvedValue({}),
+  inboundNewLot: vi.fn().mockResolvedValue({ lotId: "l1", serialDuplicated: false }),
+  inboundExistingLot: vi.fn().mockResolvedValue({ lotId: "l1", serialDuplicated: false }),
+  consumeStock: vi.fn().mockResolvedValue({}),
+  lossStock: vi.fn().mockResolvedValue({}),
+  transferStock: vi.fn().mockResolvedValue({}),
+  createStocktake: vi.fn().mockResolvedValue({ id: "s1" }),
+  updateStocktakeDraft: vi.fn().mockResolvedValue({ status: "DRAFT" }),
+  refreshStocktakeDraft: vi.fn().mockResolvedValue({ status: "DRAFT" }),
+  confirmStocktake: vi.fn().mockResolvedValue({ stocktakeId: "s1", adjustedCount: 0 }),
+  cancelStocktake: vi.fn().mockResolvedValue({ status: "CANCELLED" }),
+  reverseMovement: vi.fn().mockResolvedValue({ reversalMovementId: "m2", lotId: "l1" }),
+  updateLotMeta: vi.fn().mockResolvedValue({}),
+  fetchConsistencyReport: vi.fn().mockResolvedValue({ discrepancies: [], total: 0 }),
 }));
 
 vi.mock("../api/catalog", () => ({
@@ -84,15 +99,17 @@ describe("InventoryPage", () => {
     expect(wrapper.text()).toContain("发起盘点");
   });
 
-  it("clicking 入库 button triggers action", async () => {
+  it("clicking 入库 button opens inbound dialog", async () => {
     wrapper = mount(InventoryPage, { global: { plugins: [ElementPlus] } });
     await flushPromises();
 
-    const buttons = wrapper.findAll(".el-button");
-    const inboundBtn = buttons.find((b) => b.text() === "入库");
-    expect(inboundBtn).toBeTruthy();
-    await inboundBtn!.trigger("click");
-    // The button click handler is called (no error thrown; actual dialog in Task 38)
+    const inboundBtn = wrapper.find('[data-testid="btn-inbound"]');
+    expect(inboundBtn.exists()).toBe(true);
+    await inboundBtn.trigger("click");
+    await flushPromises();
+
+    // Dialog should appear with title "入库"
+    expect(wrapper.text()).toContain("入库");
   });
 
   it("shows default tab content (当前库存)", async () => {

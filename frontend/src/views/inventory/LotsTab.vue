@@ -131,6 +131,8 @@ function onRowClick(row: LotSummary) {
   drawerVisible.value = true
 }
 
+defineExpose({ loadData })
+
 onMounted(async () => {
   await loadNameMap()
   await loadData()

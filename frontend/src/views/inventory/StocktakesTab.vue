@@ -169,6 +169,8 @@ function onRowClick(row: StocktakeSummary) {
   }
 }
 
+defineExpose({ loadData })
+
 onMounted(async () => {
   await loadOperatorMap()
   await loadData()
