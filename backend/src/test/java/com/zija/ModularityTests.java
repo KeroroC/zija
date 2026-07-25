@@ -22,4 +22,10 @@ class ModularityTests {
         assertThat(modules.getModuleByName("household")).isPresent();
         modules.verify();
     }
+
+    @Test
+    void inventoryModuleExistsAndDependenciesAreValid() {
+        assertThat(modules.getModuleByName("inventory")).isPresent();
+        modules.verify();
+    }
 }
