@@ -34,6 +34,11 @@ class InventoryExceptionHandler {
         return problem(request, HttpStatus.CONFLICT, "批次版本冲突", "INVENTORY_LOT_VERSION_CONFLICT");
     }
 
+    @ExceptionHandler(InventoryLotNotFoundException.class)
+    ProblemDetail handleLotNotFound(HttpServletRequest request) {
+        return problem(request, HttpStatus.NOT_FOUND, "批次不存在", "INVENTORY_LOT_NOT_FOUND");
+    }
+
     @ExceptionHandler(InventoryMovementAlreadyReversedException.class)
     ProblemDetail handleMovementAlreadyReversed(HttpServletRequest request) {
         return problem(request, HttpStatus.CONFLICT, "流水已撤销", "INVENTORY_MOVEMENT_ALREADY_REVERSED");
