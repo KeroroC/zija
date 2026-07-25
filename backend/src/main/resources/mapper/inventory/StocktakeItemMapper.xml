@@ -12,6 +12,13 @@
         FOR UPDATE
     </select>
 
+    <select id="findByStocktake" resultType="com.zija.inventory.internal.persistence.StocktakeItemEntity">
+        SELECT id, stocktake_id, household_id, lot_id, location_id, book_quantity, actual_quantity, position_revision, reason
+        FROM inventory_stocktake_item
+        WHERE household_id = #{householdId} AND stocktake_id = #{stocktakeId}
+        ORDER BY id
+    </select>
+
     <delete id="deleteByStocktake">
         DELETE FROM inventory_stocktake_item
         WHERE stocktake_id = #{stocktakeId}

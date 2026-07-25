@@ -30,6 +30,13 @@
           AND quantity - #{delta} >= 0
     </update>
 
+    <select id="findByLocation" resultType="com.zija.inventory.internal.persistence.StockPositionEntity">
+        SELECT id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at
+        FROM inventory_stock_position
+        WHERE household_id = #{householdId} AND location_id = #{locationId}
+        ORDER BY lot_id
+    </select>
+
     <select id="findPage" resultType="com.zija.inventory.internal.persistence.StockPositionEntity">
         SELECT sp.id, sp.household_id, sp.lot_id, sp.location_id, sp.quantity, sp.revision,
                sp.created_at, sp.updated_at
