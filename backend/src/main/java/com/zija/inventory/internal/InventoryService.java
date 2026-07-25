@@ -8,6 +8,8 @@ import com.zija.inventory.internal.persistence.LotMapper;
 import com.zija.inventory.internal.persistence.MovementMapper;
 import com.zija.inventory.internal.persistence.StockPositionEntity;
 import com.zija.inventory.internal.persistence.StockPositionMapper;
+import com.zija.inventory.internal.persistence.StocktakeEntity;
+import com.zija.inventory.internal.persistence.StocktakeItemEntity;
 import com.zija.system.SystemApi;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -39,6 +41,7 @@ class InventoryService implements InventoryApi {
     private final ReversalService reversalService;
     private final ConsistencyCheckService consistencyCheckService;
     private final IdempotencyService idempotencyService;
+    private final StocktakeService stocktakeService;
     private final LotMapper lotMapper;
     private final MovementMapper movementMapper;
     private final StockPositionMapper stockPositionMapper;
@@ -50,6 +53,7 @@ class InventoryService implements InventoryApi {
                      ReversalService reversalService,
                      ConsistencyCheckService consistencyCheckService,
                      IdempotencyService idempotencyService,
+                     StocktakeService stocktakeService,
                      LotMapper lotMapper,
                      MovementMapper movementMapper,
                      StockPositionMapper stockPositionMapper) {
@@ -60,6 +64,7 @@ class InventoryService implements InventoryApi {
         this.reversalService = reversalService;
         this.consistencyCheckService = consistencyCheckService;
         this.idempotencyService = idempotencyService;
+        this.stocktakeService = stocktakeService;
         this.lotMapper = lotMapper;
         this.movementMapper = movementMapper;
         this.stockPositionMapper = stockPositionMapper;
@@ -187,6 +192,59 @@ class InventoryService implements InventoryApi {
         householdApi.requireActiveMember(accountId);
         return stockCommandService.transfer(householdId, accountId, lotId,
                 fromLocationId, toLocationId, quantity, memo, idempotencyKey);
+    }
+
+    // ---- Stocktake commands ----
+
+    /**
+     * 创建盘点草稿。所有活跃成员可执行。
+     */
+    public UUID createStocktakeDraft(UUID accountId, UUID householdId, UUID locationId) {
+        householdApi.requireActiveMember(accountId);
+        return stocktakeService.createDraft(householdId, accountId, locationId);
+    }
+
+    /**
+     * 更新盘点草稿行项。所有活跃成员可执行。
+     */
+    public void updateStocktakeDraft(UUID accountId, UUID householdId, UUID stocktakeId,
+                                     int clientVersion, List<StocktakeService.StocktakeItemUpdate> updates) {
+        householdApi.requireActiveMember(accountId);
+        stocktakeService.updateDraft(householdId, stocktakeId, clientVersion, updates);
+    }
+
+    /**
+     * 刷新盘点草稿快照。所有活跃成员可执行。
+     */
+    public void refreshStocktakeDraft(UUID accountId, UUID householdId, UUID stocktakeId,
+                                      int clientVersion, UUID locationId) {
+        householdApi.requireActiveMember(accountId);
+        stocktakeService.refreshDraft(householdId, stocktakeId, clientVersion, locationId);
+    }
+
+    /**
+     * 确认盘点。所有活跃成员可执行。
+     */
+    public StocktakeService.ConfirmResult confirmStocktake(UUID accountId, UUID householdId,
+                                                           UUID stocktakeId, int clientVersion) {
+        householdApi.requireActiveMember(accountId);
+        return stocktakeService.confirm(householdId, stocktakeId, clientVersion, accountId);
+    }
+
+    /**
+     * 取消盘点。所有活跃成员可执行。
+     */
+    public void cancelStocktake(UUID accountId, UUID householdId, UUID stocktakeId, int clientVersion) {
+        householdApi.requireActiveMember(accountId);
+        stocktakeService.cancel(householdId, stocktakeId, clientVersion);
+    }
+
+    /**
+     * 查询盘点草稿行项。所有活跃成员可执行。
+     */
+    public List<StocktakeItemEntity> stocktakeItems(UUID accountId, UUID householdId, UUID stocktakeId) {
+        householdApi.requireActiveMember(accountId);
+        return stocktakeService.draftItems(householdId, stocktakeId);
     }
 
     // ---- Admin-only commands ----

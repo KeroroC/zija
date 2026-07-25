@@ -10,8 +10,12 @@ import com.zija.inventory.internal.persistence.LotMapper;
 import com.zija.inventory.internal.persistence.MovementMapper;
 import com.zija.inventory.internal.persistence.StockPositionEntity;
 import com.zija.inventory.internal.persistence.StockPositionMapper;
+import com.zija.inventory.internal.persistence.StocktakeEntity;
+import com.zija.inventory.internal.persistence.StocktakeItemEntity;
+import com.zija.inventory.internal.persistence.StocktakeMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -46,6 +50,13 @@ import java.util.UUID;
  *   <li>{@code POST   /api/v1/inventory/transfer}                      — 移位（库存转移）</li>
  *   <li>{@code POST   /api/v1/inventory/movements/{id}/reverse}        — 冲正（管理员）</li>
  *   <li>{@code PUT    /api/v1/inventory/lots/{id}}                     — 更新批次元数据</li>
+ *   <li>{@code POST   /api/v1/inventory/stocktakes}                    — 创建盘点草稿</li>
+ *   <li>{@code PUT    /api/v1/inventory/stocktakes/{id}}               — 更新盘点草稿</li>
+ *   <li>{@code PUT    /api/v1/inventory/stocktakes/{id}/refresh}       — 刷新盘点草稿快照</li>
+ *   <li>{@code POST   /api/v1/inventory/stocktakes/{id}/confirm}       — 确认盘点</li>
+ *   <li>{@code POST   /api/v1/inventory/stocktakes/{id}/cancel}        — 取消盘点</li>
+ *   <li>{@code GET    /api/v1/inventory/stocktakes}                    — 分页查询盘点单</li>
+ *   <li>{@code GET    /api/v1/inventory/stocktakes/{id}}               — 盘点单详情</li>
  * </ul>
  */
 @RestController
@@ -58,19 +69,22 @@ class InventoryController {
     private final StockPositionMapper stockPositionMapper;
     private final LotMapper lotMapper;
     private final MovementMapper movementMapper;
+    private final StocktakeMapper stocktakeMapper;
 
     InventoryController(InventoryService inventoryService,
                         InventoryApi inventoryApi,
                         HouseholdApi householdApi,
                         StockPositionMapper stockPositionMapper,
                         LotMapper lotMapper,
-                        MovementMapper movementMapper) {
+                        MovementMapper movementMapper,
+                        StocktakeMapper stocktakeMapper) {
         this.inventoryService = inventoryService;
         this.inventoryApi = inventoryApi;
         this.householdApi = householdApi;
         this.stockPositionMapper = stockPositionMapper;
         this.lotMapper = lotMapper;
         this.movementMapper = movementMapper;
+        this.stocktakeMapper = stocktakeMapper;
     }
 
     // ==================== Read-only endpoints ====================
@@ -378,6 +392,150 @@ class InventoryController {
         return toLotResponse(lot);
     }
 
+    // ==================== Stocktake endpoints ====================
+
+    /**
+     * 创建盘点草稿。
+     */
+    @RequireMember
+    @PostMapping("/stocktakes")
+    Map<String, Object> createStocktake(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @Valid @RequestBody CreateStocktakeRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        UUID id = inventoryService.createStocktakeDraft(
+                principal.getAccountId(), member.householdId(), request.locationId());
+        var response = new LinkedHashMap<String, Object>();
+        response.put("id", id);
+        return response;
+    }
+
+    /**
+     * 更新盘点草稿行项。
+     */
+    @RequireMember
+    @PutMapping("/stocktakes/{id}")
+    Map<String, Object> updateStocktake(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateStocktakeRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var updates = request.updates().stream()
+                .map(u -> new StocktakeService.StocktakeItemUpdate(
+                        u.lotId(), u.locationId(), u.actualQuantity(), u.reason()))
+                .toList();
+        inventoryService.updateStocktakeDraft(
+                principal.getAccountId(), member.householdId(), id, request.version(), updates);
+        var response = new LinkedHashMap<String, Object>();
+        response.put("status", "ok");
+        return response;
+    }
+
+    /**
+     * 刷新盘点草稿快照。
+     */
+    @RequireMember
+    @PutMapping("/stocktakes/{id}/refresh")
+    Map<String, Object> refreshStocktake(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody RefreshStocktakeRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        inventoryService.refreshStocktakeDraft(
+                principal.getAccountId(), member.householdId(), id, request.version(), request.locationId());
+        var response = new LinkedHashMap<String, Object>();
+        response.put("status", "ok");
+        return response;
+    }
+
+    /**
+     * 确认盘点。
+     */
+    @RequireMember
+    @PostMapping("/stocktakes/{id}/confirm")
+    Map<String, Object> confirmStocktake(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody VersionOnlyRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var result = inventoryService.confirmStocktake(
+                principal.getAccountId(), member.householdId(), id, request.version());
+        var response = new LinkedHashMap<String, Object>();
+        response.put("stocktakeId", result.stocktakeId());
+        response.put("adjustedCount", result.adjustedCount());
+        return response;
+    }
+
+    /**
+     * 取消盘点。
+     */
+    @RequireMember
+    @PostMapping("/stocktakes/{id}/cancel")
+    Map<String, Object> cancelStocktake(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id,
+            @Valid @RequestBody VersionOnlyRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        inventoryService.cancelStocktake(
+                principal.getAccountId(), member.householdId(), id, request.version());
+        var response = new LinkedHashMap<String, Object>();
+        response.put("status", "ok");
+        return response;
+    }
+
+    /**
+     * 分页查询盘点单。
+     */
+    @RequireMember
+    @GetMapping("/stocktakes")
+    Map<String, Object> listStocktakes(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        if (pageSize > 100) pageSize = 100;
+        if (pageSize < 1) pageSize = 20;
+        if (page < 1) page = 1;
+
+        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<StocktakeEntity>(page, pageSize);
+        var result = stocktakeMapper.findPage(pageObj, member.householdId(), status, "created_at DESC");
+
+        var response = new LinkedHashMap<String, Object>();
+        response.put("items", result.getRecords().stream().map(this::toStocktakeResponse).toList());
+        response.put("total", result.getTotal());
+        response.put("page", page);
+        response.put("pageSize", pageSize);
+        return response;
+    }
+
+    /**
+     * 查询盘点单详情（含行项）。
+     */
+    @RequireMember
+    @GetMapping("/stocktakes/{id}")
+    Map<String, Object> getStocktake(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID id
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var stocktake = stocktakeMapper.selectById(id);
+        if (stocktake == null || !stocktake.getHouseholdId().equals(member.householdId())) {
+            throw new StocktakeNotDraftException();
+        }
+        var response = toStocktakeResponse(stocktake);
+        var items = inventoryService.stocktakeItems(
+                principal.getAccountId(), member.householdId(), id);
+        response.put("items", items.stream().map(this::toStocktakeItemResponse).toList());
+        return response;
+    }
+
     // ==================== Response helpers ====================
 
     private Map<String, Object> toInboundResponse(StockCommandService.InboundResult result) {
@@ -404,6 +562,31 @@ class InventoryController {
         map.put("version", lot.getVersion());
         map.put("createdAt", lot.getCreatedAt());
         map.put("updatedAt", lot.getUpdatedAt());
+        return map;
+    }
+
+    private Map<String, Object> toStocktakeResponse(StocktakeEntity st) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("id", st.getId());
+        map.put("householdId", st.getHouseholdId());
+        map.put("status", st.getStatus());
+        map.put("createdBy", st.getCreatedBy());
+        map.put("createdAt", st.getCreatedAt());
+        map.put("updatedAt", st.getUpdatedAt());
+        map.put("completedAt", st.getCompletedAt());
+        map.put("version", st.getVersion());
+        return map;
+    }
+
+    private Map<String, Object> toStocktakeItemResponse(StocktakeItemEntity item) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("id", item.getId());
+        map.put("lotId", item.getLotId());
+        map.put("locationId", item.getLocationId());
+        map.put("bookQuantity", item.getBookQuantity());
+        map.put("actualQuantity", item.getActualQuantity());
+        map.put("positionRevision", item.getPositionRevision());
+        map.put("reason", item.getReason());
         return map;
     }
 
@@ -488,5 +671,32 @@ class InventoryController {
             String lotNumber,
             String serialNumber,
             String memo
+    ) {}
+
+    // ---- Stocktake request DTOs ----
+
+    record CreateStocktakeRequest(
+            @NotNull UUID locationId
+    ) {}
+
+    record UpdateStocktakeRequest(
+            @NotNull Integer version,
+            @NotNull List<StocktakeItemUpdateDto> updates
+    ) {}
+
+    record StocktakeItemUpdateDto(
+            @NotNull UUID lotId,
+            @NotNull UUID locationId,
+            @NotNull @Positive BigDecimal actualQuantity,
+            String reason
+    ) {}
+
+    record RefreshStocktakeRequest(
+            @NotNull Integer version,
+            @NotNull UUID locationId
+    ) {}
+
+    record VersionOnlyRequest(
+            @NotNull Integer version
     ) {}
 }
