@@ -440,6 +440,148 @@ public class StockCommandService {
         return new InboundResult(lotId, locationId, movementId, quantityAfter, false);
     }
 
+    /**
+     * 移位（库存转移）。
+     * <p>
+     * 事务编排顺序：校验源/目标不同 → 锁定批次 → 校验物品（允许归档物品） → 校验精度 → 校验位置 → 确定性锁定库存位（UUID排序防死锁） → 条件扣减源库存 → 创建/增加目标库存 → 插入 TRANSFER 流水 → 记录幂等 → 审计 → 发布事件。
+     */
+    @Transactional
+    public InboundResult transfer(UUID householdId, UUID accountId, UUID lotId,
+                                  UUID fromLocationId, UUID toLocationId,
+                                  BigDecimal quantity, String memo, String idempotencyKey) {
+        // 1. Validate source and target are different (defensive check)
+        if (fromLocationId.equals(toLocationId)) {
+            throw new IllegalStateException("fromLocationId and toLocationId must be different");
+        }
+
+        // 2. Lock lot
+        var lot = lotMapper.selectById(lotId);
+        if (lot == null || !lot.getHouseholdId().equals(householdId)) {
+            throw new InventoryLotNotFoundException();
+        }
+        UUID itemId = lot.getItemId();
+
+        // 3. Validate item exists (allows archived items to be transferred)
+        CatalogApi.ItemInfo itemInfo;
+        try {
+            itemInfo = catalogApi.requireItem(householdId, itemId);
+        } catch (RuntimeException ex) {
+            throw new InventoryArchivedItemException("item is missing: " + itemId);
+        }
+
+        // 4. Validate quantity precision
+        var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
+        BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
+
+        // 5. Validate locations
+        locationApi.requireLocation(householdId, fromLocationId);
+        locationApi.requireLocation(householdId, toLocationId);
+
+        // 6. Lock stock positions in deterministic order (smaller UUID first) to prevent deadlocks
+        UUID firstLocId;
+        UUID secondLocId;
+        if (fromLocationId.compareTo(toLocationId) < 0) {
+            firstLocId = fromLocationId;
+            secondLocId = toLocationId;
+        } else {
+            firstLocId = toLocationId;
+            secondLocId = fromLocationId;
+        }
+
+        StockPositionEntity firstSp = stockPositionMapper.lockOne(householdId, lotId, firstLocId);
+        StockPositionEntity secondSp = stockPositionMapper.lockOne(householdId, lotId, secondLocId);
+
+        // Map back to from/to
+        StockPositionEntity fromSp;
+        StockPositionEntity toSp;
+        if (firstLocId.equals(fromLocationId)) {
+            fromSp = firstSp;
+            toSp = secondSp;
+        } else {
+            fromSp = secondSp;
+            toSp = firstSp;
+        }
+
+        // Source must exist with sufficient stock
+        if (fromSp == null) {
+            throw new InventoryInsufficientStockException();
+        }
+
+        // 7. Subtract from source (returns 0 when insufficient)
+        int updated = stockPositionMapper.subtractIfSufficient(
+                householdId, lotId, fromLocationId, validatedQty);
+        if (updated == 0) {
+            throw new InventoryInsufficientStockException();
+        }
+
+        // 8. Create target stock position if it doesn't exist, then add quantity
+        if (toSp == null) {
+            var newSp = new StockPositionEntity();
+            newSp.setId(UUID.randomUUID());
+            newSp.setHouseholdId(householdId);
+            newSp.setLotId(lotId);
+            newSp.setLocationId(toLocationId);
+            newSp.setQuantity(BigDecimal.ZERO);
+            newSp.setRevision(0L);
+            newSp.setCreatedAt(OffsetDateTime.now());
+            newSp.setUpdatedAt(OffsetDateTime.now());
+            stockPositionMapper.insert(newSp);
+        }
+        stockPositionMapper.addQuantity(householdId, lotId, toLocationId, validatedQty);
+
+        // 9. Insert TRANSFER movement (one movement with both from and to)
+        UUID idempotencyKeyUuid = idempotencyKey != null
+                ? UUID.fromString(idempotencyKey)
+                : UUID.randomUUID();
+        String idempotencyKeyStr = idempotencyKeyUuid.toString();
+        UUID movementId = UUID.randomUUID();
+        var movement = new MovementEntity();
+        movement.setId(movementId);
+        movement.setHouseholdId(householdId);
+        movement.setLotId(lotId);
+        movement.setItemId(itemId);
+        movement.setType("TRANSFER");
+        movement.setQuantity(validatedQty);
+        movement.setFromLocationId(fromLocationId);
+        movement.setToLocationId(toLocationId);
+        movement.setReason(null);
+        movement.setMemo(memo);
+        movement.setOperatorAccountId(accountId);
+        movement.setBusinessTime(OffsetDateTime.now());
+        movement.setCreatedAt(OffsetDateTime.now());
+        movement.setIdempotencyKey(idempotencyKeyStr);
+        movement.setReversalOf(null);
+        movementMapper.insert(movement);
+
+        // 10. Record idempotency
+        if (idempotencyKey != null) {
+            String requestHash = RequestHashing.sha256("TRANSFER:"
+                    + itemId + ":" + lotId + ":" + fromLocationId + ":" + toLocationId + ":"
+                    + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros());
+            idempotencyService.recordSuccess(householdId, idempotencyKey,
+                    requestHash, movementId, Map.of("lotId", lotId, "movementId", movementId));
+        }
+
+        // 11. Audit
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                "INVENTORY_TRANSFER", "SUCCESS",
+                householdId, accountId, null, null, null,
+                Map.of("lotId", lotId, "itemId", itemId,
+                        "fromLocationId", fromLocationId, "toLocationId", toLocationId,
+                        "quantity", validatedQty)));
+
+        // 12. Publish event
+        eventPublisher.publish(new StockChangedEvent(
+                UUID.randomUUID(), householdId, lotId, itemId,
+                "TRANSFER", validatedQty, fromLocationId, toLocationId,
+                OffsetDateTime.now(), movementId, idempotencyKeyUuid));
+
+        // 13. Return result (quantity at target location after transfer)
+        var updatedToSp = stockPositionMapper.lockOne(householdId, lotId, toLocationId);
+        BigDecimal quantityAfter = updatedToSp != null ? updatedToSp.getQuantity() : BigDecimal.ZERO;
+        return new InboundResult(lotId, toLocationId, movementId, quantityAfter, false);
+    }
+
     public record InboundNewLotCommand(
             UUID itemId,
             BigDecimal quantity,

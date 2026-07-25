@@ -383,6 +383,161 @@ class StockCommandServiceIntegrationTest {
         assertThat(movements.get(0).getType()).isEqualTo("LOSS");
     }
 
+    // --- Test point 1 (transfer): source decreases, target increases, both revision+1; one TRANSFER movement ---
+    @Test
+    void transfer_movesStockBetweenLocations() {
+        UUID lotId = seedLot(householdId, itemId);
+        UUID toLocationId = seedLocation(householdId);
+
+        // Inbound 10 units at source location
+        newTx().executeWithoutResult(s ->
+                stockCommandService.inboundExistingLot(householdId, UUID.randomUUID(),
+                        locationId, lotId, BigDecimal.TEN, null, null));
+
+        // Transfer 4 units from source to target
+        UUID accountId = seedAccount();
+        var result = newTx().execute(s ->
+                stockCommandService.transfer(householdId, accountId, lotId,
+                        locationId, toLocationId, BigDecimal.valueOf(4), "移位", null));
+
+        assertThat(result).isNotNull();
+        assertThat(result.lotId()).isEqualTo(lotId);
+        assertThat(result.locationId()).isEqualTo(toLocationId);
+        assertThat(result.movementId()).isNotNull();
+        assertThat(result.quantityAfter()).isEqualByComparingTo(BigDecimal.valueOf(4));
+
+        // Verify source stock position: 10 - 4 = 6, revision = 2
+        var fromSp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(fromSp).isNotNull();
+        assertThat(fromSp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(6));
+        assertThat(fromSp.getRevision()).isEqualTo(2L);
+
+        // Verify target stock position: 4, revision = 1
+        var toSp = stockPositionMapper.lockOne(householdId, lotId, toLocationId);
+        assertThat(toSp).isNotNull();
+        assertThat(toSp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(4));
+        assertThat(toSp.getRevision()).isEqualTo(1L);
+
+        // Verify one TRANSFER movement
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(2); // INBOUND + TRANSFER
+        var transferMv = movements.stream()
+                .filter(m -> m.getType().equals("TRANSFER"))
+                .findFirst().orElseThrow();
+        assertThat(transferMv.getFromLocationId()).isEqualTo(locationId);
+        assertThat(transferMv.getToLocationId()).isEqualTo(toLocationId);
+        assertThat(transferMv.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(4));
+        assertThat(transferMv.getLotId()).isEqualTo(lotId);
+    }
+
+    // --- Test point 2 (transfer): insufficient stock → full rollback ---
+    @Test
+    void transfer_insufficientStock_throwsInsufficientStockException() {
+        UUID lotId = seedLot(householdId, itemId);
+        UUID toLocationId = seedLocation(householdId);
+
+        // Inbound 3 units at source location
+        newTx().executeWithoutResult(s ->
+                stockCommandService.inboundExistingLot(householdId, UUID.randomUUID(),
+                        locationId, lotId, BigDecimal.valueOf(3), null, null));
+
+        // Try to transfer 5 units (more than available)
+        UUID accountId = seedAccount();
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stockCommandService.transfer(householdId, accountId, lotId,
+                                locationId, toLocationId, BigDecimal.valueOf(5), "超额移位", null))
+        ).isInstanceOf(InventoryInsufficientStockException.class);
+
+        // Source stock position unchanged
+        var fromSp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(fromSp).isNotNull();
+        assertThat(fromSp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(3));
+        assertThat(fromSp.getRevision()).isEqualTo(1L);
+
+        // No target stock position created
+        var toSp = stockPositionMapper.lockOne(householdId, lotId, toLocationId);
+        assertThat(toSp).isNull();
+
+        // No TRANSFER movement created (only the initial INBOUND)
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(1);
+        assertThat(movements.get(0).getType()).isEqualTo("INBOUND");
+    }
+
+    // --- Test point 3 (transfer): target stock position doesn't exist → created in same transaction ---
+    @Test
+    void transfer_targetPositionDoesNotExist_createsNewPosition() {
+        UUID lotId = seedLot(householdId, itemId);
+        UUID toLocationId = seedLocation(householdId);
+
+        // Inbound 10 units at source location
+        newTx().executeWithoutResult(s ->
+                stockCommandService.inboundExistingLot(householdId, UUID.randomUUID(),
+                        locationId, lotId, BigDecimal.TEN, null, null));
+
+        // Verify no target position exists before transfer
+        assertThat(stockPositionMapper.lockOne(householdId, lotId, toLocationId)).isNull();
+
+        // Transfer 3 units
+        UUID accountId = seedAccount();
+        var result = newTx().execute(s ->
+                stockCommandService.transfer(householdId, accountId, lotId,
+                        locationId, toLocationId, BigDecimal.valueOf(3), null, null));
+
+        // Target position should now exist with 3 units
+        var toSp = stockPositionMapper.lockOne(householdId, lotId, toLocationId);
+        assertThat(toSp).isNotNull();
+        assertThat(toSp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(3));
+        assertThat(toSp.getRevision()).isEqualTo(1L);
+        assertThat(result.quantityAfter()).isEqualByComparingTo(BigDecimal.valueOf(3));
+    }
+
+    // --- Test point 4 (transfer): source=Target → defensive IllegalStateException ---
+    @Test
+    void transfer_sameLocation_throwsIllegalStateException() {
+        UUID lotId = seedLot(householdId, itemId);
+
+        UUID accountId = seedAccount();
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stockCommandService.transfer(householdId, accountId, lotId,
+                                locationId, locationId, BigDecimal.TEN, null, null))
+        ).isInstanceOf(IllegalStateException.class);
+    }
+
+    // --- Test point 5 (transfer): archived items can be transferred (uses requireItem) ---
+    @Test
+    void transfer_archivedItem_succeeds() {
+        UUID archivedItemId = seedArchivedItem(householdId, unitId);
+        UUID lotId = seedLot(householdId, archivedItemId);
+        UUID toLocationId = seedLocation(householdId);
+
+        // Seed stock position directly (can't use inboundExistingLot since it rejects archived items)
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        // Transfer from archived item should succeed
+        UUID accountId = seedAccount();
+        var result = newTx().execute(s ->
+                stockCommandService.transfer(householdId, accountId, lotId,
+                        locationId, toLocationId, BigDecimal.valueOf(3), "归档物品移位", null));
+
+        assertThat(result).isNotNull();
+        assertThat(result.quantityAfter()).isEqualByComparingTo(BigDecimal.valueOf(3));
+
+        // Verify TRANSFER movement exists
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(1);
+        var transferMv = movements.get(0);
+        assertThat(transferMv.getType()).isEqualTo("TRANSFER");
+        assertThat(transferMv.getFromLocationId()).isEqualTo(locationId);
+        assertThat(transferMv.getToLocationId()).isEqualTo(toLocationId);
+    }
+
     // --- Helpers ---
 
     private UUID seedHousehold() {
