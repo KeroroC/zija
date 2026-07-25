@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.inventory.internal.persistence.StocktakeItemMapper">
+
+    <select id="lockByStocktake" resultType="com.zija.inventory.internal.persistence.StocktakeItemEntity">
+        SELECT id, stocktake_id, household_id, lot_id, location_id, book_quantity, actual_quantity, position_revision, reason
+        FROM inventory_stocktake_item
+        WHERE household_id = #{householdId} AND stocktake_id = #{stocktakeId}
+        ORDER BY id
+        FOR UPDATE
+    </select>
+
+    <delete id="deleteByStocktake">
+        DELETE FROM inventory_stocktake_item
+        WHERE stocktake_id = #{stocktakeId}
+    </delete>
+
+    <insert id="batchInsert">
+        INSERT INTO inventory_stocktake_item (id, stocktake_id, household_id, lot_id, location_id, book_quantity, actual_quantity, position_revision, reason)
+        VALUES
+        <foreach collection="items" item="item" separator=",">
+            (#{item.id}, #{item.stocktakeId}, #{item.householdId}, #{item.lotId}, #{item.locationId}, #{item.bookQuantity}, #{item.actualQuantity}, #{item.positionRevision}, #{item.reason})
+        </foreach>
+    </insert>
+
+</mapper>
