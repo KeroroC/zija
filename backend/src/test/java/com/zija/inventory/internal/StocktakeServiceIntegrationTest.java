@@ -576,6 +576,77 @@ class StocktakeServiceIntegrationTest {
         ).isInstanceOf(InventoryLotVersionConflictException.class);
     }
 
+    // --- cancel test case 1: cancel DRAFT -> CANCELLED, items deleted ---
+    @Test
+    void cancel_draftStocktake_cancelsAndDeletesItems() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId1 = seedLot(householdId, itemId);
+        UUID lotId2 = seedLot(householdId, itemId);
+
+        UUID spId1 = UUID.randomUUID();
+        UUID spId2 = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId1, householdId, lotId1, locationId);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision,  created_at, updated_at)
+                VALUES (?, ?, ?, ?, 25, 3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId2, householdId, lotId2, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // Verify draft has 2 items
+        var itemsBefore = newTx().execute(s ->
+                stocktakeService.draftItems(householdId, stocktakeId));
+        assertThat(itemsBefore).hasSize(2);
+
+        // Cancel
+        newTx().executeWithoutResult(s ->
+                stocktakeService.cancel(householdId, stocktakeId, 0));
+
+        // Verify stocktake is CANCELLED
+        var stocktake = stocktakeMapper.selectById(stocktakeId);
+        assertThat(stocktake.getStatus()).isEqualTo("CANCELLED");
+        assertThat(stocktake.getVersion()).isEqualTo(1);
+
+        // Verify all items deleted
+        var itemsAfter = newTx().execute(s ->
+                stocktakeService.draftItems(householdId, stocktakeId));
+        assertThat(itemsAfter).isEmpty();
+
+        // Verify no ADJUSTMENT movements created
+        Long movementCount = movementMapper.selectCount(
+                new LambdaQueryWrapper<MovementEntity>()
+                        .eq(MovementEntity::getHouseholdId, householdId)
+                        .eq(MovementEntity::getType, "ADJUSTMENT"));
+        assertThat(movementCount).isEqualTo(0);
+    }
+
+    // --- cancel test case 2: cancel non-DRAFT -> StocktakeNotDraftException ---
+    @Test
+    void cancel_nonDraftStatus_throwsStocktakeNotDraft() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        UUID spId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 10, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, spId, householdId, lotId, locationId);
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // Change status to COMPLETED
+        jdbc.update("UPDATE inventory_stocktake SET status = 'COMPLETED' WHERE id = ?", stocktakeId);
+
+        assertThatThrownBy(() ->
+                newTx().executeWithoutResult(s ->
+                        stocktakeService.cancel(householdId, stocktakeId, 0))
+        ).isInstanceOf(StocktakeNotDraftException.class);
+    }
+
     // --- Helpers ---
 
     private UUID seedHousehold() {

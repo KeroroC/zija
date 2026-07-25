@@ -235,6 +235,38 @@ class StocktakeService {
     }
 
     /**
+     * 取消盘点草稿：状态置为 CANCELLED，删除所有行项。
+     *
+     * @throws StocktakeNotDraftException              盘点单不是草稿状态
+     * @throws InventoryLotVersionConflictException     盘点单版本冲突
+     */
+    @Transactional
+    public void cancel(UUID householdId, UUID stocktakeId, int clientVersion) {
+        // 1. 锁定盘点单，校验草稿状态
+        StocktakeEntity stocktake = stocktakeMapper.lockById(householdId, stocktakeId);
+        if (stocktake == null || !"DRAFT".equals(stocktake.getStatus())) {
+            throw new StocktakeNotDraftException();
+        }
+
+        // 2. 乐观锁更新盘点单状态 → CANCELLED
+        stocktake.setVersion(clientVersion);
+        stocktake.setStatus("CANCELLED");
+        int rows = stocktakeMapper.updateById(stocktake);
+        if (rows == 0) {
+            throw new InventoryLotVersionConflictException();
+        }
+
+        // 3. 删除所有行项
+        stocktakeItemMapper.deleteByStocktake(stocktakeId);
+
+        // 4. 审计
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                "INVENTORY_STOCKTAKE_CANCEL", "SUCCESS",
+                householdId, null, null, null, null,
+                Map.of("stocktakeId", stocktakeId)));
+    }
+
+    /**
      * 确认盘点：原子性校验库存未变，为差异生成 ADJUSTMENT 流水。
      *
      * @throws StocktakeNotDraftException              盘点单不是草稿状态
