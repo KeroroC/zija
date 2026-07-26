@@ -293,13 +293,13 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
 
   // Save draft → goes to step 2
   await stocktakeDialog.getByRole("button", { name: "保存" }).click();
+  await expect(page.getByText("盘点草稿已保存")).toBeVisible();
 
   // Step 2: confirm stocktake
   await stocktakeDialog.getByRole("button", { name: "确认盘点" }).click();
-  await page
-    .locator(".el-message-box")
-    .getByRole("button", { name: "确认" })
-    .click();
+  const confirmBox = page.locator(".el-message-box");
+  await expect(confirmBox).toBeVisible();
+  await confirmBox.getByRole("button", { name: "确认" }).click();
   await expect(stocktakeDialog).not.toBeVisible();
 
   // ─── 15. Verify: ADJUSTMENT movement, A=0 ───
