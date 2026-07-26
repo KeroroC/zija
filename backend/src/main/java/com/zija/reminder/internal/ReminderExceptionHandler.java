@@ -6,7 +6,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = {ReminderController.class})
+@RestControllerAdvice(assignableTypes = {ReminderController.class, NotificationController.class})
 class ReminderExceptionHandler {
 
     @ExceptionHandler(ReminderRuleNotInitializedException.class)

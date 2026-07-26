@@ -1,10 +1,13 @@
 package com.zija.reminder.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.reminder.internal.persistence.HouseholdRuleEntity;
 import com.zija.reminder.internal.persistence.HouseholdRuleMapper;
 import com.zija.reminder.internal.persistence.NotificationEntity;
 import com.zija.reminder.internal.persistence.NotificationMapper;
+import com.zija.reminder.internal.persistence.TaskEntity;
+import com.zija.reminder.internal.persistence.TaskMapper;
 import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,11 +23,14 @@ class ReminderService {
 
     private final HouseholdRuleMapper ruleMapper;
     private final NotificationMapper notificationMapper;
+    private final TaskMapper taskMapper;
     private final SystemApi systemApi;
 
-    ReminderService(HouseholdRuleMapper ruleMapper, NotificationMapper notificationMapper, SystemApi systemApi) {
+    ReminderService(HouseholdRuleMapper ruleMapper, NotificationMapper notificationMapper,
+                    TaskMapper taskMapper, SystemApi systemApi) {
         this.ruleMapper = ruleMapper;
         this.notificationMapper = notificationMapper;
+        this.taskMapper = taskMapper;
         this.systemApi = systemApi;
     }
 
@@ -123,4 +129,28 @@ class ReminderService {
                 Boolean.TRUE.equals(e.getLowStockDisabled()), e.getLowStockThreshold(),
                 e.getVersion() == null ? 0 : e.getVersion());
     }
+
+    // ==================== Task page query ====================
+
+    @Transactional(readOnly = true)
+    public TaskPage tasksPage(UUID householdId, String kind, String status, UUID itemId,
+                              boolean overdue, int page, int pageSize, String orderBy) {
+        Boolean overdueFlag = overdue ? Boolean.TRUE : null;
+        var p = taskMapper.findPage(
+                new Page<>(page, pageSize),
+                householdId, kind, status, itemId, overdueFlag,
+                OffsetDateTime.now(), orderBy);
+        var items = p.getRecords().stream().map(this::toTaskView).toList();
+        return new TaskPage(items, p.getTotal(), (int) p.getCurrent(), (int) p.getSize());
+    }
+
+    private TaskView toTaskView(TaskEntity e) {
+        return new TaskView(e.getId(), e.getKind(), e.getLotId(), e.getItemId(),
+                e.getStatus(), e.getDueAt(), e.getSeverity(), e.getSnoozedUntil());
+    }
+
+    record TaskView(UUID id, String kind, UUID lotId, UUID itemId, String status,
+                    OffsetDateTime dueAt, String severity, OffsetDateTime snoozedUntil) {}
+
+    record TaskPage(List<TaskView> items, long total, int page, int pageSize) {}
 }
