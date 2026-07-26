@@ -187,7 +187,6 @@ describe("InboundDialog", () => {
     // Should show lot metadata fields for new mode
     expect(wrapper!.text()).toContain("购入日期")
     expect(wrapper!.text()).toContain("有效期至")
-    expect(wrapper!.text()).toContain("批次号")
     expect(wrapper!.text()).toContain("序列号")
   })
 

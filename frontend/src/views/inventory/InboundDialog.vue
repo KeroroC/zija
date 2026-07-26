@@ -106,13 +106,6 @@
               @change="resetIdempotencyKey"
             />
           </el-form-item>
-          <el-form-item label="批次号">
-            <el-input
-              v-model="form.lotNumber"
-              placeholder="可选"
-              @change="resetIdempotencyKey"
-            />
-          </el-form-item>
           <el-form-item label="序列号">
             <el-input
               v-model="form.serialNumber"
@@ -163,9 +156,6 @@
         </el-descriptions-item>
         <el-descriptions-item v-if="mode === 'new' && form.expiryDate" label="有效期至">
           {{ form.expiryDate }}
-        </el-descriptions-item>
-        <el-descriptions-item v-if="mode === 'new' && form.lotNumber" label="批次号">
-          {{ form.lotNumber }}
         </el-descriptions-item>
         <el-descriptions-item v-if="mode === 'new' && form.serialNumber" label="序列号">
           {{ form.serialNumber }}
@@ -250,7 +240,6 @@ const form = ref({
   purchaseDate: '',
   productionDate: '',
   expiryDate: '',
-  lotNumber: '',
   serialNumber: '',
   memo: '',
   locationId: '',
@@ -322,7 +311,6 @@ function onModeChange() {
   form.value.purchaseDate = ''
   form.value.productionDate = ''
   form.value.expiryDate = ''
-  form.value.lotNumber = ''
   form.value.serialNumber = ''
   form.value.memo = ''
   resetIdempotencyKey()
@@ -373,7 +361,6 @@ async function handleSubmit() {
           purchaseDate: form.value.purchaseDate || null,
           productionDate: form.value.productionDate || null,
           expiryDate: form.value.expiryDate || null,
-          lotNumber: form.value.lotNumber || null,
           serialNumber: form.value.serialNumber || null,
           memo: form.value.memo || null,
         },
@@ -427,7 +414,6 @@ function resetState() {
     purchaseDate: '',
     productionDate: '',
     expiryDate: '',
-    lotNumber: '',
     serialNumber: '',
     memo: '',
     locationId: '',

@@ -20,6 +20,13 @@
           AND serial_number = #{serialNumber}
     </select>
 
+    <select id="selectMaxSeqForDate" resultType="java.lang.Integer">
+        SELECT MAX(CAST(SUBSTRING(lot_number FROM 9) AS INTEGER))
+        FROM inventory_lot
+        WHERE household_id = #{householdId}
+          AND lot_number LIKE TO_CHAR(#{date}, 'YYYYMMDD') || '%'
+    </select>
+
     <select id="findPage" resultType="com.zija.inventory.internal.persistence.LotWithDetails">
         SELECT l.id AS "lotId",
                l.item_id AS "itemId",

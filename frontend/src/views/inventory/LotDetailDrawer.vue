@@ -55,9 +55,6 @@
           size="small"
           @submit.prevent="submitEdit"
         >
-          <el-form-item label="批次号">
-            <el-input v-model="editForm.lotNumber" placeholder="留空清除" clearable />
-          </el-form-item>
           <el-form-item label="序列号">
             <el-input v-model="editForm.serialNumber" placeholder="留空清除" clearable />
           </el-form-item>
@@ -177,7 +174,6 @@ const movements = ref<Movement[]>([])
 const movementsLoading = ref(false)
 
 const editForm = ref({
-  lotNumber: '',
   serialNumber: '',
   purchaseDate: '',
   productionDate: '',
@@ -225,7 +221,6 @@ async function loadMovements(lotId: string) {
 function startEdit() {
   if (!lot.value) return
   editForm.value = {
-    lotNumber: lot.value.lotNumber ?? '',
     serialNumber: lot.value.serialNumber ?? '',
     purchaseDate: lot.value.purchaseDate ?? '',
     productionDate: lot.value.productionDate ?? '',
@@ -248,7 +243,6 @@ async function submitEdit() {
       purchaseDate: editForm.value.purchaseDate || null,
       productionDate: editForm.value.productionDate || null,
       expiryDate: editForm.value.expiryDate || null,
-      lotNumber: editForm.value.lotNumber || null,
       serialNumber: editForm.value.serialNumber || null,
       memo: editForm.value.memo || null,
     })

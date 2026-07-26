@@ -652,10 +652,12 @@ class InventoryStocktakeEndpointIntegrationTest {
 
     private UUID seedLot(UUID householdId, UUID itemId) {
         UUID id = UUID.randomUUID();
+        String lotNumber = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))
+                + String.format("%03d", (int) (Math.random() * 900) + 100);
         jdbcTemplate.update("""
-                INSERT INTO inventory_lot (id, household_id, item_id, created_at, updated_at, version)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
-                """, id, householdId, itemId);
+                INSERT INTO inventory_lot (id, household_id, item_id, lot_number, created_at, updated_at, version)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+                """, id, householdId, itemId, lotNumber);
         return id;
     }
 

@@ -67,7 +67,7 @@ class StockCommandServiceIntegrationTest {
     void inboundNewLot_createsStockPositionAndMovement() {
         var cmd = new StockCommandService.InboundNewLotCommand(
                 itemId, BigDecimal.TEN, LocalDate.now(), null, null,
-                "LOT-001", null, null, null);
+                null, null, null);
 
         var result = newTx().execute(s ->
                 stockCommandService.inboundNewLot(householdId, UUID.randomUUID(), locationId, cmd));
@@ -77,6 +77,11 @@ class StockCommandServiceIntegrationTest {
         assertThat(result.locationId()).isEqualTo(locationId);
         assertThat(result.movementId()).isNotNull();
         assertThat(result.quantityAfter()).isEqualByComparingTo(BigDecimal.TEN);
+
+        // Verify lot number auto-generated
+        var lot = lotMapper.selectById(result.lotId());
+        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        assertThat(lot.getLotNumber()).startsWith(today);
 
         // Verify stock position
         var sp = stockPositionMapper.lockOne(householdId, result.lotId(), locationId);
@@ -102,7 +107,7 @@ class StockCommandServiceIntegrationTest {
 
         var cmd = new StockCommandService.InboundNewLotCommand(
                 archivedItemId, BigDecimal.TEN, LocalDate.now(), null, null,
-                "LOT-ARC", null, null, null);
+                null, null, null);
 
         assertThatThrownBy(() ->
                 newTx().executeWithoutResult(s ->
@@ -120,7 +125,7 @@ class StockCommandServiceIntegrationTest {
     void inboundNewLot_marksLocationReferenced() {
         var cmd = new StockCommandService.InboundNewLotCommand(
                 itemId, BigDecimal.ONE, LocalDate.now(), null, null,
-                "LOT-REF", null, null, null);
+                null, null, null);
 
         newTx().executeWithoutResult(s ->
                 stockCommandService.inboundNewLot(householdId, UUID.randomUUID(), locationId, cmd));
@@ -189,10 +194,10 @@ class StockCommandServiceIntegrationTest {
     void inboundNewLot_twice_sameItem_twoDifferentLotsAndStockPositions() {
         var cmd1 = new StockCommandService.InboundNewLotCommand(
                 itemId, BigDecimal.TEN, LocalDate.now(), null, null,
-                "LOT-A", null, null, null);
+                null, null, null);
         var cmd2 = new StockCommandService.InboundNewLotCommand(
                 itemId, BigDecimal.valueOf(5), LocalDate.now(), null, null,
-                "LOT-B", null, null, null);
+                null, null, null);
 
         var result1 = newTx().execute(s ->
                 stockCommandService.inboundNewLot(householdId, UUID.randomUUID(), locationId, cmd1));
@@ -601,10 +606,12 @@ class StockCommandServiceIntegrationTest {
 
     private UUID seedLot(UUID householdId, UUID itemId) {
         UUID id = UUID.randomUUID();
+        String lotNumber = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))
+                + String.format("%03d", (int) (Math.random() * 900) + 100);
         jdbc.update("""
-                INSERT INTO inventory_lot (id, household_id, item_id, created_at, updated_at, version)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
-                """, id, householdId, itemId);
+                INSERT INTO inventory_lot (id, household_id, item_id, lot_number, created_at, updated_at, version)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+                """, id, householdId, itemId, lotNumber);
         return id;
     }
 

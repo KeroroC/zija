@@ -74,7 +74,7 @@ public class StockCommandService {
             String requestHash = RequestHashing.sha256("INBOUND_NEW:"
                     + cmd.itemId() + ":" + locationId + ":"
                     + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros() + ":"
-                    + cmd.lotNumber() + ":" + cmd.serialNumber() + ":" + cmd.expiryDate());
+                    + cmd.serialNumber() + ":" + cmd.expiryDate());
             var cached = idempotencyService.lockOrFind(householdId, cmd.idempotencyKey(), requestHash);
             if (cached.isPresent()) {
                 var payload = cached.get().getResponsePayload();
@@ -89,10 +89,10 @@ public class StockCommandService {
             }
         }
 
-        // 2. Create new lot (validates item is active internally)
+        // 2. Create new lot (validates item is active internally, lot number auto-generated)
         UUID lotId = lotService.createLot(householdId, cmd.itemId(),
                 cmd.purchaseDate(), cmd.productionDate(), cmd.expiryDate(),
-                cmd.lotNumber(), cmd.serialNumber(), cmd.memo());
+                cmd.serialNumber(), cmd.memo());
 
         // 3. Validate location and mark referenced
         locationApi.requireLocation(householdId, locationId);
@@ -145,7 +145,7 @@ public class StockCommandService {
             String requestHash = RequestHashing.sha256("INBOUND_NEW:"
                     + cmd.itemId() + ":" + locationId + ":"
                     + validatedQty.scale() + ":" + validatedQty.stripTrailingZeros() + ":"
-                    + cmd.lotNumber() + ":" + cmd.serialNumber() + ":" + cmd.expiryDate());
+                    + cmd.serialNumber() + ":" + cmd.expiryDate());
             idempotencyService.recordSuccess(householdId, cmd.idempotencyKey(),
                     requestHash, movementId, Map.of("lotId", lotId, "movementId", movementId));
         }
@@ -686,7 +686,6 @@ public class StockCommandService {
             LocalDate purchaseDate,
             LocalDate productionDate,
             LocalDate expiryDate,
-            String lotNumber,
             String serialNumber,
             String memo,
             String idempotencyKey

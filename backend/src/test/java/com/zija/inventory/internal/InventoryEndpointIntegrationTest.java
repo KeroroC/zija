@@ -114,7 +114,6 @@ class InventoryEndpointIntegrationTest {
                     "itemId": "%s",
                     "quantity": 10,
                     "locationId": "%s",
-                    "lotNumber": "LOT-001",
                     "memo": "测试入库"
                 }
                 """.formatted(itemId, locationId);
@@ -384,8 +383,7 @@ class InventoryEndpointIntegrationTest {
                 {
                     "itemId": "%s",
                     "quantity": 10,
-                    "locationId": "%s",
-                    "lotNumber": "IDEM-001"
+                    "locationId": "%s"
                 }
                 """.formatted(itemId, locationId);
 

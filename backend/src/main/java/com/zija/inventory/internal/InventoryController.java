@@ -266,7 +266,7 @@ class InventoryController {
         var cmd = new StockCommandService.InboundNewLotCommand(
                 request.itemId(), request.quantity(),
                 request.purchaseDate(), request.productionDate(), request.expiryDate(),
-                request.lotNumber(), request.serialNumber(), request.memo(),
+                request.serialNumber(), request.memo(),
                 idempotencyKey);
         var result = inventoryService.inboundNewLot(
                 principal.getAccountId(), member.householdId(), request.locationId(), cmd);
@@ -381,7 +381,7 @@ class InventoryController {
                 principal.getAccountId(), member.householdId(), id,
                 request.version(),
                 request.purchaseDate(), request.productionDate(), request.expiryDate(),
-                request.lotNumber(), request.serialNumber(), request.memo());
+                request.serialNumber(), request.memo());
         return toLotResponse(lot);
     }
 
@@ -610,7 +610,6 @@ class InventoryController {
             LocalDate purchaseDate,
             LocalDate productionDate,
             LocalDate expiryDate,
-            String lotNumber,
             String serialNumber,
             String memo
     ) {}
@@ -661,7 +660,6 @@ class InventoryController {
             LocalDate purchaseDate,
             LocalDate productionDate,
             LocalDate expiryDate,
-            String lotNumber,
             String serialNumber,
             String memo
     ) {}

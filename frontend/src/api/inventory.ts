@@ -62,7 +62,6 @@ export function updateLotMeta(
     purchaseDate?: string | null
     productionDate?: string | null
     expiryDate?: string | null
-    lotNumber?: string | null
     serialNumber?: string | null
     memo?: string | null
   },
@@ -197,7 +196,6 @@ export function inboundNewLot(
     purchaseDate?: string | null
     productionDate?: string | null
     expiryDate?: string | null
-    lotNumber?: string | null
     serialNumber?: string | null
     memo?: string | null
   },

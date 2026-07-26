@@ -127,11 +127,11 @@ class InventoryService implements InventoryApi {
     public LotEntity updateLotMeta(UUID accountId, UUID householdId, UUID lotId,
                                    int clientVersion, LocalDate purchaseDate,
                                    LocalDate productionDate, LocalDate expiryDate,
-                                   String lotNumber, String serialNumber, String memo) {
+                                   String serialNumber, String memo) {
         householdApi.requireActiveMember(accountId);
         return lotService.updateLotMeta(householdId, lotId, clientVersion,
                 purchaseDate, productionDate, expiryDate,
-                lotNumber, serialNumber, memo);
+                serialNumber, memo);
     }
 
     // ---- Stock commands ----

@@ -367,7 +367,6 @@ describe("LotDetailDrawer", () => {
       purchaseDate: "2026-06-01",
       productionDate: "2026-05-15",
       expiryDate: "2026-12-31",
-      lotNumber: "LOT-001",
       serialNumber: null,
       memo: "首批采购",
     })

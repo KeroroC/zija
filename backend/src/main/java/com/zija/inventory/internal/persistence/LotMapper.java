@@ -20,6 +20,10 @@ public interface LotMapper extends BaseMapper<LotEntity> {
                              @Param("itemId") UUID itemId,
                              @Param("serialNumber") String serialNumber);
 
+    /** 查询指定 household 指定日期的批次号最大序号（用于自动生成）。 */
+    Integer selectMaxSeqForDate(@Param("householdId") UUID householdId,
+                                @Param("date") java.time.LocalDate date);
+
     /** 分页查询批次，包含物品名称、单位和总数量。 */
     IPage<LotWithDetails> findPage(Page<LotWithDetails> page,
                                    @Param("householdId") UUID householdId,
