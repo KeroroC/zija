@@ -12,6 +12,8 @@ import java.util.UUID;
 @Mapper
 public interface ItemMapper extends BaseMapper<ItemEntity> {
 
+    ItemEntity findByIdFull(@Param("id") UUID id);
+
     void insertItemTag(@Param("householdId") UUID householdId,
                        @Param("itemId") UUID itemId,
                        @Param("tagId") UUID tagId);

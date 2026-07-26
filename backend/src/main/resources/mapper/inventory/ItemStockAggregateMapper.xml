@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.inventory.internal.persistence.ItemStockAggregateMapper">
+
+    <resultMap id="lotAggRow" type="com.zija.inventory.internal.persistence.ItemStockAggregateMapper$LotAggregateRow">
+        <result property="lotId"         column="lot_id"/>
+        <result property="itemId"        column="item_id"/>
+        <result property="expiryDate"    column="expiry_date"/>
+        <result property="totalQuantity" column="total_qty"/>
+    </resultMap>
+
+    <select id="lotsOfItem" resultMap="lotAggRow">
+        SELECT l.id AS lot_id, l.item_id AS item_id, l.expiry_date AS expiry_date,
+               COALESCE(SUM(sp.quantity), 0) AS total_qty
+        FROM inventory_lot l
+        LEFT JOIN inventory_stock_position sp
+          ON sp.lot_id = l.id AND sp.household_id = l.household_id
+        WHERE l.household_id = #{householdId} AND l.item_id = #{itemId}
+        GROUP BY l.id, l.item_id, l.expiry_date
+    </select>
+
+    <select id="totalStockOfItem" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(sp.quantity), 0)
+        FROM inventory_stock_position sp
+        JOIN inventory_lot l ON l.id = sp.lot_id AND l.household_id = sp.household_id
+        WHERE sp.household_id = #{householdId} AND l.item_id = #{itemId}
+    </select>
+
+</mapper>

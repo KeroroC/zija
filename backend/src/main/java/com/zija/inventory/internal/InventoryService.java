@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zija.household.HouseholdApi;
 import com.zija.inventory.InventoryApi;
 import com.zija.inventory.internal.persistence.LotEntity;
+import com.zija.inventory.internal.persistence.ItemStockAggregateMapper;
 import com.zija.inventory.internal.persistence.LotMapper;
 import com.zija.inventory.internal.persistence.MovementMapper;
 import com.zija.inventory.internal.persistence.StockPositionEntity;
@@ -45,6 +46,7 @@ class InventoryService implements InventoryApi {
     private final LotMapper lotMapper;
     private final MovementMapper movementMapper;
     private final StockPositionMapper stockPositionMapper;
+    private final ItemStockAggregateMapper itemStockAggregateMapper;
 
     InventoryService(HouseholdApi householdApi,
                      SystemApi systemApi,
@@ -56,7 +58,8 @@ class InventoryService implements InventoryApi {
                      StocktakeService stocktakeService,
                      LotMapper lotMapper,
                      MovementMapper movementMapper,
-                     StockPositionMapper stockPositionMapper) {
+                     StockPositionMapper stockPositionMapper,
+                     ItemStockAggregateMapper itemStockAggregateMapper) {
         this.householdApi = householdApi;
         this.systemApi = systemApi;
         this.lotService = lotService;
@@ -68,6 +71,7 @@ class InventoryService implements InventoryApi {
         this.lotMapper = lotMapper;
         this.movementMapper = movementMapper;
         this.stockPositionMapper = stockPositionMapper;
+        this.itemStockAggregateMapper = itemStockAggregateMapper;
     }
 
     // ---- InventoryApi read-only ports ----
@@ -117,6 +121,21 @@ class InventoryService implements InventoryApi {
                         m.getCreatedAt(), UUID.fromString(m.getIdempotencyKey()),
                         m.getReversalOf()))
                 .toList();
+    }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<LotInfo> lotsOfItem(UUID householdId, UUID itemId) {
+        return itemStockAggregateMapper.lotsOfItem(householdId, itemId).stream()
+                .map(r -> new LotInfo(r.getLotId(), r.getItemId(), r.getExpiryDate(), r.getTotalQuantity()))
+                .toList();
+    }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public BigDecimal currentTotalStockOfItem(UUID householdId, UUID itemId) {
+        var v = itemStockAggregateMapper.totalStockOfItem(householdId, itemId);
+        return v != null ? v : BigDecimal.ZERO;
     }
 
     // ---- Lot commands ----

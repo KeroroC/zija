@@ -1,6 +1,7 @@
 package com.zija.inventory;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -17,6 +18,12 @@ public interface InventoryApi {
     List<StockPositionInfo> stockPositionsOfItem(UUID householdId, UUID itemId);
 
     List<MovementInfo> movementsOfLot(UUID householdId, UUID lotId);
+
+    /** 列出某物品所有批次含到期日与当前总库存（聚合各位置）。 */
+    List<LotInfo> lotsOfItem(UUID householdId, UUID itemId);
+
+    /** 某物品当前总库存（聚合各位置）。 */
+    BigDecimal currentTotalStockOfItem(UUID householdId, UUID itemId);
 
     record StockPositionInfo(
             UUID lotId,
@@ -40,5 +47,12 @@ public interface InventoryApi {
             OffsetDateTime createdAt,
             UUID idempotencyKey,
             UUID reversalOf
+    ) {}
+
+    record LotInfo(
+            UUID lotId,
+            UUID itemId,
+            LocalDate expiryDate,
+            BigDecimal totalQuantity
     ) {}
 }

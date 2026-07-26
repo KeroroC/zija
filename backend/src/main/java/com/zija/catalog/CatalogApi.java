@@ -1,5 +1,7 @@
 package com.zija.catalog;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -26,7 +28,12 @@ public interface CatalogApi {
             UUID brandId,
             UUID unitId,
             UUID coverFileId,
-            String status
+            String status,
+            // 5a 新增：物品级提醒配置（INHERIT/DISABLED/CUSTOM + 天数 + 低库存）
+            String expiryReminderMode,
+            List<Short> expiryReminderDays,
+            String lowStockMode,
+            BigDecimal lowStockThreshold
     ) {
     }
 

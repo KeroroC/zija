@@ -1,3 +1,16 @@
+-- Helper: validate reminder days array (1..3650, no duplicates, non-empty)
+CREATE OR REPLACE FUNCTION fn_validate_reminder_days(days SMALLINT[])
+RETURNS BOOLEAN LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    IF days IS NULL OR array_length(days, 1) IS NULL THEN RETURN FALSE; END IF;
+    -- All values must be 1..3650
+    IF EXISTS (SELECT 1 FROM unnest(days) d WHERE d < 1 OR d > 3650) THEN RETURN FALSE; END IF;
+    -- No duplicates
+    IF array_length(days, 1) <> (SELECT count(DISTINCT d) FROM unnest(days) d) THEN RETURN FALSE; END IF;
+    RETURN TRUE;
+END;
+$$;
+
 -- 1) 家庭默认提醒规则（家庭单例）
 CREATE TABLE reminder_household_rule (
     id                    UUID PRIMARY KEY,
@@ -11,12 +24,7 @@ CREATE TABLE reminder_household_rule (
     version               INTEGER NOT NULL DEFAULT 0
 );
 ALTER TABLE reminder_household_rule ADD CONSTRAINT ck_reminder_rule_expiry_days
-    CHECK (expiry_disabled OR (
-        array_length(expiry_reminder_days,1) IS NOT NULL
-        AND expiry_reminder_days <@ ARRAY(SELECT generate_series(1,3650)::SMALLINT)
-        AND array_length(expiry_reminder_days,1) =
-            (SELECT count(DISTINCT d) FROM unnest(expiry_reminder_days) d)
-    ));
+    CHECK (expiry_disabled OR fn_validate_reminder_days(expiry_reminder_days));
 ALTER TABLE reminder_household_rule ADD CONSTRAINT ck_reminder_rule_low_stock
     CHECK (low_stock_disabled OR low_stock_threshold > 0);
 

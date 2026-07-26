@@ -23,6 +23,7 @@ public class ItemEntity {
     private UUID coverFileId;
     private String memo;
     private String expiryReminderMode;
+    @TableField(typeHandler = ShortArrayTypeHandler.class)
     private List<Short> expiryReminderDays;
     private String lowStockMode;
     private BigDecimal lowStockThreshold;

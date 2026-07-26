@@ -52,7 +52,7 @@ class ItemService implements CatalogApi {
     @Override
     @Transactional(readOnly = true)
     public ItemInfo requireItem(UUID householdId, UUID itemId) {
-        var entity = itemMapper.selectById(itemId);
+        var entity = itemMapper.findByIdFull(itemId);
         if (entity == null || !entity.getHouseholdId().equals(householdId)) {
             throw new CatalogArchivedDictionaryException("item", itemId);
         }
@@ -65,7 +65,7 @@ class ItemService implements CatalogApi {
     @Override
     @Transactional(readOnly = true)
     public ItemInfo requireActiveItem(UUID householdId, UUID itemId) {
-        var entity = itemMapper.selectById(itemId);
+        var entity = itemMapper.findByIdFull(itemId);
         if (entity == null || !entity.getHouseholdId().equals(householdId)) {
             throw new CatalogArchivedDictionaryException("item", itemId);
         }
@@ -172,7 +172,7 @@ class ItemService implements CatalogApi {
 
     @Transactional(readOnly = true)
     public ItemEntity findItem(UUID householdId, UUID id) {
-        var entity = itemMapper.selectById(id);
+        var entity = itemMapper.findByIdFull(id);
         if (entity == null || !entity.getHouseholdId().equals(householdId)) {
             return null;
         }
@@ -263,13 +263,13 @@ class ItemService implements CatalogApi {
             }
         }
         audit(householdId, "ITEM_UPDATED", id);
-        return itemMapper.selectById(id);
+        return itemMapper.findByIdFull(id);
     }
 
     // --- Private helpers ---
 
     private ItemEntity requireItemEntity(UUID householdId, UUID id) {
-        var entity = itemMapper.selectById(id);
+        var entity = itemMapper.findByIdFull(id);
         if (entity == null || !entity.getHouseholdId().equals(householdId)) {
             throw new CatalogArchivedDictionaryException("item", id);
         }
@@ -299,7 +299,11 @@ class ItemService implements CatalogApi {
         return new ItemInfo(
                 entity.getId(), entity.getHouseholdId(), entity.getName(),
                 entity.getManagementType(), entity.getCategoryId(), entity.getBrandId(),
-                entity.getUnitId(), entity.getCoverFileId(), entity.getStatus()
+                entity.getUnitId(), entity.getCoverFileId(), entity.getStatus(),
+                entity.getExpiryReminderMode(),
+                entity.getExpiryReminderDays(),
+                entity.getLowStockMode(),
+                entity.getLowStockThreshold()
         );
     }
 
