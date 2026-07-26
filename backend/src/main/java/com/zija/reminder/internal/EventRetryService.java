@@ -56,7 +56,7 @@ public class EventRetryService {
     /**
      * 测试辅助：强制将 failureCount 推到 MAX_FAILURES 并标记 abandoned + 写 poison 审计。
      */
-    public void forceFailAndRetryUntilAbandoned(UUID dlId) {
+    void forceFailAndRetryUntilAbandoned(UUID dlId) {
         var dl = deadLetterMapper.selectById(dlId);
         if (dl == null) return;
         // 将 failureCount 推到 MAX_FAILURES

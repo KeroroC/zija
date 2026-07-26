@@ -63,6 +63,8 @@ public class ReminderEventListener {
 
     private void saveDeadLetterInNewTx(StockChangedEvent evt, Throwable err) {
         requiresNewTx.executeWithoutResult(status -> {
+            // 删除去重行，允许重试时重新处理
+            processedEventMapper.deleteById(evt.eventId());
             var dl = new DeadLetterEntity();
             dl.setId(UUID.randomUUID());
             dl.setEventId(evt.eventId());

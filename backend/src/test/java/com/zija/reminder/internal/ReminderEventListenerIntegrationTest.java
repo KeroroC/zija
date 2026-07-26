@@ -40,22 +40,39 @@ class ReminderEventListenerIntegrationTest {
         jdbc.execute("TRUNCATE TABLE reminder_notification, reminder_task, reminder_household_rule, reminder_processed_event, reminder_event_dead_letter, audit_log, household, account RESTART IDENTITY CASCADE");
     }
 
-    private StockChangedEvent evt(UUID eventId, UUID lotId, UUID itemId) {
-        return new StockChangedEvent(eventId, UUID.randomUUID(), lotId, itemId,
+    private StockChangedEvent evt(UUID eventId, UUID householdId, UUID lotId, UUID itemId) {
+        return new StockChangedEvent(eventId, householdId, lotId, itemId,
                 "INBOUND", BigDecimal.ONE, null, UUID.randomUUID(),
                 OffsetDateTime.now(), UUID.randomUUID(), UUID.randomUUID());
     }
 
+    /** 向数据库插入家庭/单位/物品，使 reconciler 不会因缺数据而失败。 */
+    private void seedHouseholdAndItem(UUID householdId, UUID itemId) {
+        UUID unitId = UUID.randomUUID();
+        jdbc.update("INSERT INTO household (id, name, timezone) VALUES (?, ?, ?)",
+                householdId, "测试家庭", "Asia/Shanghai");
+        jdbc.update("INSERT INTO catalog_unit (id, household_id, name, name_normalized, decimal_scale) VALUES (?, ?, ?, ?, ?)",
+                unitId, householdId, "个", "个", 0);
+        jdbc.update("INSERT INTO catalog_item (id, household_id, name, management_type, unit_id) VALUES (?, ?, ?, ?, ?)",
+                itemId, householdId, "测试物品", "CONSUMABLE", unitId);
+    }
+
     @Test
     void normalEvent_processesOnce() {
-        var e = evt(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        UUID householdId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        seedHouseholdAndItem(householdId, itemId);
+        var e = evt(UUID.randomUUID(), householdId, UUID.randomUUID(), itemId);
         listener.onStockChanged(e);
         assertThat(processedEventMapper.selectById(e.eventId())).isNotNull();
     }
 
     @Test
     void duplicateEventId_skipsSecond() {
-        var e = evt(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        UUID householdId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        seedHouseholdAndItem(householdId, itemId);
+        var e = evt(UUID.randomUUID(), householdId, UUID.randomUUID(), itemId);
         listener.onStockChanged(e);
         var beforeTask = taskMapper.selectList(null).size();
         listener.onStockChanged(e); // 重复
@@ -65,17 +82,27 @@ class ReminderEventListenerIntegrationTest {
     @Test
     void listenerThrows_writesDeadLetterAndRetrySucceeds() {
         // 强制 reconciliation 抛异常：用不存在的 household——catalogApi.requireItem 抛 NoSuchEntity
-        var e = new StockChangedEvent(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+        UUID householdId = UUID.randomUUID();
+        UUID lotId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        var e = new StockChangedEvent(UUID.randomUUID(), householdId, lotId, itemId,
                 "INBOUND", BigDecimal.ONE, null, UUID.randomUUID(),
                 OffsetDateTime.now(), UUID.randomUUID(), UUID.randomUUID());
         listener.onStockChanged(e); // 内部 reconcile 会因无家庭/物品失败 → 写 dead_letter
         var dl = deadLetterMapper.selectList(null);
         assertThat(dl).isNotEmpty();
+        // 去重行应已删除，允许重试时重新处理
+        assertThat(processedEventMapper.selectById(e.eventId())).isNull();
 
-        // 模拟重投前先把家庭/物品建好使 reconcile 成功——此处仅验证重投调用不抛且 dead_letter 被删除
+        // 建好家庭/物品使 reconcile 成功
+        seedHouseholdAndItem(householdId, itemId);
+
         retryService.retryOnceNow(dl.get(0).getId());
-        // 重投成功（已 processed）则 dead_letter 应被删
+        // 重投成功则 dead_letter 应被删
         assertThat(deadLetterMapper.selectById(dl.get(0).getId())).isNull();
+        // 验证 reconciliation 实际执行（库存为 0 低于默认阈值 1 → 应产生 LOW_STOCK 任务）
+        var tasks = taskMapper.selectList(null);
+        assertThat(tasks).anyMatch(t -> "LOW_STOCK".equals(t.getKind()) && householdId.equals(t.getHouseholdId()));
     }
 
     @Test
