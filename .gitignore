@@ -29,6 +29,9 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/.vite/
 
+# java doc
+build/
+
 # Local runtime data
 data/
 backups/
