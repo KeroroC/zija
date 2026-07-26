@@ -138,7 +138,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
 
   // ─── 7. Verify: stock=5, lots=1, movement INBOUND ───
   await page.getByRole("tab", { name: "当前库存" }).click();
-  const stockRow = page.locator("tbody tr", { hasText: itemName });
+  const stockRow = page.locator('.el-tab-pane').nth(0).locator("tbody tr", { hasText: itemName });
   await expect(stockRow).toBeVisible();
   await expect(stockRow.getByText("5")).toBeVisible();
 
@@ -186,7 +186,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
   // ─── 9. Verify: stock=3 ───
   await page.getByRole("tab", { name: "当前库存" }).click();
   await expect(
-    page.locator("tbody tr", { hasText: itemName }).getByText("3"),
+    page.locator('.el-tab-pane').nth(0).locator("tbody tr", { hasText: itemName }).getByText("3"),
   ).toBeVisible();
 
   // ─── 10. Loss 1, reason=过期 ───
@@ -213,7 +213,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
   // ─── 11. Verify: stock=2 ───
   await page.getByRole("tab", { name: "当前库存" }).click();
   await expect(
-    page.locator("tbody tr", { hasText: itemName }).getByText("2"),
+    page.locator('.el-tab-pane').nth(0).locator("tbody tr", { hasText: itemName }).getByText("2"),
   ).toBeVisible();
 
   // ─── 12. Transfer 1 from A to B ───
@@ -249,10 +249,10 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
   // ─── 13. Verify: A=1, B=1 ───
   await page.getByRole("tab", { name: "当前库存" }).click();
   await expect(
-    page.locator("tbody tr", { hasText: locAName }).getByText("1"),
+    page.locator('.el-tab-pane').nth(0).locator("tbody tr", { hasText: locAName }).getByText("1"),
   ).toBeVisible();
   await expect(
-    page.locator("tbody tr", { hasText: locBName }).getByText("1"),
+    page.locator('.el-tab-pane').nth(0).locator("tbody tr", { hasText: locBName }).getByText("1"),
   ).toBeVisible();
 
   // ─── 14. Stocktake on location A: actual=0, reason=遗失 ───
@@ -309,7 +309,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
   await page.getByRole("tab", { name: "当前库存" }).click();
   // After stocktake adjusted to 0, location A should show quantity 0
   await expect(
-    page.locator("tbody tr", { hasText: locAName }).getByText("0"),
+    page.locator('.el-tab-pane').nth(0).locator("tbody tr", { hasText: locAName }).getByText("0"),
   ).toBeVisible();
 
   // ─── 16. Owner: reverse a CONSUME movement ───
