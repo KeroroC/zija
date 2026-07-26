@@ -119,6 +119,12 @@
           due_at ASC
     </select>
 
+    <update id="refreshSnoozedPast">
+        UPDATE reminder_task
+        SET status = 'OPEN', snoozed_until = NULL, updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE status = 'SNOOZED' AND snoozed_until &lt;= #{now}
+    </update>
+
     <update id="updateForReconcile">
         UPDATE reminder_task
         SET item_id = #{entity.itemId},

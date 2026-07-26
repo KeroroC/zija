@@ -18,6 +18,9 @@ public interface CatalogApi {
     /** 获取指定家庭下的计量单位信息，不存在则抛出异常。 */
     UnitInfo requireUnit(UUID householdId, UUID unitId);
 
+    /** 列出指定家庭下所有活跃物品（每日扫描等场景使用）。 */
+    List<ItemInfo> listActiveItems(UUID householdId);
+
     /** 物品基本信息。 */
     record ItemInfo(
             UUID id,

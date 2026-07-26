@@ -86,6 +86,15 @@ class ItemService implements CatalogApi {
                 entity.getDecimalScale(), entity.getStatus());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<ItemInfo> listActiveItems(UUID householdId) {
+        var wrapper = new LambdaQueryWrapper<ItemEntity>()
+                .eq(ItemEntity::getHouseholdId, householdId)
+                .eq(ItemEntity::getStatus, "ACTIVE");
+        return itemMapper.selectList(wrapper).stream().map(this::toInfo).toList();
+    }
+
     /**
      * 创建新物品，校验单位、分类、品牌、标签的有效性，并检查数量精度。
      */

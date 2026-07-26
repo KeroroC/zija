@@ -51,6 +51,9 @@ public interface TaskMapper extends BaseMapper<TaskEntity> {
     /** Reconciler 专用：更新任务字段（threshold_snapshot 使用 JSONB typeHandler）。 */
     int updateForReconcile(@Param("entity") TaskEntity entity);
 
+    /** 批量刷新：snoozed_until 已过的 SNOOZED 任务转回 OPEN。 */
+    int refreshSnoozedPast(@Param("now") OffsetDateTime now);
+
     /** 分页查询。 */
     IPage<TaskEntity> findPage(Page<TaskEntity> page,
                                @Param("householdId") UUID householdId,
