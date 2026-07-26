@@ -28,4 +28,10 @@ class ModularityTests {
         assertThat(modules.getModuleByName("inventory")).isPresent();
         modules.verify();
     }
+
+    @Test
+    void reminderModuleExistsAndDependenciesAreValid() {
+        assertThat(modules.getModuleByName("reminder")).isPresent();
+        modules.verify();
+    }
 }
