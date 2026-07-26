@@ -4,7 +4,7 @@
 - **状态：** 已确认，作为 5a 实施计划与验收依据
 - **覆盖规格：** `docs/superpowers/specs/2026-07-18-zija-design.md` §6.6（提醒与任务）、§6.7（首页方向，仅后端聚合部分）、§8.5（事务提交后可靠投递）、§12.1（事件测试：失败可重试且不重复处理）
 - **交付路线：** 阶段 5（提醒与任务首页），本段为 5a 后端。5a 不依赖 5b 前端，可独立验收。
-- **前置依赖：** 阶段 1–4 已交付（`system`/`identity`/`household`/`catalog`/`location`/`file`/`inventory` 模块，迁移至 V11）。`StockChangedEvent` 已由阶段四发布（同步桩），公开 `InventoryApi`/`CatalogApi` 已存在。
+- **前置依赖：** 阶段 1–4 已交付（`system`/`identity`/`household`/`catalog`/`location`/`file`/`inventory` 模块，迁移已合并为单一 V1__create_all_tables.sql）。`StockChangedEvent` 已由阶段四发布（同步桩），公开 `InventoryApi`/`CatalogApi` 已存在。
 
 ## 1. 模块边界与范围
 
@@ -43,7 +43,7 @@ com.zija.reminder/
 - 端点：`GET/PUT /api/v1/reminder/rules`、`GET /api/v1/reminder/tasks`（分页+筛选+按紧急度排序）、`POST .../tasks/{id}/{snooze,complete,ignore,reopen}`、`GET /api/v1/reminder/dashboard`。
 - 通知端点：`GET /api/v1/notifications`（分页+unread 过滤）、`GET /api/v1/notifications/unread-count`、`POST /api/v1/notifications/{id}/read`、`POST /api/v1/notifications/read-all`。
 - 审计新动作：`REMINDER_RULE_UPDATE`、`REMINDER_TASK_SNOOZED`、`REMINDER_TASK_COMPLETED`、`REMINDER_TASK_IGNORED`、`REMINDER_TASK_REOPENED`。
-- Testcontainers 全覆盖 + `ModularityTests` 扩充 reminder 断言 + OpenApi 契约基线升 V12。
+- Testcontainers 全覆盖 + `ModularityTests` 扩充 reminder 断言 + OpenApi 契约基线升至 V2。
 
 ### 1.2 5a 明确不做（守恒）
 
@@ -57,7 +57,7 @@ com.zija.reminder/
 
 ## 2. 数据模型与迁移
 
-迁移文件 `backend/src/main/resources/db/migration/V12__create_reminder_core.sql`（V1–V11 已存在，V11=库存核心）。仅前进、幂等安全、不改既有表（catalog/inventory/household 表不动；CatalogApi/InventoryApi 扩展是 Java 侧追加，不动表）。
+迁移文件 `backend/src/main/resources/db/migration/V2__create_reminder_core.sql`（V1 已包含全部既有表；5a 新增 V2）。仅前进、幂等安全、不改既有表（catalog/inventory/household 表不动；CatalogApi/InventoryApi 扩展是 Java 侧追加，不动表）。
 
 ```sql
 -- 1) 家庭默认提醒规则（家庭单例）
@@ -357,7 +357,7 @@ reconcile 产生或关闭任务后，在**同事务内**写 `reminder_notificati
 ### 5.3 架构与契约
 
 - `ModularityTests` 新增 `reminderModuleExistsAndDependenciesAreValid()`（断言 reminder 模块存在且 `verify()` 通过）。
-- `OpenApiContractTest` 基线升级到 V12（含 `/api/v1/reminder/**`、`/api/v1/notifications/**`）。
+- `OpenApiContractTest` 基线升至 V2（含 `/api/v1/reminder/**`、`/api/v1/notifications/**`）。
 
 ### 5.4 验收门槛（5a 单段，对应 roadmap「变更库存或到期日恰好创建、更新和关闭预期任务一次，包括模拟事件处理器失败和重试之后」）
 
@@ -365,14 +365,14 @@ reconcile 产生或关闭任务后，在**同事务内**写 `reminder_notificati
 2. `cd backend && ./mvnw -q -Dtest=ModularityTests test` 通过。
 3. 事件改造无回归：`InventoryEventPublisher` 改造后阶段四库存集成测试（`StockCommandServiceIntegrationTest`/`ReversalServiceIntegrationTest` 等）仍全绿。
 4. 事件失败重试场景实物通过：dead_letter → 重投 → 成功链路在 `ReminderEventListenerIntegrationTest` 被验证。
-5. 全空库 `make backend-build` 构建成功（V12 在 Testcontainers 空库由 Flyway 执行成功）。
+5. 全空库 `make backend-build` 构建成功（V2 在 Testcontainers 空库由 Flyway 执行成功）。
 6. 不提交任何前端代码（前端在 5b）。
 
 ## 6. 实施拆分、风险与回退、文档
 
 ### 6.1 5a 内部任务拆分（供 writing-plans 写出可执行计划，每任务一次提交，中文 body + 英文前缀）
 
-1. V12 迁移（reminder 五张表 + 约束 + 索引）—— 空库 Flyway 验证。
+1. V2 迁移（reminder 五张表 + 约束 + 索引）—— 空库 Flyway 验证。
 2. reminder 模块骨架（package-info、ReminderApi 公开只读端口、ReminderExceptionHandler、七类异常、ClockConfig）。
 3. CatalogApi/InventoryApi 扩展（ItemInfo +4 字段、InventoryApi +lotsOfItem/currentTotalStockOfItem + LotInfo record）；ItemService/InventoryService 填充；向后兼容回归测试。
 4. 持久化（Entity/Mapper/XML：HouseholdRule、Task、Notification、ProcessedEvent、DeadLetter）。
@@ -386,7 +386,7 @@ reconcile 产生或关闭任务后，在**同事务内**写 `reminder_notificati
 12. DashboardService + 聚合查询 Mapper —— TDD。
 13. NotificationService + 端点 —— TDD。
 14. ReminderController + 全端点（rules/tasks/dashboard/notifications，MockMvc 集成测试 + 权限）。
-15. ModularityTests 扩充 reminder 断言 + OpenApiContractTest 基线升 V12。
+15. ModularityTests 扩充 reminder 断言 + OpenApiContractTest 基线升至 V2。
 16. 5a 收尾：`make backend-test` 全绿、`make backend-build` 成功；写收尾记录。
 
 ### 6.2 风险与对策
@@ -402,7 +402,7 @@ reconcile 产生或关闭任务后，在**同事务内**写 `reminder_notificati
 
 ### 6.3 回退策略（满足「可回退」门槛）
 
-- V12 是新表，不改任何既有表数据；`git revert` 本次提交即回到 5a 前状态。
+- V2 是新表，不改任何既有表数据；`git revert` 本次提交即回到 5a 前状态。
 - CatalogApi/InventoryApi 扩展是 Java 字段/方法追加，移除扩展即回退；既有调用者无感知。
 - InventoryEventPublisher 改造若引起回归，可临时回滚为同步发布（reminder 侧 listener 改为同步 `@EventListener` 作为应急路径），不影响库存主链路。
 
