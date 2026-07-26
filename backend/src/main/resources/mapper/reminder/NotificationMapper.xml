@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.reminder.internal.persistence.NotificationMapper">
+
+    <select id="findPage" resultType="com.zija.reminder.internal.persistence.NotificationEntity">
+        SELECT id, household_id, scope, title, message, source_task_id, read, created_at, read_at
+        FROM reminder_notification
+        <where>
+            household_id = #{householdId}
+            <if test="unreadOnly != null and unreadOnly">AND read = FALSE</if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="countUnread" resultType="long">
+        SELECT COUNT(*) FROM reminder_notification WHERE household_id = #{householdId} AND read = FALSE
+    </select>
+
+    <update id="markOneRead">
+        UPDATE reminder_notification SET read = TRUE, read_at = CURRENT_TIMESTAMP
+        WHERE household_id = #{householdId} AND id = #{id} AND read = FALSE
+    </update>
+
+    <update id="markAllRead">
+        UPDATE reminder_notification SET read = TRUE, read_at = CURRENT_TIMESTAMP
+        WHERE household_id = #{householdId} AND read = FALSE
+    </update>
+
+</mapper>

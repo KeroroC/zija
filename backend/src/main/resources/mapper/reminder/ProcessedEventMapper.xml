@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.reminder.internal.persistence.ProcessedEventMapper">
+    <insert id="insertOnConflictDoNothing">
+        INSERT INTO reminder_processed_event(event_id, processed_at)
+        VALUES (#{eventId}, CURRENT_TIMESTAMP)
+        ON CONFLICT (event_id) DO NOTHING
+    </insert>
+</mapper>

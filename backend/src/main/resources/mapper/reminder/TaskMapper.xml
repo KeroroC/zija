@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.reminder.internal.persistence.TaskMapper">
+
+    <resultMap id="taskResultMap" type="com.zija.reminder.internal.persistence.TaskEntity">
+        <id property="id" column="id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="kind" column="kind"/>
+        <result property="lotId" column="lot_id"/>
+        <result property="itemId" column="item_id"/>
+        <result property="status" column="status"/>
+        <result property="dueAt" column="due_at"/>
+        <result property="severity" column="severity"/>
+        <result property="thresholdSnapshot" column="threshold_snapshot"
+                typeHandler="com.zija.system.internal.persistence.JsonbTypeHandler"/>
+        <result property="qtySnapshot" column="qty_snapshot"/>
+        <result property="snoozedUntil" column="snoozed_until"/>
+        <result property="lastReconciledAt" column="last_reconciled_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="version" column="version"/>
+    </resultMap>
+
+    <select id="lockOpenByKindAndTarget" resultMap="taskResultMap">
+        SELECT id, household_id, kind, lot_id, item_id, status, due_at, severity,
+               threshold_snapshot, qty_snapshot, snoozed_until, last_reconciled_at,
+               created_at, updated_at, version
+        FROM reminder_task
+        WHERE household_id = #{householdId} AND kind = #{kind}
+          AND ((kind = 'EXPIRY'   AND lot_id = #{lotId})
+            OR (kind = 'LOW_STOCK' AND lot_id IS NULL))
+          AND status IN ('OPEN','SNOOZED')
+        FOR UPDATE
+    </select>
+
+    <select id="lockOpenTasksForScan" resultMap="taskResultMap">
+        SELECT id, household_id, kind, lot_id, item_id, status, due_at, severity,
+               threshold_snapshot, qty_snapshot, snoozed_until, last_reconciled_at,
+               created_at, updated_at, version
+        FROM reminder_task
+        WHERE household_id = #{householdId} AND status IN ('OPEN','SNOOZED')
+        FOR UPDATE
+    </select>
+
+    <update id="snooze">
+        UPDATE reminder_task
+        SET status = 'SNOOZED', snoozed_until = #{until}, updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE household_id = #{householdId} AND id = #{id}
+          AND status IN
+          <foreach collection="fromStatuses" item="s" open="(" separator="," close=")">#{s}</foreach>
+    </update>
+
+    <update id="transitionTo">
+        UPDATE reminder_task
+        SET status = #{toStatus}, snoozed_until = NULL, updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE household_id = #{householdId} AND id = #{id}
+          AND status IN
+          <foreach collection="fromStatuses" item="s" open="(" separator="," close=")">#{s}</foreach>
+    </update>
+
+    <update id="reopen">
+        UPDATE reminder_task
+        SET status = 'OPEN', snoozed_until = NULL, updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE household_id = #{householdId} AND id = #{id}
+          AND status IN ('DONE','IGNORED')
+    </update>
+
+    <select id="expiryWithinDays" resultMap="taskResultMap">
+        SELECT id, household_id, kind, lot_id, item_id, status, due_at, severity,
+               threshold_snapshot, qty_snapshot, snoozed_until, last_reconciled_at,
+               created_at, updated_at, version
+        FROM reminder_task
+        WHERE household_id = #{householdId} AND kind = 'EXPIRY'
+          AND status IN ('OPEN','SNOOZED')
+          AND due_at &gt;= #{from} AND due_at &lt; #{to}
+        ORDER BY due_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="lowStockOpenTasks" resultMap="taskResultMap">
+        SELECT id, household_id, kind, lot_id, item_id, status, due_at, severity,
+               threshold_snapshot, qty_snapshot, snoozed_until, last_reconciled_at,
+               created_at, updated_at, version
+        FROM reminder_task
+        WHERE household_id = #{householdId} AND kind = 'LOW_STOCK'
+          AND status IN ('OPEN','SNOOZED')
+        ORDER BY severity ASC, due_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="priorityTasks" resultMap="taskResultMap">
+        SELECT id, household_id, kind, lot_id, item_id, status, due_at, severity,
+               threshold_snapshot, qty_snapshot, snoozed_until, last_reconciled_at,
+               created_at, updated_at, version
+        FROM reminder_task
+        WHERE household_id = #{householdId} AND status IN ('OPEN','SNOOZED')
+        ORDER BY
+          CASE severity WHEN 'URGENT' THEN 0 WHEN 'WARN' THEN 1 ELSE 2 END,
+          due_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findPage" resultMap="taskResultMap">
+        SELECT id, household_id, kind, lot_id, item_id, status, due_at, severity,
+               threshold_snapshot, qty_snapshot, snoozed_until, last_reconciled_at,
+               created_at, updated_at, version
+        FROM reminder_task
+        <where>
+            household_id = #{householdId}
+            <if test="kind != null and kind != ''">AND kind = #{kind}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="itemId != null">AND item_id = #{itemId}</if>
+            <if test="overdue != null and overdue">AND due_at &lt; #{now}</if>
+        </where>
+        ORDER BY
+          CASE severity WHEN 'URGENT' THEN 0 WHEN 'WARN' THEN 1 ELSE 2 END,
+          due_at ASC
+    </select>
+
+</mapper>
