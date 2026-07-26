@@ -386,6 +386,8 @@ async function handleSaveDraft() {
         reason: item.reason || null,
       })),
     })
+    // Reload detail to get updated version (optimistic lock increments version)
+    await loadStocktakeDetail(stocktakeDetail.value.id)
     ElMessage.success('盘点草稿已保存')
     currentStep.value = 2
     isStale.value = false
