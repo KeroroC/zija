@@ -143,13 +143,15 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
   await expect(stockRow.getByText(/^5\s/)).toBeVisible();
 
   await page.getByRole("tab", { name: "批次" }).click();
-  await expect(page.locator("tbody tr").first()).toBeVisible();
-  const lotCount = await page.locator("tbody tr").count();
+  const lotsPane = page.locator('.el-tab-pane').nth(1);
+  await expect(lotsPane.locator("tbody tr").first()).toBeVisible();
+  const lotCount = await lotsPane.locator("tbody tr").count();
   expect(lotCount).toBeGreaterThanOrEqual(1);
 
   await page.getByRole("tab", { name: "流水" }).click();
+  const movementsPane = page.locator('.el-tab-pane').nth(2);
   await expect(
-    page.locator(".el-tag", { hasText: "入库" }).first(),
+    movementsPane.locator(".el-tag", { hasText: "入库" }).first(),
   ).toBeVisible();
 
   // ─── 8. Consume 2 from location A ───
@@ -302,8 +304,9 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
 
   // ─── 15. Verify: ADJUSTMENT movement, A=0 ───
   await page.getByRole("tab", { name: "流水" }).click();
+  const movementsPane2 = page.locator('.el-tab-pane').nth(2);
   await expect(
-    page.locator(".el-tag", { hasText: "调整" }).first(),
+    movementsPane2.locator(".el-tag", { hasText: "调整" }).first(),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: "当前库存" }).click();
@@ -314,8 +317,9 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
 
   // ─── 16. Owner: reverse a CONSUME movement ───
   await page.getByRole("tab", { name: "流水" }).click();
+  const movementsPane3 = page.locator('.el-tab-pane').nth(2);
   // Find a CONSUME row that has not been reversed
-  const consumeRow = page.locator("tbody tr", { hasText: "领用" }).first();
+  const consumeRow = movementsPane3.locator("tbody tr", { hasText: "领用" }).first();
   await consumeRow.click();
 
   const movementDrawer = page.locator(".el-drawer:visible");
@@ -332,7 +336,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
 
   // ─── 17. Verify: REVERSAL movement ───
   await expect(
-    page.locator(".el-tag", { hasText: "冲销" }).first(),
+    movementsPane3.locator(".el-tag", { hasText: "冲销" }).first(),
   ).toBeVisible();
 
   // ─── 18. Create a member for permission check ───
@@ -364,8 +368,9 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
     memberPage.getByRole("heading", { name: "库存管理" }),
   ).toBeVisible();
   await memberPage.getByRole("tab", { name: "流水" }).click();
-  await expect(memberPage.locator("tbody tr").first()).toBeVisible();
-  await memberPage.locator("tbody tr").first().click();
+  const memberMovementsPane = memberPage.locator('.el-tab-pane').nth(2);
+  await expect(memberMovementsPane.locator("tbody tr").first()).toBeVisible();
+  await memberMovementsPane.locator("tbody tr").first().click();
 
   const memberDrawer = memberPage.locator(".el-drawer:visible");
   await expect(memberDrawer).toBeVisible();
