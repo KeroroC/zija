@@ -113,10 +113,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
 
   // Set quantity to 5
   const inboundQty = inboundDialog.locator(".el-input-number input");
-  await inboundQty.click();
-  await inboundQty.press("Control+a");
-  await inboundQty.press("Backspace");
-  await inboundQty.type("5");
+  await inboundQty.fill("5");
 
   // Select location A
   await inboundDialog
@@ -177,10 +174,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
 
   // Step 2: set quantity to 2
   const consumeQty = consumeDialog.locator(".el-input-number input");
-  await consumeQty.click();
-  await consumeQty.press("Control+a");
-  await consumeQty.press("Backspace");
-  await consumeQty.type("2");
+  await consumeQty.fill("2");
   await consumeDialog.getByRole("button", { name: "确认领用" }).click();
   await expect(consumeDialog).not.toBeVisible();
   await expect(page.getByText("领用成功")).toBeVisible();
@@ -203,10 +197,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
 
   // Step 1: quantity=1, reason=过期
   const lossQty = lossDialog.locator(".el-input-number input");
-  await lossQty.click();
-  await lossQty.press("Control+a");
-  await lossQty.press("Backspace");
-  await lossQty.type("1");
+  await lossQty.fill("1");
   await lossDialog.getByPlaceholder("请输入报损原因").fill("过期");
   await lossDialog.getByRole("button", { name: "确认报损" }).click();
   await expect(lossDialog).not.toBeVisible();
@@ -239,10 +230,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
     .click();
 
   const transferQty = transferDialog.locator(".el-input-number input");
-  await transferQty.click();
-  await transferQty.press("Control+a");
-  await transferQty.press("Backspace");
-  await transferQty.type("1");
+  await transferQty.fill("1");
 
   await transferDialog.getByRole("button", { name: "确认移位" }).click();
   await expect(transferDialog).not.toBeVisible();
@@ -280,10 +268,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
   const actualInput = stocktakeDialog
     .locator("tbody .el-input-number input")
     .first();
-  await actualInput.click();
-  await actualInput.press("Control+a");
-  await actualInput.press("Backspace");
-  await actualInput.type("0");
+  await actualInput.fill("0");
 
   // Fill reason for the discrepancy
   await stocktakeDialog
@@ -344,7 +329,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
   const memberPassword = "Passw0rd!";
 
   await page.goto("/members");
-  await expect(page.getByText("成员管理")).toBeVisible();
+  await expect(page.getByRole("main").getByText("成员管理")).toBeVisible();
   await page.getByTestId("create-invite").click();
   await page.getByTestId("confirm-invite").click();
   const inviteHref = await page.getByTestId("invite-link").innerText();
