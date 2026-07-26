@@ -119,4 +119,21 @@
           due_at ASC
     </select>
 
+    <update id="updateForReconcile">
+        UPDATE reminder_task
+        SET item_id = #{entity.itemId},
+            status = #{entity.status},
+            due_at = #{entity.dueAt},
+            severity = #{entity.severity},
+            threshold_snapshot = #{entity.thresholdSnapshot, typeHandler=com.zija.system.internal.persistence.JsonbTypeHandler},
+            qty_snapshot = #{entity.qtySnapshot},
+            snoozed_until = #{entity.snoozedUntil},
+            last_reconciled_at = #{entity.lastReconciledAt},
+            updated_at = #{entity.updatedAt},
+            version = version + 1
+        WHERE id = #{entity.id}
+          AND household_id = #{entity.householdId}
+          AND version = #{entity.version}
+    </update>
+
 </mapper>

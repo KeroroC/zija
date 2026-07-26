@@ -48,6 +48,9 @@ public interface TaskMapper extends BaseMapper<TaskEntity> {
     List<TaskEntity> priorityTasks(@Param("householdId") UUID householdId,
                                    @Param("limit") int limit);
 
+    /** Reconciler 专用：更新任务字段（threshold_snapshot 使用 JSONB typeHandler）。 */
+    int updateForReconcile(@Param("entity") TaskEntity entity);
+
     /** 分页查询。 */
     IPage<TaskEntity> findPage(Page<TaskEntity> page,
                                @Param("householdId") UUID householdId,
