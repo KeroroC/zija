@@ -11,6 +11,10 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  modulith:
+    events:
+      jdbc-schema-initialization:
+        enabled: false
   mvc:
     problemdetails:
       enabled: true
