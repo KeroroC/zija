@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-public class MailSettingService {
+class MailSettingService {
 
     private final MailSettingMapper mailSettingMapper;
     private final SystemApi systemApi;
