@@ -67,6 +67,8 @@ management:
       group:
         readiness:
           include: readinessState,db
+        liveness:
+          include: livenessState
       show-details: never
 
 mybatis-plus:
