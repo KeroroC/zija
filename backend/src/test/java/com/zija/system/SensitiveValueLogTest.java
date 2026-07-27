@@ -2,9 +2,7 @@ package com.zija.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import ch.qos.logback.classic.Logger;
@@ -12,6 +10,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import tools.jackson.databind.ObjectMapper;
 import com.zija.ZijaSessionInvalidator;
+import java.util.List;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -129,14 +128,20 @@ class SensitiveValueLogTest {
                 .getResponse();
 
         // 从 Set-Cookie 头提取会话 Cookie 值
-        String setCookie = response.getHeader("Set-Cookie");
-        if (setCookie != null && setCookie.contains("SESSION=")) {
-            String cookieValue = setCookie.replaceAll(".*SESSION=([^;]+).*", "$1");
-            assertThat(cookieValue).isNotEmpty();
-            assertThat(allLogMessages())
-                    .as("logs must not contain session cookie value")
-                    .doesNotContain(cookieValue);
-        }
+        List<String> setCookies = response.getHeaders("Set-Cookie");
+        String sessionHeader = setCookies.stream()
+                .filter(h -> h.contains("ZIJA_SESSION="))
+                .findFirst()
+                .orElse(null);
+        assertThat(sessionHeader)
+                .as("session cookie must be present after successful login")
+                .isNotNull()
+                .contains("ZIJA_SESSION=");
+        String cookieValue = sessionHeader.replaceAll(".*ZIJA_SESSION=([^;]+).*", "$1");
+        assertThat(cookieValue).isNotEmpty();
+        assertThat(allLogMessages())
+                .as("logs must not contain session cookie value")
+                .doesNotContain(cookieValue);
 
         // 密码也不应出现在日志中
         assertThat(allLogMessages())
