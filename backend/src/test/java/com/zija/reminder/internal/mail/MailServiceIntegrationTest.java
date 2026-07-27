@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @SpringBootTest
@@ -68,5 +69,41 @@ class MailServiceIntegrationTest {
     void sendReturnsTrueWhenSuccessful() {
         boolean result = mailService.send("owner@example.com", "subject", "body");
         assertThat(result).isTrue();
+    }
+
+    // ---- short-circuit / unconfigured path (unit-level, no Spring context needed) ----
+
+    @Test
+    void isConfiguredReturnsFalseWhenSenderIsNull() {
+        var unconfigured = new MailService(null, "");
+        assertThat(unconfigured.isConfigured()).isFalse();
+    }
+
+    @Test
+    void isConfiguredReturnsFalseWhenFromIsBlank() {
+        var unconfigured = new MailService(mailSender, "   ");
+        assertThat(unconfigured.isConfigured()).isFalse();
+    }
+
+    @Test
+    void sendReturnsFalseWhenNotConfigured() {
+        var unconfigured = new MailService(null, "");
+        assertThat(unconfigured.send("a@b.com", "subject", "body")).isFalse();
+    }
+
+    @Test
+    void sendDigestNoOpWhenNotConfigured() {
+        var sender = mock(JavaMailSender.class);
+        var unconfigured = new MailService(sender, "");
+        unconfigured.sendDigest("a@b.com", "<html>body</html>");
+        verify(sender, never()).send(any(SimpleMailMessage.class));
+    }
+
+    @Test
+    void sendUrgentNoOpWhenNotConfigured() {
+        var sender = mock(JavaMailSender.class);
+        var unconfigured = new MailService(sender, "");
+        unconfigured.sendUrgent("a@b.com", "<html>urgent</html>");
+        verify(sender, never()).send(any(SimpleMailMessage.class));
     }
 }
