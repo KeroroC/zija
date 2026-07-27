@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -22,7 +23,8 @@ class FileIntegrityService {
 
   private static final int MAX_DETAIL_ITEMS = 100;
 
-  FileIntegrityService(StoredFileMapper storedFileMapper, String storageRoot) {
+  FileIntegrityService(StoredFileMapper storedFileMapper,
+      @Value("${zija.file.storage-path}") String storageRoot) {
     this.storedFileMapper = storedFileMapper;
     this.storageRoot = storageRoot;
   }
