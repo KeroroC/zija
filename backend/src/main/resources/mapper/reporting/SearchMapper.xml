@@ -27,7 +27,6 @@
 
     <select id="searchLots" resultType="java.util.LinkedHashMap">
         SELECT
-            entity_id AS "lotId",
             lot_id AS "lotId",
             item_name AS "itemName",
             lot_number AS "lotNumber",

@@ -52,12 +52,12 @@
         LEFT JOIN reporting_stock_flat sf ON sf.item_id = i.id AND sf.household_id = i.household_id
         WHERE i.household_id = #{householdId}
           AND i.status = 'ACTIVE'
-          AND i.low_stock_mode = 'THRESHOLD'
+          AND i.low_stock_mode = 'CUSTOM'
           AND i.low_stock_threshold IS NOT NULL
         <if test="categoryId != null">AND i.category_id = #{categoryId}</if>
         GROUP BY i.id, i.name, i.low_stock_threshold, i.low_stock_mode
         HAVING COALESCE(SUM(sf.quantity), 0) &lt; i.low_stock_threshold
-        ORDER BY (COALESCE(SUM(sf.quantity), 0) / i.low_stock_threshold) ASC
+        ORDER BY (COALESCE(SUM(sf.quantity), 0) / NULLIF(i.low_stock_threshold, 0)) ASC
     </select>
 
     <!-- 4) 指定时间范围库存变化 -->
