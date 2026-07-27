@@ -64,7 +64,8 @@
           <span>家庭设置</span>
         </el-menu-item>
         <el-menu-item v-if="session.role === 'OWNER' || session.role === 'ADMIN'" index="/settings/reminder">
-          提醒规则
+          <el-icon><AlarmClock /></el-icon>
+          <span>提醒规则</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -123,7 +124,8 @@ import {
   Postcard,
   Setting,
   SwitchButton,
-  ArrowDown
+  ArrowDown,
+  AlarmClock
 } from "@element-plus/icons-vue";
 import { useSessionStore } from "../stores/session";
 import { householdApi } from "../api/household";
