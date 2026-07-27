@@ -28,7 +28,6 @@
                    (p.path || '&gt;' || c.name)
             FROM location c
             JOIN loc_tree p ON c.parent_id = p.id
-            WHERE c.updated_at &gt; #{cursor}
         )
         SELECT id AS location_id, household_id, parent_id, name, path, sort_order, status, updated_at
         FROM loc_tree
