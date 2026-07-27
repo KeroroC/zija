@@ -57,6 +57,27 @@ export function reopenTask(id: string): Promise<void> {
   return postJson<void>(`/api/v1/reminder/tasks/${id}/reopen`, {});
 }
 
+// ==================== Mail Settings ====================
+
+export interface MailSetting {
+  digestEnabled: boolean;
+  digestFrequency: "DAILY" | "WEEKLY";
+  urgentEnabled: boolean;
+  recipientRoles: string[];
+  version: number;
+  smtpConfigured: boolean;
+}
+
+export function fetchMailSettings(): Promise<MailSetting> {
+  return getJson<MailSetting>("/api/v1/reminder/mail-settings");
+}
+
+export function updateMailSettings(
+  body: Omit<MailSetting, "smtpConfigured">,
+): Promise<MailSetting> {
+  return putJson<MailSetting>("/api/v1/reminder/mail-settings", body);
+}
+
 // ==================== Dashboard ====================
 
 export function fetchDashboard(days = 7, topN = 8): Promise<Dashboard> {

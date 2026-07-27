@@ -66,3 +66,18 @@ test("提醒规则页 owner 可保存", async ({ page }) => {
   // 保存按钮对 owner 可见（ensureBootstrapped 登录的是 owner）
   await expect(page.getByRole("button", { name: "保存" })).toBeVisible();
 });
+
+test("邮件提醒分区可见且 SMTP 状态徽章显示", async ({ page }) => {
+  await ensureBootstrapped(page);
+
+  await page.goto("/settings/reminder");
+  await expect(page.locator(".page-title")).toContainText("提醒规则");
+
+  // 邮件提醒分区可见
+  await expect(page.locator(".mail-section")).toBeVisible();
+  await expect(page.getByText("邮件提醒")).toBeVisible();
+
+  // SMTP 状态徽章可见（已配置或未配置）
+  const smtpBadge = page.locator(".zj-badge").first();
+  await expect(smtpBadge).toBeVisible();
+});

@@ -48,13 +48,54 @@
       </el-form-item>
     </el-form>
     <p v-else class="readonly">仅管理员可修改。</p>
+
+    <!-- 邮件提醒 -->
+    <el-divider v-if="canEdit" />
+    <div v-if="canEdit" class="mail-section">
+      <h3 class="section-title">邮件提醒</h3>
+      <el-form :model="mailForm" label-width="120px">
+        <el-form-item label="SMTP 状态">
+          <span :class="['zj-badge', mailForm.smtpConfigured ? 'zj-badge-pine' : 'zj-badge-plain']">
+            {{ mailForm.smtpConfigured ? "已配置" : "未配置" }}
+          </span>
+        </el-form-item>
+        <el-form-item label="摘要通知">
+          <el-switch v-model="mailForm.digestEnabled" />
+        </el-form-item>
+        <el-form-item v-if="mailForm.digestEnabled" label="摘要频率">
+          <el-radio-group v-model="mailForm.digestFrequency">
+            <el-radio value="DAILY">每日</el-radio>
+            <el-radio value="WEEKLY">每周</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="紧急通知">
+          <el-switch v-model="mailForm.urgentEnabled" />
+        </el-form-item>
+        <el-form-item label="接收角色">
+          <el-checkbox-group v-model="mailForm.recipientRoles">
+            <el-checkbox value="OWNER">所有者</el-checkbox>
+            <el-checkbox value="ADMIN">管理员</el-checkbox>
+            <el-checkbox value="MEMBER">成员</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="saveMail">保存邮件设置</el-button>
+        </el-form-item>
+      </el-form>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref, onMounted, computed } from "vue";
 import { ElMessage } from "element-plus";
-import { fetchRules, updateRules } from "../api/reminder";
+import {
+  fetchRules,
+  updateRules,
+  fetchMailSettings,
+  updateMailSettings,
+} from "../api/reminder";
+import type { MailSetting } from "../api/reminder";
 import { useSessionStore } from "../stores/session";
 import { ApiError } from "../api/http";
 
@@ -71,8 +112,17 @@ const form = reactive({
 });
 const loaded = ref(false);
 
+const mailForm = reactive<MailSetting>({
+  digestEnabled: false,
+  digestFrequency: "DAILY",
+  urgentEnabled: false,
+  recipientRoles: [],
+  version: 0,
+  smtpConfigured: false,
+});
+
 onMounted(async () => {
-  await load();
+  await Promise.all([load(), loadMail()]);
 });
 
 async function load() {
@@ -91,7 +141,16 @@ async function load() {
   }
 }
 
-defineExpose({ save });
+async function loadMail() {
+  try {
+    const r = await fetchMailSettings();
+    Object.assign(mailForm, r);
+  } catch (e) {
+    if (e instanceof ApiError) ElMessage.error(e.message);
+  }
+}
+
+defineExpose({ save, saveMail });
 
 async function save() {
   const body = {
@@ -117,6 +176,31 @@ async function save() {
     }
   }
 }
+
+async function saveMail() {
+  const body = {
+    digestEnabled: mailForm.digestEnabled,
+    digestFrequency: mailForm.digestFrequency,
+    urgentEnabled: mailForm.urgentEnabled,
+    recipientRoles: mailForm.recipientRoles,
+    version: mailForm.version,
+  };
+  try {
+    const r = await updateMailSettings(body);
+    Object.assign(mailForm, r);
+    ElMessage.success("邮件设置已保存");
+  } catch (e) {
+    if (
+      e instanceof ApiError &&
+      e.errorCode === "REMINDER_MAIL_SETTING_VERSION_CONFLICT"
+    ) {
+      ElMessage.warning("邮件设置已被他人修改，已为您重新加载");
+      await loadMail();
+    } else if (e instanceof ApiError) {
+      ElMessage.error(e.message);
+    }
+  }
+}
 </script>
 
 <style scoped>
@@ -127,5 +211,14 @@ async function save() {
 }
 .readonly {
   color: var(--zj-ink-600);
+}
+.mail-section {
+  margin-top: 24px;
+}
+.section-title {
+  font-family: "Noto Serif SC Variable", serif;
+  font-size: 16px;
+  color: var(--zj-ink-900);
+  margin-bottom: 16px;
 }
 </style>
