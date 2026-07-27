@@ -60,6 +60,7 @@ describe("ReminderRulesSettingsView", () => {
     });
     const w = mountV();
     await flushPromises();
-    expect(w.text()).toContain("提醒规则");
+    expect(w.text()).not.toContain("提醒天数");
+    expect(w.findComponent({ name: "ElSelect" }).exists()).toBe(false);
   });
 });
