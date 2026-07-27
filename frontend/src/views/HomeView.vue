@@ -85,8 +85,9 @@ import {
   snoozeTask,
   completeTask,
   ignoreTask,
-  type DashboardItem,
 } from "../api/reminder";
+import type { DashboardItem } from "../types/reminder";
+import type { Movement } from "../types/inventory";
 import { fetchStocktakes, fetchMovements } from "../api/inventory";
 import { ApiError } from "../api/http";
 
@@ -96,7 +97,7 @@ const expiryCount = ref(0);
 const lowStockCount = ref(0);
 const stocktakeCount = ref(0);
 const priorityTasks = ref<DashboardItem[]>([]);
-const recentMovements = ref<Record<string, unknown>[]>([]);
+const recentMovements = ref<Movement[]>([]);
 
 onMounted(async () => {
   try {
@@ -111,7 +112,7 @@ onMounted(async () => {
     stocktakeCount.value = st.total;
     recentMovements.value = mv.items;
   } catch (e) {
-    if (e instanceof ApiError) ElMessage.error(e.title);
+    if (e instanceof ApiError) ElMessage.error(e.message);
   }
 });
 
@@ -166,7 +167,7 @@ async function onTaskAction(cmd: string, taskId: string) {
     const dash = await fetchDashboard(7, 8);
     priorityTasks.value = dash.priorityTasks.items;
   } catch (e) {
-    if (e instanceof ApiError) ElMessage.error(e.title);
+    if (e instanceof ApiError) ElMessage.error(e.message);
   }
 }
 </script>
