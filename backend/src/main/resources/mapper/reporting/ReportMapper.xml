@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.reporting.internal.persistence.ReportMapper">
+
+    <!-- 1) 当前库存与位置分布 -->
+    <select id="stockByLocation" resultType="java.util.LinkedHashMap">
+        SELECT
+            sf.location_id, sf.location_path,
+            sf.item_id, sf.item_name,
+            sf.lot_id, sf.lot_number, sf.serial_number,
+            sf.unit_name, sf.quantity, sf.expiry_date
+        FROM reporting_stock_flat sf
+        WHERE sf.household_id = #{householdId}
+        <if test="itemId != null">AND sf.item_id = #{itemId}</if>
+        <if test="locationId != null">AND sf.location_id = #{locationId}</if>
+        <if test="categoryId != null">
+            AND sf.item_id IN (SELECT id FROM catalog_item WHERE category_id = #{categoryId})
+        </if>
+        <if test="brandId != null">
+            AND sf.item_id IN (SELECT id FROM catalog_item WHERE brand_id = #{brandId})
+        </if>
+        ORDER BY sf.location_path, sf.item_name, sf.lot_number
+    </select>
+
+    <!-- 2) 临期批次 -->
+    <select id="expiringLots" resultType="java.util.LinkedHashMap">
+        SELECT
+            sf.lot_id, sf.lot_number, sf.serial_number,
+            sf.item_id, sf.item_name, sf.unit_name,
+            sf.location_id, sf.location_path,
+            sf.quantity, sf.expiry_date,
+            (sf.expiry_date - CURRENT_DATE) AS days_until_expiry
+        FROM reporting_stock_flat sf
+        WHERE sf.household_id = #{householdId}
+          AND sf.expiry_date IS NOT NULL
+          AND sf.expiry_date &lt;= CURRENT_DATE + #{withinDays} * INTERVAL '1 day'
+          AND sf.quantity &gt; 0
+        <if test="itemId != null">AND sf.item_id = #{itemId}</if>
+        <if test="locationId != null">AND sf.location_id = #{locationId}</if>
+        ORDER BY sf.expiry_date ASC
+    </select>
+
+    <!-- 3) 低库存物品 -->
+    <select id="lowStock" resultType="java.util.LinkedHashMap">
+        SELECT
+            i.id AS item_id, i.name AS item_name,
+            i.low_stock_threshold, i.low_stock_mode,
+            COALESCE(SUM(sf.quantity), 0) AS total_quantity
+        FROM catalog_item i
+        LEFT JOIN reporting_stock_flat sf ON sf.item_id = i.id AND sf.household_id = i.household_id
+        WHERE i.household_id = #{householdId}
+          AND i.status = 'ACTIVE'
+          AND i.low_stock_mode = 'THRESHOLD'
+          AND i.low_stock_threshold IS NOT NULL
+        <if test="categoryId != null">AND i.category_id = #{categoryId}</if>
+        GROUP BY i.id, i.name, i.low_stock_threshold, i.low_stock_mode
+        HAVING COALESCE(SUM(sf.quantity), 0) &lt; i.low_stock_threshold
+        ORDER BY (COALESCE(SUM(sf.quantity), 0) / i.low_stock_threshold) ASC
+    </select>
+
+    <!-- 4) 指定时间范围库存变化 -->
+    <select id="stockChanges" resultType="java.util.LinkedHashMap">
+        SELECT
+            mf.movement_id, mf.item_id, mf.item_name,
+            mf.type, mf.quantity_delta,
+            mf.from_location_id, mf.from_location_path,
+            mf.to_location_id, mf.to_location_path,
+            mf.operator_account_id, mf.operator_display_name,
+            mf.reason, mf.business_time
+        FROM reporting_movement_flat mf
+        WHERE mf.household_id = #{householdId}
+          AND mf.business_time BETWEEN #{from} AND #{to}
+        <if test="itemId != null">AND mf.item_id = #{itemId}</if>
+        <if test="locationId != null">
+            AND (mf.from_location_id = #{locationId} OR mf.to_location_id = #{locationId})
+        </if>
+        <if test="type != null">AND mf.type = #{type}</if>
+        ORDER BY mf.business_time DESC
+    </select>
+
+    <!-- 5) 按成员/类型/物品筛选流水 -->
+    <select id="movements" resultType="java.util.LinkedHashMap">
+        SELECT
+            mf.movement_id, mf.item_id, mf.item_name,
+            mf.type, mf.quantity_delta,
+            mf.from_location_id, mf.from_location_path,
+            mf.to_location_id, mf.to_location_path,
+            mf.operator_account_id, mf.operator_display_name,
+            mf.reason, mf.reversal_of, mf.business_time, mf.created_at
+        FROM reporting_movement_flat mf
+        WHERE mf.household_id = #{householdId}
+        <if test="from != null">AND mf.business_time &gt;= #{from}</if>
+        <if test="to != null">AND mf.business_time &lt;= #{to}</if>
+        <if test="itemId != null">AND mf.item_id = #{itemId}</if>
+        <if test="type != null">AND mf.type = #{type}</if>
+        <if test="operatorAccountId != null">AND mf.operator_account_id = #{operatorAccountId}</if>
+        ORDER BY mf.business_time DESC
+    </select>
+
+</mapper>

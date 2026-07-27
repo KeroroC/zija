@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.reporting.internal.persistence.SearchMapper">
+
+    <select id="searchItems" resultType="java.util.LinkedHashMap">
+        SELECT
+            entity_id AS "itemId",
+            item_name AS "name",
+            brand_name AS "brand",
+            tag_names AS "tags",
+            category_name AS "category",
+            unit_name AS "unit"
+        FROM reporting_search_index
+        WHERE household_id = #{householdId}
+          AND entity_type = 'ITEM'
+          AND (
+              item_name ILIKE '%' || #{q} || '%'
+              OR brand_name ILIKE '%' || #{q} || '%'
+              OR tag_names ILIKE '%' || #{q} || '%'
+              OR category_name ILIKE '%' || #{q} || '%'
+          )
+        ORDER BY item_name
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchLots" resultType="java.util.LinkedHashMap">
+        SELECT
+            entity_id AS "lotId",
+            lot_id AS "lotId",
+            item_name AS "itemName",
+            lot_number AS "lotNumber",
+            serial_number AS "serialNumber"
+        FROM reporting_search_index
+        WHERE household_id = #{householdId}
+          AND entity_type = 'LOT'
+          AND (
+              lot_number ILIKE '%' || #{q} || '%'
+              OR serial_number ILIKE '%' || #{q} || '%'
+          )
+        ORDER BY lot_number
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchLocations" resultType="java.util.LinkedHashMap">
+        SELECT
+            entity_id AS "locationId",
+            location_name AS "name",
+            location_path AS "path"
+        FROM reporting_search_index
+        WHERE household_id = #{householdId}
+          AND entity_type = 'LOCATION'
+          AND (
+              location_name ILIKE '%' || #{q} || '%'
+              OR location_path ILIKE '%' || #{q} || '%'
+          )
+        ORDER BY location_path
+        LIMIT #{limit}
+    </select>
+
+</mapper>
