@@ -33,4 +33,29 @@
         ORDER BY ${orderBy}
     </select>
 
+    <resultMap id="movementDumpMap" type="com.zija.inventory.InventoryApi$MovementDump">
+        <result property="id" column="id"/>
+        <result property="lotId" column="lot_id"/>
+        <result property="itemId" column="item_id"/>
+        <result property="type" column="type"/>
+        <result property="quantityDelta" column="quantity"/>
+        <result property="fromLocationId" column="from_location_id"/>
+        <result property="toLocationId" column="to_location_id"/>
+        <result property="reason" column="reason"/>
+        <result property="operatorAccountId" column="operator_account_id"/>
+        <result property="reversalOf" column="reversal_of"/>
+        <result property="businessTime" column="business_time"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="dumpMovements" resultMap="movementDumpMap">
+        SELECT id, lot_id, item_id, type, quantity, from_location_id, to_location_id,
+               reason, operator_account_id, reversal_of, business_time, created_at
+        FROM inventory_movement
+        WHERE household_id = #{householdId}
+          AND created_at &gt; #{cursor}
+        ORDER BY created_at ASC
+        LIMIT #{limit}
+    </select>
+
 </mapper>

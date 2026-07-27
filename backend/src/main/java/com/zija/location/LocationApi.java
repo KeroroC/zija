@@ -1,5 +1,6 @@
 package com.zija.location;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,4 +45,21 @@ public interface LocationApi {
             List<LocationNode> children
     ) {
     }
+
+    /** 增量拉取家庭位置树扁平化（含 path）。仅供 reporting 投影重建。 */
+    LocationDumpPage dumpTree(UUID householdId, OffsetDateTime cursor, int limit);
+
+    record LocationDumpPage(List<LocationFlat> items, OffsetDateTime nextCursor, boolean hasMore) {}
+
+    /** 位置扁平 DTO（仅供 dump）。 */
+    record LocationFlat(
+            UUID locationId,
+            UUID householdId,
+            UUID parentId,
+            String name,
+            String path,
+            int sortOrder,
+            String status,
+            OffsetDateTime updatedAt
+    ) {}
 }

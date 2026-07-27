@@ -27,6 +27,7 @@ import java.util.*;
 class ItemService implements CatalogApi {
 
     private final ItemMapper itemMapper;
+    private final ItemDumpMapper itemDumpMapper;
     private final UnitMapper unitMapper;
     private final CategoryMapper categoryMapper;
     private final BrandMapper brandMapper;
@@ -37,6 +38,7 @@ class ItemService implements CatalogApi {
 
     ItemService(
             ItemMapper itemMapper,
+            ItemDumpMapper itemDumpMapper,
             UnitMapper unitMapper,
             CategoryMapper categoryMapper,
             BrandMapper brandMapper,
@@ -46,6 +48,7 @@ class ItemService implements CatalogApi {
             CatalogEventPublisher eventPublisher
     ) {
         this.itemMapper = itemMapper;
+        this.itemDumpMapper = itemDumpMapper;
         this.unitMapper = unitMapper;
         this.categoryMapper = categoryMapper;
         this.brandMapper = brandMapper;
@@ -102,6 +105,15 @@ class ItemService implements CatalogApi {
                 .eq(ItemEntity::getHouseholdId, householdId)
                 .eq(ItemEntity::getStatus, "ACTIVE");
         return itemMapper.selectList(wrapper).stream().map(this::toInfo).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ItemDumpPage dumpItems(UUID householdId, OffsetDateTime cursor, int limit) {
+        var items = itemDumpMapper.dumpItems(householdId, cursor, limit);
+        OffsetDateTime nextCursor = items.isEmpty() ? cursor : items.get(items.size() - 1).updatedAt();
+        boolean hasMore = items.size() == limit;
+        return new ItemDumpPage(items, nextCursor, hasMore);
     }
 
     /**

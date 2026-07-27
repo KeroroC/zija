@@ -1,6 +1,7 @@
 package com.zija.catalog;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -49,4 +50,30 @@ public interface CatalogApi {
             String status
     ) {
     }
+
+    /** 增量拉取家庭物品（含品牌、分类、单位、标签 join 后扁平化）。仅供 reporting 投影重建。 */
+    ItemDumpPage dumpItems(UUID householdId, OffsetDateTime cursor, int limit);
+
+    record ItemDumpPage(List<ItemFlat> items, OffsetDateTime nextCursor, boolean hasMore) {}
+
+    /** 物品扁平 DTO（仅供 dump）。 */
+    record ItemFlat(
+            UUID itemId,
+            UUID householdId,
+            String name,
+            String managementType,
+            String status,
+            UUID categoryId,
+            String categoryName,
+            UUID brandId,
+            String brandName,
+            UUID unitId,
+            String unitName,
+            String tagNames,
+            BigDecimal lowStockThreshold,
+            String lowStockMode,
+            String expiryReminderMode,
+            List<Short> expiryReminderDays,
+            OffsetDateTime updatedAt
+    ) {}
 }

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.location.internal.persistence.LocationDumpMapper">
+
+    <resultMap id="locationFlatMap" type="com.zija.location.LocationApi$LocationFlat">
+        <result property="locationId" column="location_id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="name" column="name"/>
+        <result property="path" column="path"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="status" column="status"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!-- 用递归 CTE 构建 path（> 分隔父节点名称） -->
+    <select id="dumpTree" resultMap="locationFlatMap">
+        WITH RECURSIVE loc_tree AS (
+            SELECT id, household_id, parent_id, name, sort_order, status, updated_at,
+                   name::TEXT AS path
+            FROM location
+            WHERE household_id = #{householdId} AND parent_id IS NULL
+              AND updated_at &gt; #{cursor}
+            UNION ALL
+            SELECT c.id, c.household_id, c.parent_id, c.name, c.sort_order, c.status, c.updated_at,
+                   (p.path || '&gt;' || c.name)
+            FROM location c
+            JOIN loc_tree p ON c.parent_id = p.id
+            WHERE c.updated_at &gt; #{cursor}
+        )
+        SELECT id AS location_id, household_id, parent_id, name, path, sort_order, status, updated_at
+        FROM loc_tree
+        ORDER BY updated_at ASC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

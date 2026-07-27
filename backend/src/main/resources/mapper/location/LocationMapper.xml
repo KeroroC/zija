@@ -6,7 +6,7 @@
 
     <select id="findTree" resultType="com.zija.location.internal.persistence.LocationEntity">
         SELECT id, household_id, parent_id, name, name_normalized, sort_order,
-               ever_referenced, created_at, updated_at, version
+               ever_referenced, status, created_at, updated_at, version
         FROM location
         WHERE household_id = #{householdId}
         ORDER BY sort_order, id

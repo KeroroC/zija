@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.catalog.internal.persistence.ItemDumpMapper">
+
+    <resultMap id="itemFlatMap" type="com.zija.catalog.CatalogApi$ItemFlat">
+        <result property="itemId" column="item_id"/>
+        <result property="householdId" column="household_id"/>
+        <result property="name" column="name"/>
+        <result property="managementType" column="management_type"/>
+        <result property="status" column="status"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="categoryName" column="category_name"/>
+        <result property="brandId" column="brand_id"/>
+        <result property="brandName" column="brand_name"/>
+        <result property="unitId" column="unit_id"/>
+        <result property="unitName" column="unit_name"/>
+        <result property="tagNames" column="tag_names"/>
+        <result property="lowStockThreshold" column="low_stock_threshold"/>
+        <result property="lowStockMode" column="low_stock_mode"/>
+        <result property="expiryReminderMode" column="expiry_reminder_mode"/>
+        <result property="expiryReminderDays" column="expiry_reminder_days"
+                typeHandler="com.zija.catalog.internal.persistence.ShortArrayTypeHandler"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="dumpItems" resultMap="itemFlatMap">
+        SELECT
+            i.id AS item_id, i.household_id, i.name, i.management_type, i.status,
+            i.category_id, c.name AS category_name,
+            i.brand_id, b.name AS brand_name,
+            i.unit_id, u.name AS unit_name,
+            STRING_AGG(t.name, ',' ORDER BY t.name) AS tag_names,
+            i.low_stock_threshold, i.low_stock_mode,
+            i.expiry_reminder_mode, i.expiry_reminder_days,
+            i.updated_at
+        FROM catalog_item i
+        LEFT JOIN catalog_category c ON c.id = i.category_id
+        LEFT JOIN catalog_brand b ON b.id = i.brand_id
+        LEFT JOIN catalog_unit u ON u.id = i.unit_id
+        LEFT JOIN catalog_item_tag it ON it.item_id = i.id
+        LEFT JOIN catalog_tag t ON t.id = it.tag_id
+        WHERE i.household_id = #{householdId}
+          AND i.updated_at &gt; #{cursor}
+        GROUP BY i.id, i.household_id, i.name, i.management_type, i.status,
+                 i.category_id, c.name, i.brand_id, b.name, i.unit_id, u.name,
+                 i.low_stock_threshold, i.low_stock_mode,
+                 i.expiry_reminder_mode, i.expiry_reminder_days, i.updated_at
+        ORDER BY i.updated_at ASC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

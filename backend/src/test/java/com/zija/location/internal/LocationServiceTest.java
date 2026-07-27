@@ -2,6 +2,7 @@ package com.zija.location.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zija.location.internal.event.LocationEventPublisher;
+import com.zija.location.internal.persistence.LocationDumpMapper;
 import com.zija.location.internal.persistence.LocationEntity;
 import com.zija.location.internal.persistence.LocationMapper;
 import com.zija.system.SystemApi;
@@ -19,6 +20,7 @@ import static org.mockito.Mockito.*;
 class LocationServiceTest {
 
     private LocationMapper locationMapper;
+    private LocationDumpMapper locationDumpMapper;
     private SystemApi systemApi;
     private LocationEventPublisher eventPublisher;
     private LocationService service;
@@ -28,9 +30,10 @@ class LocationServiceTest {
     @BeforeEach
     void setUp() {
         locationMapper = mock(LocationMapper.class);
+        locationDumpMapper = mock(LocationDumpMapper.class);
         systemApi = mock(SystemApi.class);
         eventPublisher = mock(LocationEventPublisher.class);
-        service = new LocationService(locationMapper, systemApi, eventPublisher);
+        service = new LocationService(locationMapper, locationDumpMapper, systemApi, eventPublisher);
     }
 
     @Test

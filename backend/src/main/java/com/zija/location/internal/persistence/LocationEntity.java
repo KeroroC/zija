@@ -16,6 +16,7 @@ public class LocationEntity {
     private String nameNormalized;
     private Integer sortOrder;
     private Boolean everReferenced;
+    private String status;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     @Version private Integer version;
@@ -34,6 +35,8 @@ public class LocationEntity {
     public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
     public Boolean getEverReferenced() { return everReferenced; }
     public void setEverReferenced(Boolean everReferenced) { this.everReferenced = everReferenced; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
