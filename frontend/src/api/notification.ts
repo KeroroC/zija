@@ -2,6 +2,8 @@ import { getJson, postJson } from "./http";
 import type { NotificationItem } from "../types/notification";
 import type { Page } from "../types/common";
 
+export type { NotificationItem };
+
 // ==================== Notifications ====================
 
 export function fetchNotifications(

@@ -18,8 +18,8 @@ import {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  (fetchUnreadCount as vi.Mock).mockResolvedValue({ count: 3 });
-  (fetchNotifications as vi.Mock).mockResolvedValue({
+  (fetchUnreadCount as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 3 });
+  (fetchNotifications as ReturnType<typeof vi.fn>).mockResolvedValue({
     items: [
       {
         id: "n1",
@@ -55,10 +55,10 @@ describe("NotificationBell", () => {
   it("polls every 30s", async () => {
     mountBell();
     await flushPromises();
-    const calls1 = (fetchUnreadCount as vi.Mock).mock.calls.length;
+    const calls1 = (fetchUnreadCount as ReturnType<typeof vi.fn>).mock.calls.length;
     vi.advanceTimersByTime(30000);
     await flushPromises();
-    expect((fetchUnreadCount as vi.Mock).mock.calls.length).toBeGreaterThan(
+    expect((fetchUnreadCount as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
       calls1,
     );
   });
@@ -66,10 +66,10 @@ describe("NotificationBell", () => {
   it("cleans interval on unmount", async () => {
     const w = mountBell();
     await flushPromises();
-    const calls = (fetchUnreadCount as vi.Mock).mock.calls.length;
+    const calls = (fetchUnreadCount as ReturnType<typeof vi.fn>).mock.calls.length;
     w.unmount();
     vi.advanceTimersByTime(60000);
     await flushPromises();
-    expect((fetchUnreadCount as vi.Mock).mock.calls.length).toBe(calls);
+    expect((fetchUnreadCount as ReturnType<typeof vi.fn>).mock.calls.length).toBe(calls);
   });
 });

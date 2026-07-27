@@ -36,7 +36,7 @@ import {
 const router = useRouter();
 const unreadCount = ref(0);
 const recent = ref<NotificationItem[]>([]);
-let timer: ReturnType<typeof setInterval> | undefined;
+let timer: number | undefined;
 
 async function refresh() {
   try {
