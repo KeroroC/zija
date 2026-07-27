@@ -1,30 +1,27 @@
 import { getJson, postJson } from "./http";
+import type { NotificationItem } from "../types/notification";
+import type { Page } from "../types/common";
 
-export interface NotificationItem {
-  id: string;
-  scope: string;
-  title: string;
-  message: string | null;
-  sourceTaskId: string | null;
-  read: boolean;
-  createdAt: string;
+// ==================== Notifications ====================
+
+export function fetchNotifications(
+  page = 1,
+  pageSize = 20,
+  unreadOnly = false,
+): Promise<Page<NotificationItem>> {
+  return getJson<Page<NotificationItem>>(
+    `/api/v1/notifications?page=${page}&pageSize=${pageSize}&unreadOnly=${unreadOnly}`,
+  );
 }
 
-export interface NotificationPage {
-  items: NotificationItem[];
-  total: number;
-  page: number;
-  pageSize: number;
+export function fetchUnreadCount(): Promise<{ count: number }> {
+  return getJson<{ count: number }>("/api/v1/notifications/unread-count");
 }
 
-export const fetchNotifications = (page = 1, pageSize = 20, unreadOnly = false) =>
-  getJson<NotificationPage>(`/api/v1/notifications?page=${page}&pageSize=${pageSize}&unreadOnly=${unreadOnly}`);
+export function markNotificationRead(id: string): Promise<void> {
+  return postJson<void>(`/api/v1/notifications/${id}/read`, {});
+}
 
-export const fetchUnreadCount = () =>
-  getJson<{ count: number }>(`/api/v1/notifications/unread-count`);
-
-export const markNotificationRead = (id: string) =>
-  postJson<void>(`/api/v1/notifications/${id}/read`, {});
-
-export const markAllNotificationsRead = () =>
-  postJson<void>(`/api/v1/notifications/read-all`, {});
+export function markAllNotificationsRead(): Promise<void> {
+  return postJson<void>("/api/v1/notifications/read-all", {});
+}

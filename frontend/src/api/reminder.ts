@@ -1,81 +1,61 @@
 import { getJson, postJson, putJson } from "./http";
+import type {
+  ReminderRule,
+  ReminderRuleUpdate,
+  ReminderTask,
+  Page,
+  Dashboard,
+} from "../types/reminder";
 
-export interface ReminderRule {
-  expiryDisabled: boolean;
-  expiryReminderDays: number[];
-  lowStockDisabled: boolean;
-  lowStockThreshold: string;
-  version: number;
+// ==================== Rules ====================
+
+export function fetchRules(): Promise<ReminderRule> {
+  return getJson<ReminderRule>("/api/v1/reminder/rules");
 }
 
-export interface ReminderRuleUpdate {
-  expiryDisabled: boolean;
-  expiryReminderDays: number[];
-  lowStockDisabled: boolean;
-  lowStockThreshold: string;
-  version: number;
+export function updateRules(body: ReminderRuleUpdate): Promise<ReminderRule> {
+  return putJson<ReminderRule>("/api/v1/reminder/rules", body);
 }
 
-export interface ReminderTask {
-  id: string;
-  kind: "EXPIRY" | "LOW_STOCK";
-  lotId: string | null;
-  itemId: string;
-  status: "OPEN" | "SNOOZED" | "DONE" | "IGNORED";
-  dueAt: string;
-  severity: "INFO" | "WARN" | "URGENT";
-  snoozedUntil: string | null;
+// ==================== Tasks ====================
+
+export function fetchTasks(params?: {
+  kind?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<Page<ReminderTask>> {
+  const query = new URLSearchParams();
+  if (params?.kind) query.set("kind", params.kind);
+  if (params?.status) query.set("status", params.status);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+  const qs = query.toString();
+  return getJson<Page<ReminderTask>>(
+    `/api/v1/reminder/tasks${qs ? "?" + qs : ""}`,
+  );
 }
 
-export interface Page<T> {
-  items: T[];
-  total: number;
-  page: number;
-  pageSize: number;
+export function snoozeTask(id: string, until: string): Promise<void> {
+  return postJson<void>(`/api/v1/reminder/tasks/${id}/snooze`, { until });
 }
 
-export interface DashboardItem {
-  taskId: string;
-  kind: string;
-  severity: string;
-  title: string;
-  dueAt: string;
-  itemId: string;
-  lotId: string | null;
+export function completeTask(id: string): Promise<void> {
+  return postJson<void>(`/api/v1/reminder/tasks/${id}/complete`, {});
 }
 
-export interface DashboardGroup {
-  count: number;
-  items: DashboardItem[];
+export function ignoreTask(id: string): Promise<void> {
+  return postJson<void>(`/api/v1/reminder/tasks/${id}/ignore`, {});
 }
 
-export interface Dashboard {
-  expiryWithin7Days: DashboardGroup;
-  lowStockItems: DashboardGroup;
-  priorityTasks: DashboardGroup;
-  generatedAt: string;
+export function reopenTask(id: string): Promise<void> {
+  return postJson<void>(`/api/v1/reminder/tasks/${id}/reopen`, {});
 }
 
-export const fetchRules = () =>
-  getJson<ReminderRule>("/api/v1/reminder/rules");
+// ==================== Dashboard ====================
 
-export const updateRules = (body: ReminderRuleUpdate) =>
-  putJson<ReminderRule>("/api/v1/reminder/rules", body);
-
-export const fetchTasks = (params: URLSearchParams) =>
-  getJson<Page<ReminderTask>>(`/api/v1/reminder/tasks?${params.toString()}`);
-
-export const snoozeTask = (id: string, until: string) =>
-  postJson<void>(`/api/v1/reminder/tasks/${id}/snooze`, { until });
-
-export const completeTask = (id: string) =>
-  postJson<void>(`/api/v1/reminder/tasks/${id}/complete`, {});
-
-export const ignoreTask = (id: string) =>
-  postJson<void>(`/api/v1/reminder/tasks/${id}/ignore`, {});
-
-export const reopenTask = (id: string) =>
-  postJson<void>(`/api/v1/reminder/tasks/${id}/reopen`, {});
-
-export const fetchDashboard = (days = 7, topN = 8) =>
-  getJson<Dashboard>(`/api/v1/reminder/dashboard?days=${days}&topN=${topN}`);
+export function fetchDashboard(days = 7, topN = 8): Promise<Dashboard> {
+  return getJson<Dashboard>(
+    `/api/v1/reminder/dashboard?days=${days}&topN=${topN}`,
+  );
+}
