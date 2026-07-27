@@ -130,6 +130,13 @@ cd backend && ./mvnw test -Dtest=ClassName#method    # 单个测试方法
 npm --prefix frontend test -- --reporter=verbose     # 前端测试（详细输出）
 ~~~
 
+## 部署与运维
+
+- [部署指南](docs/deploy/deploy.md)
+- [备份与恢复](docs/deploy/backup-restore.md)
+- [故障排除](docs/deploy/troubleshooting.md)
+- [发行说明](docs/deploy/release-notes.md)
+
 ## 方案与计划
 
 - 设计方案：`docs/superpowers/specs/2026-07-18-zija-design.md`
