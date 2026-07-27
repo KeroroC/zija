@@ -71,14 +71,18 @@ describe("NotificationsView", () => {
     await readBtn!.trigger("click");
     await flushPromises();
     expect(markNotificationRead).toHaveBeenCalledWith("n1");
+    expect(fetchNotifications).toHaveBeenCalledTimes(2);
   });
 
   it("calls markAllNotificationsRead and reloads", async () => {
     (markAllNotificationsRead as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     const w = mountN();
     await flushPromises();
-    await (w.vm as any).onReadAll();
+    const allBtn = w.findAll("button").find(b => b.text().includes("全部已读"));
+    await allBtn!.trigger("click");
+    await flushPromises();
     expect(markAllNotificationsRead).toHaveBeenCalled();
+    expect(fetchNotifications).toHaveBeenCalledTimes(2);
   });
 
   it("shows empty state when no notifications", async () => {

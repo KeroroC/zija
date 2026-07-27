@@ -80,7 +80,7 @@ function onPage(p: number) {
 async function onReadOne(id: string) {
   try {
     await markNotificationRead(id);
-    reload();
+    await reload();
   } catch (e) {
     if (e instanceof ApiError) ElMessage.error(e.message);
   }
@@ -90,7 +90,7 @@ async function onReadAll() {
   try {
     await markAllNotificationsRead();
     ElMessage.success("已全部标为已读");
-    reload();
+    await reload();
   } catch (e) {
     if (e instanceof ApiError) ElMessage.error(e.message);
   }
