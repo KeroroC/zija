@@ -37,9 +37,9 @@ fi
 
 # Liveness 健康端点
 echo "Checking /actuator/health/liveness ..."
-LIVENESS_STATUS=$(curl -sf "$BASE_URL/actuator/health/liveness" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+LIVENESS_STATUS=$(curl -sf "$BASE_URL/actuator/health/liveness" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null || true)
 if [ "$LIVENESS_STATUS" != "UP" ]; then
-  echo "FAIL: liveness status=$LIVENESS_STATUS, expected UP" >&2
+  echo "FAIL: liveness status=${LIVENESS_STATUS:-<unreachable>}, expected UP" >&2
   exit 1
 fi
 echo "OK: liveness UP"
