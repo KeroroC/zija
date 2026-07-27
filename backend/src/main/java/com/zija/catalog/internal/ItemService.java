@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.catalog.CatalogApi;
+import com.zija.catalog.internal.event.CatalogEventPublisher;
 import com.zija.catalog.internal.persistence.*;
 import com.zija.file.FileApi;
 import com.zija.system.SystemApi;
@@ -32,6 +33,7 @@ class ItemService implements CatalogApi {
     private final TagMapper tagMapper;
     private final FileApi fileApi;
     private final SystemApi systemApi;
+    private final CatalogEventPublisher eventPublisher;
 
     ItemService(
             ItemMapper itemMapper,
@@ -40,7 +42,8 @@ class ItemService implements CatalogApi {
             BrandMapper brandMapper,
             TagMapper tagMapper,
             FileApi fileApi,
-            SystemApi systemApi
+            SystemApi systemApi,
+            CatalogEventPublisher eventPublisher
     ) {
         this.itemMapper = itemMapper;
         this.unitMapper = unitMapper;
@@ -49,6 +52,7 @@ class ItemService implements CatalogApi {
         this.tagMapper = tagMapper;
         this.fileApi = fileApi;
         this.systemApi = systemApi;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -154,6 +158,7 @@ class ItemService implements CatalogApi {
         }
 
         audit(householdId, "ITEM_CREATED", entity.getId());
+        eventPublisher.publishItemChanged(householdId, entity.getId(), "CREATED");
         return entity;
     }
 
@@ -170,6 +175,7 @@ class ItemService implements CatalogApi {
             throw new CatalogVersionConflictException();
         }
         audit(householdId, "ITEM_ARCHIVED", id);
+        eventPublisher.publishItemChanged(householdId, id, "ARCHIVED");
     }
 
     @Transactional
@@ -182,6 +188,7 @@ class ItemService implements CatalogApi {
             throw new CatalogVersionConflictException();
         }
         audit(householdId, "ITEM_RESTORED", id);
+        eventPublisher.publishItemChanged(householdId, id, "RESTORED");
     }
 
     @Transactional(readOnly = true)
@@ -277,6 +284,7 @@ class ItemService implements CatalogApi {
             }
         }
         audit(householdId, "ITEM_UPDATED", id);
+        eventPublisher.publishItemChanged(householdId, id, "UPDATED");
         return itemMapper.findByIdFull(id);
     }
 

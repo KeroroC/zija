@@ -1,6 +1,7 @@
 package com.zija.location.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.location.internal.event.LocationEventPublisher;
 import com.zija.location.internal.persistence.LocationEntity;
 import com.zija.location.internal.persistence.LocationMapper;
 import com.zija.system.SystemApi;
@@ -19,6 +20,7 @@ class LocationServiceTest {
 
     private LocationMapper locationMapper;
     private SystemApi systemApi;
+    private LocationEventPublisher eventPublisher;
     private LocationService service;
 
     private final UUID householdId = UUID.randomUUID();
@@ -27,7 +29,8 @@ class LocationServiceTest {
     void setUp() {
         locationMapper = mock(LocationMapper.class);
         systemApi = mock(SystemApi.class);
-        service = new LocationService(locationMapper, systemApi);
+        eventPublisher = mock(LocationEventPublisher.class);
+        service = new LocationService(locationMapper, systemApi, eventPublisher);
     }
 
     @Test
