@@ -3,6 +3,7 @@ package com.zija.file.internal;
 import com.zija.ZijaPrincipal;
 import com.zija.file.FileApi;
 import com.zija.household.HouseholdApi;
+import com.zija.household.RequireOwner;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,6 +25,7 @@ import java.util.UUID;
  *   <li>{@code POST   /api/v1/files}               — 上传文件</li>
  *   <li>{@code GET    /api/v1/files/{fileId}/content} — 下载/预览文件内容</li>
  *   <li>{@code DELETE /api/v1/files/{fileId}}        — 删除文件</li>
+ *   <li>{@code GET    /api/v1/files/integrity-report} — 文件完整性报告（仅 Owner）</li>
  * </ul>
  */
 @RestController
@@ -33,11 +35,14 @@ class FileController {
     private final FileApi fileApi;
     private final FileStorage fileStorage;
     private final HouseholdApi householdApi;
+    private final FileIntegrityService fileIntegrityService;
 
-    FileController(FileApi fileApi, FileStorage fileStorage, HouseholdApi householdApi) {
+    FileController(FileApi fileApi, FileStorage fileStorage, HouseholdApi householdApi,
+                   FileIntegrityService fileIntegrityService) {
         this.fileApi = fileApi;
         this.fileStorage = fileStorage;
         this.householdApi = householdApi;
+        this.fileIntegrityService = fileIntegrityService;
     }
 
     /**
@@ -104,5 +109,16 @@ class FileController {
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         fileApi.release(member.householdId(), fileId);
+    }
+
+    /**
+     * 执行文件完整性校验，返回校验报告。仅家庭所有者可调用。
+     *
+     * @return 文件完整性报告
+     */
+    @RequireOwner
+    @GetMapping("/integrity-report")
+    FileIntegrityReport integrityReport() {
+        return fileIntegrityService.check();
     }
 }
