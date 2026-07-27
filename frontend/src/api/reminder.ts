@@ -22,12 +22,14 @@ export function updateRules(body: ReminderRuleUpdate): Promise<ReminderRule> {
 export function fetchTasks(params?: {
   kind?: string;
   status?: string;
+  overdue?: boolean;
   page?: number;
   pageSize?: number;
 }): Promise<Page<ReminderTask>> {
   const query = new URLSearchParams();
   if (params?.kind) query.set("kind", params.kind);
   if (params?.status) query.set("status", params.status);
+  if (params?.overdue) query.set("overdue", "true");
   if (params?.page) query.set("page", String(params.page));
   if (params?.pageSize) query.set("pageSize", String(params.pageSize));
   const qs = query.toString();
