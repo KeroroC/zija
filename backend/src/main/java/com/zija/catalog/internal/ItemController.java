@@ -2,19 +2,14 @@ package com.zija.catalog.internal;
 
 import com.zija.ZijaPrincipal;
 import com.zija.catalog.internal.persistence.ItemEntity;
-import com.zija.catalog.internal.persistence.ItemMapper;
-import com.zija.file.FileApi;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireMember;
-import com.zija.system.SystemApi;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -43,17 +38,10 @@ class ItemController {
 
     private final ItemService itemService;
     private final HouseholdApi householdApi;
-    private final FileApi fileApi;
-    private final ItemMapper itemMapper;
-    private final SystemApi systemApi;
 
-    ItemController(ItemService itemService, HouseholdApi householdApi,
-                   FileApi fileApi, ItemMapper itemMapper, SystemApi systemApi) {
+    ItemController(ItemService itemService, HouseholdApi householdApi) {
         this.itemService = itemService;
         this.householdApi = householdApi;
-        this.fileApi = fileApi;
-        this.itemMapper = itemMapper;
-        this.systemApi = systemApi;
     }
 
     /**
@@ -211,42 +199,21 @@ class ItemController {
             @NotNull @RequestParam Integer version
     ) throws IOException {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        var item = itemService.findItem(member.householdId(), id);
-        if (item == null) {
-            throw new CatalogArchivedDictionaryException("item", id);
-        }
 
-        var newFileInfo = fileApi.store(
-                member.householdId(), file.getBytes(),
-                file.getOriginalFilename(), file.getContentType()
+        var result = itemService.uploadCover(
+                member.householdId(), id,
+                file.getBytes(), file.getOriginalFilename(), file.getContentType(),
+                version
         );
 
-        if (item.getCoverFileId() != null) {
-            fileApi.release(member.householdId(), item.getCoverFileId());
-        }
-
-        item.setCoverFileId(newFileInfo.id());
-        item.setVersion(version);
-        if (itemMapper.updateById(item) == 0) {
-            throw new CatalogVersionConflictException();
-        }
-
-        fileApi.retain(member.householdId(), newFileInfo.id());
-
-        systemApi.recordAudit(new SystemApi.AuditEvent(
-                "ITEM_COVER_UPLOADED", "SUCCESS", member.householdId(),
-                null, null, null, null,
-                Map.of("id", id.toString(), "fileId", newFileInfo.id().toString())
-        ));
-
         return Map.of(
-                "id", newFileInfo.id(),
-                "url", "/api/v1/files/" + newFileInfo.id() + "/content",
-                "detectedMediaType", newFileInfo.detectedMediaType(),
-                "originalFilename", newFileInfo.originalFilename(),
-                "byteSize", newFileInfo.byteSize(),
-                "sha256", newFileInfo.sha256(),
-                "version", item.getVersion()
+                "id", result.fileInfo().id(),
+                "url", "/api/v1/files/" + result.fileInfo().id() + "/content",
+                "detectedMediaType", result.fileInfo().detectedMediaType(),
+                "originalFilename", result.fileInfo().originalFilename(),
+                "byteSize", result.fileInfo().byteSize(),
+                "sha256", result.fileInfo().sha256(),
+                "version", result.newVersion()
         );
     }
 
@@ -263,27 +230,7 @@ class ItemController {
             @Valid @RequestBody VersionRequest request
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        var item = itemService.findItem(member.householdId(), id);
-        if (item == null || item.getCoverFileId() == null) {
-            throw new CatalogArchivedDictionaryException("item", id);
-        }
-
-        fileApi.release(member.householdId(), item.getCoverFileId());
-
-        var wrapper = new UpdateWrapper<ItemEntity>()
-                .eq("id", id)
-                .eq("version", request.version())
-                .set("cover_file_id", null)
-                .set("version", request.version() + 1);
-        if (itemMapper.update(null, wrapper) == 0) {
-            throw new CatalogVersionConflictException();
-        }
-
-        systemApi.recordAudit(new SystemApi.AuditEvent(
-                "ITEM_COVER_REMOVED", "SUCCESS", member.householdId(),
-                null, null, null, null,
-                Map.of("id", id.toString())
-        ));
+        itemService.removeCover(member.householdId(), id, request.version());
     }
 
     private Map<String, Object> toItemResponse(ItemEntity entity, List<UUID> tagIds) {

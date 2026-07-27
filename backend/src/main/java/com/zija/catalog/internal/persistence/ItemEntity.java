@@ -20,6 +20,7 @@ public class ItemEntity {
     private UUID categoryId;
     private UUID brandId;
     private UUID unitId;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private UUID coverFileId;
     private String memo;
     private String expiryReminderMode;

@@ -29,6 +29,9 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -378,6 +381,56 @@ class ItemEndpointIntegrationTest {
                         .content("{\"version\":" + version + "}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("CATALOG_ARCHIVED_DICTIONARY"));
+    }
+
+    @Test
+    void uploadCoverWithStaleVersionDoesNotReleaseOldFileOrRetainNewFile() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+
+        // 先上传一个封面
+        UUID oldFileId = UUID.randomUUID();
+        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover1.jpg"), eq("image/jpeg")))
+                .thenReturn(new FileApi.StoredFileInfo(
+                        oldFileId, householdId, "2026/07/cover1.jpg", "cover1.jpg",
+                        "image/jpeg", 1024L, "sha1"));
+        MockMultipartFile file1 = new MockMultipartFile(
+                "file", "cover1.jpg", "image/jpeg", new byte[]{1});
+        var v = itemService.findItem(householdId, item.getId()).getVersion();
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(file1)
+                        .param("version", String.valueOf(v))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        // 清除第一次上传的调用记录
+        clearInvocations(fileApi);
+
+        // 准备第二次上传（版本冲突）
+        UUID newFileId = UUID.randomUUID();
+        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover2.jpg"), eq("image/jpeg")))
+                .thenReturn(new FileApi.StoredFileInfo(
+                        newFileId, householdId, "2026/07/cover2.jpg", "cover2.jpg",
+                        "image/jpeg", 2048L, "sha2"));
+        MockMultipartFile file2 = new MockMultipartFile(
+                "file", "cover2.jpg", "image/jpeg", new byte[]{2});
+
+        // 用过期版本上传
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(file2)
+                        .param("version", "999")
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("CATALOG_VERSION_CONFLICT"));
+
+        // 验证：版本冲突时，不应调用 retain 和 release
+        verify(fileApi, never()).retain(eq(householdId), any());
+        verify(fileApi, never()).release(eq(householdId), any());
+
+        // 验证：item 仍指向旧封面
+        var afterConflict = itemService.findItem(householdId, item.getId());
+        assert afterConflict.getCoverFileId().equals(oldFileId);
     }
 
     // --- Helpers ---

@@ -5,10 +5,12 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.catalog.CatalogApi;
 import com.zija.catalog.internal.persistence.*;
+import com.zija.file.FileApi;
 import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -28,6 +30,7 @@ class ItemService implements CatalogApi {
     private final CategoryMapper categoryMapper;
     private final BrandMapper brandMapper;
     private final TagMapper tagMapper;
+    private final FileApi fileApi;
     private final SystemApi systemApi;
 
     ItemService(
@@ -36,6 +39,7 @@ class ItemService implements CatalogApi {
             CategoryMapper categoryMapper,
             BrandMapper brandMapper,
             TagMapper tagMapper,
+            FileApi fileApi,
             SystemApi systemApi
     ) {
         this.itemMapper = itemMapper;
@@ -43,6 +47,7 @@ class ItemService implements CatalogApi {
         this.categoryMapper = categoryMapper;
         this.brandMapper = brandMapper;
         this.tagMapper = tagMapper;
+        this.fileApi = fileApi;
         this.systemApi = systemApi;
     }
 
@@ -273,6 +278,82 @@ class ItemService implements CatalogApi {
         }
         audit(householdId, "ITEM_UPDATED", id);
         return itemMapper.findByIdFull(id);
+    }
+
+    /**
+     * 上传物品封面图，替换旧封面（如有）。整个操作在同一事务中，确保版本冲突时不会出现孤儿文件或封面丢失。
+     *
+     * <p>操作顺序：1. 存储新文件 → 2. 更新 item（乐观锁） → 3. retain 新文件 + release 旧文件。
+     * 若步骤 2 版本冲突，事务回滚，新文件的 insert 也会回滚，不会产生孤儿。</p>
+     *
+     * @param householdId 家庭 ID
+     * @param itemId 物品 ID
+     * @param fileContent 文件内容
+     * @param originalFilename 原始文件名
+     * @param contentType 声明的媒体类型
+     * @param version 乐观锁版本号
+     * @return 新封面文件信息和更新后的版本
+     */
+    @Transactional
+    public CoverResult uploadCover(
+            UUID householdId, UUID itemId,
+            byte[] fileContent, String originalFilename, String contentType,
+            Integer version
+    ) {
+        var entity = requireItemEntity(householdId, itemId);
+        UUID oldCoverFileId = entity.getCoverFileId();
+
+        // 1. 存储新文件（refcount=0，在本事务中，若后续失败会回滚）
+        var newFileInfo = fileApi.store(householdId, fileContent, originalFilename, contentType);
+
+        // 2. 更新 item（乐观锁）
+        entity.setCoverFileId(newFileInfo.id());
+        entity.setVersion(version);
+        if (itemMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+
+        // 3. 更新成功后，retain 新文件，release 旧文件
+        fileApi.retain(householdId, newFileInfo.id());
+        if (oldCoverFileId != null) {
+            fileApi.release(householdId, oldCoverFileId);
+        }
+
+        audit(householdId, "ITEM_COVER_UPLOADED", itemId);
+        return new CoverResult(newFileInfo, version + 1);
+    }
+
+    /**
+     * 上传封面结果。
+     */
+    public record CoverResult(FileApi.StoredFileInfo fileInfo, Integer newVersion) {}
+
+    /**
+     * 移除物品封面图，释放文件引用。整个操作在同一事务中，确保版本冲突时不会丢失文件。
+     *
+     * @param householdId 家庭 ID
+     * @param itemId 物品 ID
+     * @param version 乐观锁版本号
+     */
+    @Transactional
+    public void removeCover(UUID householdId, UUID itemId, Integer version) {
+        var entity = requireItemEntity(householdId, itemId);
+        UUID oldCoverFileId = entity.getCoverFileId();
+        if (oldCoverFileId == null) {
+            throw new CatalogArchivedDictionaryException("item", itemId);
+        }
+
+        // 1. 先更新 item（乐观锁）
+        entity.setCoverFileId(null);
+        entity.setVersion(version);
+        if (itemMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+
+        // 2. 更新成功后，释放旧文件
+        fileApi.release(householdId, oldCoverFileId);
+
+        audit(householdId, "ITEM_COVER_REMOVED", itemId);
     }
 
     // --- Private helpers ---
