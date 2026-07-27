@@ -1,6 +1,10 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useSessionStore } from "../stores/session";
+import HomeView from "../views/HomeView.vue";
 import SystemStatusView from "../views/SystemStatusView.vue";
+import RemindersView from "../views/RemindersView.vue";
+import NotificationsView from "../views/NotificationsView.vue";
+import ReminderRulesSettingsView from "../views/ReminderRulesSettingsView.vue";
 import BootstrapPage from "../views/BootstrapPage.vue";
 import LoginPage from "../views/LoginPage.vue";
 import InvitationRedeemPage from "../views/InvitationRedeemPage.vue";
@@ -17,7 +21,11 @@ import NotFoundPage from "../views/NotFoundPage.vue";
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", name: "home", component: SystemStatusView, meta: { title: "系统状态" } },
+    { path: "/", name: "home", component: HomeView, meta: { title: "首页" } },
+    { path: "/system", name: "system-status", component: SystemStatusView, meta: { title: "系统状态" } },
+    { path: "/reminders", name: "reminders", component: RemindersView, meta: { title: "提醒中心" } },
+    { path: "/notifications", name: "notifications", component: NotificationsView, meta: { title: "通知" } },
+    { path: "/settings/reminder", name: "reminder-settings", component: ReminderRulesSettingsView, meta: { title: "提醒规则" } },
     { path: "/bootstrap", name: "bootstrap", component: BootstrapPage, meta: { title: "初始化" } },
     { path: "/login", name: "login", component: LoginPage, meta: { title: "登录" } },
     { path: "/invitation/redeem", name: "invitation-redeem", component: InvitationRedeemPage, meta: { title: "加入家庭" } },

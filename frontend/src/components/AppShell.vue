@@ -30,7 +30,7 @@
           <el-icon><Location /></el-icon>
           <span>位置管理</span>
         </el-menu-item>
-        <el-menu-item index="/reminders" disabled>
+        <el-menu-item index="/reminders">
           <el-icon><Bell /></el-icon>
           <span>提醒中心</span>
         </el-menu-item>
@@ -51,6 +51,10 @@
           <el-icon><Postcard /></el-icon>
           <span>个人资料</span>
         </el-menu-item>
+        <el-menu-item index="/system">
+          <el-icon><Document /></el-icon>
+          <span>系统状态</span>
+        </el-menu-item>
         <el-menu-item v-if="session.role === 'OWNER' || session.role === 'ADMIN'" index="/settings/catalog">
           <el-icon><Setting /></el-icon>
           <span>家庭设置</span>
@@ -58,6 +62,9 @@
         <el-menu-item v-else index="/settings" disabled>
           <el-icon><Setting /></el-icon>
           <span>家庭设置</span>
+        </el-menu-item>
+        <el-menu-item v-if="session.role === 'OWNER' || session.role === 'ADMIN'" index="/settings/reminder">
+          提醒规则
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -81,6 +88,7 @@
               </el-dropdown-menu>
             </template>
           </el-dropdown>
+          <NotificationBell />
           <span class="zj-badge zj-badge-plain">{{ roleLabel }}</span>
           <el-button
             size="small"
@@ -119,6 +127,7 @@ import {
 } from "@element-plus/icons-vue";
 import { useSessionStore } from "../stores/session";
 import { householdApi } from "../api/household";
+import NotificationBell from "./NotificationBell.vue";
 
 const router = useRouter();
 const session = useSessionStore();
