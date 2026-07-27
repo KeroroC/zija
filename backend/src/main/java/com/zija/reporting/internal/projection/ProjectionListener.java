@@ -154,13 +154,19 @@ public class ProjectionListener {
             searchIndexMapper.deleteByEntity(evt.householdId(), "ITEM", evt.itemId());
             return;
         }
-        // 从 CatalogApi.dumpItems 拉取最新数据重建搜索索引
-        var page = catalogApi.dumpItems(evt.householdId(), OffsetDateTime.MIN, 1000);
-        for (var item : page.items()) {
-            if (item.itemId().equals(evt.itemId())) {
-                searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
-                return;
+        // 从 CatalogApi.dumpItems 拉取最新数据重建搜索索引（分页遍历直到找到目标物品）
+        OffsetDateTime cursor = OffsetDateTime.MIN;
+        boolean hasMore = true;
+        while (hasMore) {
+            var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
+            for (var item : page.items()) {
+                if (item.itemId().equals(evt.itemId())) {
+                    searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                    return;
+                }
             }
+            cursor = page.nextCursor();
+            hasMore = page.hasMore();
         }
     }
 
