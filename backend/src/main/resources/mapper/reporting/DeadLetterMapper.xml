@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.reporting.internal.persistence.DeadLetterMapper">
+
+    <resultMap id="deadLetterResultMap" type="com.zija.reporting.internal.persistence.DeadLetterEntity">
+        <id property="id" column="id"/>
+        <result property="eventId" column="event_id"/>
+        <result property="eventType" column="event_type"/>
+        <result property="payload" column="payload"
+                typeHandler="com.zija.system.internal.persistence.JsonbTypeHandler"/>
+        <result property="failureCount" column="failure_count"/>
+        <result property="nextRetryAt" column="next_retry_at"/>
+        <result property="lastError" column="last_error"/>
+        <result property="lastRetryAt" column="last_retry_at"/>
+        <result property="abandoned" column="abandoned"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findDueForRetry" resultMap="deadLetterResultMap">
+        SELECT id, event_id, event_type, payload, failure_count, next_retry_at,
+               last_error, last_retry_at, abandoned, created_at
+        FROM reporting_event_dead_letter
+        WHERE abandoned = FALSE AND next_retry_at &lt;= #{now}
+        ORDER BY next_retry_at ASC
+        LIMIT #{limit}
+        FOR UPDATE SKIP LOCKED
+    </select>
+
+    <update id="incrementFailure">
+        UPDATE reporting_event_dead_letter
+        SET failure_count = failure_count + 1,
+            next_retry_at = #{nextRetryAt},
+            last_error = #{lastError},
+            last_retry_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <update id="markAbandoned">
+        UPDATE reporting_event_dead_letter
+        SET abandoned = TRUE, last_retry_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+</mapper>

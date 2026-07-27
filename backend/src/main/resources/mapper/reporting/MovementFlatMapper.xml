@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.reporting.internal.persistence.MovementFlatMapper">
+
+    <insert id="upsert">
+        INSERT INTO reporting_movement_flat (
+            household_id, movement_id, event_id, lot_id, item_id, item_name,
+            type, quantity_delta, from_location_id, to_location_id,
+            from_location_path, to_location_path,
+            operator_account_id, operator_display_name,
+            reason, reversal_of, business_time, created_at
+        ) VALUES (
+            #{householdId}, #{movementId}, #{eventId}, #{lotId}, #{itemId}, #{itemName},
+            #{type}, #{quantityDelta}, #{fromLocationId}, #{toLocationId},
+            #{fromLocationPath}, #{toLocationPath},
+            #{operatorAccountId}, #{operatorDisplayName},
+            #{reason}, #{reversalOf}, #{businessTime}, #{createdAt}
+        )
+        ON CONFLICT (movement_id) DO UPDATE SET
+            item_name = EXCLUDED.item_name,
+            type = EXCLUDED.type,
+            quantity_delta = EXCLUDED.quantity_delta,
+            from_location_id = EXCLUDED.from_location_id,
+            to_location_id = EXCLUDED.to_location_id,
+            from_location_path = EXCLUDED.from_location_path,
+            to_location_path = EXCLUDED.to_location_path,
+            operator_account_id = EXCLUDED.operator_account_id,
+            operator_display_name = EXCLUDED.operator_display_name,
+            reason = EXCLUDED.reason,
+            reversal_of = EXCLUDED.reversal_of
+    </insert>
+
+</mapper>

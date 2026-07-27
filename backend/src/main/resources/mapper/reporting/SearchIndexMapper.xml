@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.reporting.internal.persistence.SearchIndexMapper">
+
+    <insert id="upsert">
+        INSERT INTO reporting_search_index (
+            household_id, entity_type, entity_id,
+            item_name, brand_name, tag_names, category_name, unit_name,
+            lot_id, lot_number, serial_number,
+            location_id, location_name, location_path, updated_at
+        ) VALUES (
+            #{householdId}, #{entityType}, #{entityId},
+            #{itemName}, #{brandName}, #{tagNames}, #{categoryName}, #{unitName},
+            #{lotId}, #{lotNumber}, #{serialNumber},
+            #{locationId}, #{locationName}, #{locationPath}, #{updatedAt}
+        )
+        ON CONFLICT (household_id, entity_type, entity_id) DO UPDATE SET
+            item_name = EXCLUDED.item_name,
+            brand_name = EXCLUDED.brand_name,
+            tag_names = EXCLUDED.tag_names,
+            category_name = EXCLUDED.category_name,
+            unit_name = EXCLUDED.unit_name,
+            lot_id = EXCLUDED.lot_id,
+            lot_number = EXCLUDED.lot_number,
+            serial_number = EXCLUDED.serial_number,
+            location_id = EXCLUDED.location_id,
+            location_name = EXCLUDED.location_name,
+            location_path = EXCLUDED.location_path,
+            updated_at = EXCLUDED.updated_at
+    </insert>
+
+    <delete id="deleteByEntity">
+        DELETE FROM reporting_search_index
+        WHERE household_id = #{householdId}
+          AND entity_type = #{entityType}
+          AND entity_id = #{entityId}
+    </delete>
+
+</mapper>
