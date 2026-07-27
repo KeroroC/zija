@@ -2,7 +2,14 @@ package com.zija.reminder.internal;
 
 import com.zija.catalog.CatalogApi;
 import com.zija.inventory.InventoryApi;
+import com.zija.reminder.internal.mail.MailService;
+import com.zija.reminder.internal.mail.MailSettingService;
+import com.zija.reminder.internal.mail.MailTemplateRenderer;
 import com.zija.reminder.internal.persistence.*;
+import com.zija.system.SystemApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,10 +19,8 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 提醒任务重算入口（事件与每日扫描共用）。
@@ -24,19 +29,32 @@ import java.util.UUID;
 @Service
 public class ReminderReconciler {
 
+    private static final Logger log = LoggerFactory.getLogger(ReminderReconciler.class);
+
     private final ReminderService reminderService;
     private final CatalogApi catalogApi;
     private final InventoryApi inventoryApi;
     private final TaskMapper taskMapper;
     private final NotificationMapper notificationMapper;
+    private final MailService mailService;
+    private final MailSettingService mailSettingService;
+    private final MailTemplateRenderer templateRenderer;
+    private final SystemApi systemApi;
+    private final JdbcTemplate jdbcTemplate;
     private final Clock clock;
 
     public ReminderReconciler(ReminderService reminderService, CatalogApi catalogApi,
                                InventoryApi inventoryApi, TaskMapper taskMapper,
-                               NotificationMapper notificationMapper, Clock clock) {
+                               NotificationMapper notificationMapper,
+                               MailService mailService, MailSettingService mailSettingService,
+                               MailTemplateRenderer templateRenderer, SystemApi systemApi,
+                               JdbcTemplate jdbcTemplate, Clock clock) {
         this.reminderService = reminderService; this.catalogApi = catalogApi;
         this.inventoryApi = inventoryApi; this.taskMapper = taskMapper;
-        this.notificationMapper = notificationMapper; this.clock = clock;
+        this.notificationMapper = notificationMapper;
+        this.mailService = mailService; this.mailSettingService = mailSettingService;
+        this.templateRenderer = templateRenderer; this.systemApi = systemApi;
+        this.jdbcTemplate = jdbcTemplate; this.clock = clock;
     }
 
     @Transactional
@@ -107,6 +125,7 @@ public class ReminderReconciler {
             }
             writeNotification(householdId, "TASK_CREATED", t.getId(),
                     "「" + item.name() + "」批次将在 " + daysLeft + " 天内到期");
+            triggerUrgentMail(householdId, severity, item.name(), t.getId());
         }
     }
 
@@ -160,6 +179,7 @@ public class ReminderReconciler {
                 catch (org.springframework.dao.DuplicateKeyException ignored) { return; }
                 writeNotification(householdId, "TASK_CREATED", t.getId(),
                         "「" + item.name() + "」库存仅剩 " + qty + "，低于阈值 " + threshold);
+                triggerUrgentMail(householdId, severity, item.name(), t.getId());
             }
         } else {
             // Stock recovered, auto-close
@@ -186,5 +206,58 @@ public class ReminderReconciler {
         n.setScope(scope); n.setTitle(title); n.setSourceTaskId(taskId);
         n.setRead(false); n.setCreatedAt(OffsetDateTime.now());
         notificationMapper.insert(n);
+    }
+
+    /**
+     * URGENT 任务创建后触发紧急邮件（失败不阻塞主流程）。
+     */
+    private void triggerUrgentMail(UUID householdId, String severity, String itemName, UUID taskId) {
+        if (!"URGENT".equals(severity) || !mailService.isConfigured()) return;
+        try {
+            var mailSetting = mailSettingService.getOrCreate(householdId);
+            if (!mailSetting.urgentEnabled()) return;
+
+            List<String> emails = findMemberEmails(householdId, mailSetting.recipientRoles());
+            if (emails.isEmpty()) return;
+
+            String html = templateRenderer.renderUrgent(Map.of(
+                    "title", "「" + itemName + "」需要紧急关注",
+                    "severity", severity,
+                    "link", ""));
+
+            for (String email : emails) {
+                mailService.send(email, "知家 · 紧急提醒", html);
+            }
+            log.info("Urgent mail sent for task {} to {} recipients", taskId, emails.size());
+        } catch (RuntimeException ex) {
+            log.warn("Urgent mail trigger failed for task {}: {}", taskId, ex.getMessage());
+            try {
+                systemApi.recordAudit(new SystemApi.AuditEvent(
+                        "MAIL_SEND_FAILED", "FAILURE",
+                        householdId, null, null, null, null,
+                        Map.of("taskId", taskId.toString(), "reason",
+                                ex.getMessage() != null ? ex.getMessage() : "unknown")));
+            } catch (RuntimeException auditEx) {
+                log.warn("Audit write also failed: {}", auditEx.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 通过 JdbcTemplate 查询符合角色条件的家庭成员邮箱。
+     */
+    private List<String> findMemberEmails(UUID householdId, List<String> roles) {
+        if (roles == null || roles.isEmpty()) return List.of();
+        String placeholders = roles.stream().map(r -> "?").collect(Collectors.joining(","));
+        String sql = """
+                SELECT a.email FROM member m
+                JOIN account a ON a.id = m.account_id
+                WHERE m.household_id = ? AND m.role IN (%s) AND m.status = 'ACTIVE'
+                  AND a.email IS NOT NULL AND a.email != ''
+                """.formatted(placeholders);
+        List<Object> params = new ArrayList<>();
+        params.add(householdId);
+        params.addAll(roles);
+        return jdbcTemplate.queryForList(sql, String.class, params.toArray());
     }
 }
