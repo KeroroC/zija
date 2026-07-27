@@ -34,7 +34,7 @@
           <el-icon><Bell /></el-icon>
           <span>提醒中心</span>
         </el-menu-item>
-        <el-menu-item index="/reports" disabled>
+        <el-menu-item index="/reports">
           <el-icon><TrendCharts /></el-icon>
           <span>报表与导出</span>
         </el-menu-item>

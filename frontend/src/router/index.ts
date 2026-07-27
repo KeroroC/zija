@@ -37,6 +37,21 @@ export const router = createRouter({
     { path: "/locations", name: "locations", component: LocationsPage, meta: { title: "位置管理" } },
     { path: "/settings/catalog", name: "catalog-settings", component: CatalogSettingsPage, meta: { title: "目录设置" } },
     { path: "/inventory", name: "inventory", component: InventoryPage, meta: { title: "库存管理" } },
+    {
+      path: "/reports",
+      component: () => import("../views/reports/ReportsLayout.vue"),
+      meta: { title: "报表与导出" },
+      children: [
+        { path: "", redirect: "/reports/search" },
+        { path: "search", name: "report-search", component: () => import("../views/reports/SearchView.vue"), meta: { title: "全局搜索" } },
+        { path: "stock-by-location", name: "report-stock-by-location", component: () => import("../views/reports/StockByLocationView.vue"), meta: { title: "库存分布" } },
+        { path: "expiring-lots", name: "report-expiring-lots", component: () => import("../views/reports/ExpiringLotsView.vue"), meta: { title: "临期批次" } },
+        { path: "low-stock", name: "report-low-stock", component: () => import("../views/reports/LowStockView.vue"), meta: { title: "低库存" } },
+        { path: "stock-changes", name: "report-stock-changes", component: () => import("../views/reports/StockChangesView.vue"), meta: { title: "库存变化" } },
+        { path: "movements", name: "report-movements", component: () => import("../views/reports/MovementsView.vue"), meta: { title: "流水" } },
+        { path: "settings", name: "report-settings", component: () => import("../views/reports/ReportsSettingsView.vue"), meta: { title: "报表设置" } }
+      ]
+    },
     { path: "/:pathMatch(.*)*", name: "not-found", component: NotFoundPage, meta: { title: "页面不存在" } }
   ]
 });
