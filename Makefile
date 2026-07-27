@@ -1,6 +1,6 @@
 ENV_FILE ?= .env
 
-.PHONY: verify-layout backend-test backend-build frontend-test frontend-build verify dev-db dev-backend dev-frontend compose-smoke e2e-smoke recover-owner clean
+.PHONY: verify-layout backend-test backend-build frontend-test frontend-build verify dev-db dev-backend dev-frontend compose-smoke e2e-smoke recover-owner clean backup-test restore-smoke
 
 verify-layout:
 	./scripts/verify-layout.sh
@@ -44,3 +44,9 @@ recover-owner:
 clean:
 	cd backend && ./mvnw -q clean
 	rm -rf frontend/dist frontend/coverage frontend/test-results frontend/playwright-report
+
+backup-test: ## 备份当前运行栈到 ./backups/
+	@bash scripts/backup.sh
+
+restore-smoke: ## 用最近备份恢复临时空栈并验证
+	@bash scripts/restore.sh
