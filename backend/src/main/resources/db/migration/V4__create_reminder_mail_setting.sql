@@ -12,5 +12,3 @@ CREATE TABLE reminder_household_mail_setting (
     version               INTEGER NOT NULL DEFAULT 0
 );
 
--- 索引
-CREATE INDEX idx_reminder_mail_setting_household ON reminder_household_mail_setting(household_id);
