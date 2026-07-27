@@ -34,18 +34,20 @@
     </select>
 
     <resultMap id="movementDumpMap" type="com.zija.inventory.InventoryApi$MovementDump">
-        <result property="id" column="id"/>
-        <result property="lotId" column="lot_id"/>
-        <result property="itemId" column="item_id"/>
-        <result property="type" column="type"/>
-        <result property="quantityDelta" column="quantity"/>
-        <result property="fromLocationId" column="from_location_id"/>
-        <result property="toLocationId" column="to_location_id"/>
-        <result property="reason" column="reason"/>
-        <result property="operatorAccountId" column="operator_account_id"/>
-        <result property="reversalOf" column="reversal_of"/>
-        <result property="businessTime" column="business_time"/>
-        <result property="createdAt" column="created_at"/>
+        <constructor>
+            <arg column="id" javaType="java.util.UUID"/>
+            <arg column="lot_id" javaType="java.util.UUID"/>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="type" javaType="java.lang.String"/>
+            <arg column="quantity" javaType="java.math.BigDecimal"/>
+            <arg column="from_location_id" javaType="java.util.UUID"/>
+            <arg column="to_location_id" javaType="java.util.UUID"/>
+            <arg column="reason" javaType="java.lang.String"/>
+            <arg column="operator_account_id" javaType="java.util.UUID"/>
+            <arg column="reversal_of" javaType="java.util.UUID"/>
+            <arg column="business_time" javaType="java.time.OffsetDateTime"/>
+            <arg column="created_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
     </resultMap>
 
     <select id="dumpMovements" resultMap="movementDumpMap">

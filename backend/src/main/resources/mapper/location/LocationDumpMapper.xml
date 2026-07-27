@@ -5,14 +5,16 @@
 <mapper namespace="com.zija.location.internal.persistence.LocationDumpMapper">
 
     <resultMap id="locationFlatMap" type="com.zija.location.LocationApi$LocationFlat">
-        <result property="locationId" column="location_id"/>
-        <result property="householdId" column="household_id"/>
-        <result property="parentId" column="parent_id"/>
-        <result property="name" column="name"/>
-        <result property="path" column="path"/>
-        <result property="sortOrder" column="sort_order"/>
-        <result property="status" column="status"/>
-        <result property="updatedAt" column="updated_at"/>
+        <constructor>
+            <arg column="location_id" javaType="java.util.UUID"/>
+            <arg column="household_id" javaType="java.util.UUID"/>
+            <arg column="parent_id" javaType="java.util.UUID"/>
+            <arg column="name" javaType="java.lang.String"/>
+            <arg column="path" javaType="java.lang.String"/>
+            <arg column="sort_order" javaType="_int"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="updated_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
     </resultMap>
 
     <!-- 用递归 CTE 构建 path（> 分隔父节点名称） -->

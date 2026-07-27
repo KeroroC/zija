@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Mapper
-public interface DeadLetterMapper extends BaseMapper<DeadLetterEntity> {
+public interface ReportingDeadLetterMapper extends BaseMapper<DeadLetterEntity> {
     List<DeadLetterEntity> findDueForRetry(@Param("now") OffsetDateTime now, @Param("limit") int limit);
     int incrementFailure(@Param("id") UUID id, @Param("nextRetryAt") OffsetDateTime nextRetryAt,
                           @Param("lastError") String lastError);

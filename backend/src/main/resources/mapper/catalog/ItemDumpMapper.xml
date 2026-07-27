@@ -5,24 +5,26 @@
 <mapper namespace="com.zija.catalog.internal.persistence.ItemDumpMapper">
 
     <resultMap id="itemFlatMap" type="com.zija.catalog.CatalogApi$ItemFlat">
-        <result property="itemId" column="item_id"/>
-        <result property="householdId" column="household_id"/>
-        <result property="name" column="name"/>
-        <result property="managementType" column="management_type"/>
-        <result property="status" column="status"/>
-        <result property="categoryId" column="category_id"/>
-        <result property="categoryName" column="category_name"/>
-        <result property="brandId" column="brand_id"/>
-        <result property="brandName" column="brand_name"/>
-        <result property="unitId" column="unit_id"/>
-        <result property="unitName" column="unit_name"/>
-        <result property="tagNames" column="tag_names"/>
-        <result property="lowStockThreshold" column="low_stock_threshold"/>
-        <result property="lowStockMode" column="low_stock_mode"/>
-        <result property="expiryReminderMode" column="expiry_reminder_mode"/>
-        <result property="expiryReminderDays" column="expiry_reminder_days"
-                typeHandler="com.zija.catalog.internal.persistence.ShortArrayTypeHandler"/>
-        <result property="updatedAt" column="updated_at"/>
+        <constructor>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="household_id" javaType="java.util.UUID"/>
+            <arg column="name" javaType="java.lang.String"/>
+            <arg column="management_type" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="category_id" javaType="java.util.UUID"/>
+            <arg column="category_name" javaType="java.lang.String"/>
+            <arg column="brand_id" javaType="java.util.UUID"/>
+            <arg column="brand_name" javaType="java.lang.String"/>
+            <arg column="unit_id" javaType="java.util.UUID"/>
+            <arg column="unit_name" javaType="java.lang.String"/>
+            <arg column="tag_names" javaType="java.lang.String"/>
+            <arg column="low_stock_threshold" javaType="java.math.BigDecimal"/>
+            <arg column="low_stock_mode" javaType="java.lang.String"/>
+            <arg column="expiry_reminder_mode" javaType="java.lang.String"/>
+            <arg column="expiry_reminder_days" javaType="java.util.List"
+                 typeHandler="com.zija.catalog.internal.persistence.ShortArrayTypeHandler"/>
+            <arg column="updated_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
     </resultMap>
 
     <select id="dumpItems" resultMap="itemFlatMap">

@@ -4,7 +4,7 @@ import com.zija.catalog.*;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.location.LocationChangedEvent;
 import com.zija.reporting.internal.persistence.DeadLetterEntity;
-import com.zija.reporting.internal.persistence.DeadLetterMapper;
+import com.zija.reporting.internal.persistence.ReportingDeadLetterMapper;
 import com.zija.system.SystemApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,11 +27,11 @@ public class ReportingEventRetryService {
     private static final Logger log = LoggerFactory.getLogger(ReportingEventRetryService.class);
     private static final int MAX_FAILURES = 10;
 
-    private final DeadLetterMapper deadLetterMapper;
+    private final ReportingDeadLetterMapper deadLetterMapper;
     private final ProjectionListener listener;
     private final SystemApi systemApi;
 
-    public ReportingEventRetryService(DeadLetterMapper deadLetterMapper,
+    public ReportingEventRetryService(ReportingDeadLetterMapper deadLetterMapper,
                                        ProjectionListener listener,
                                        SystemApi systemApi) {
         this.deadLetterMapper = deadLetterMapper;

@@ -5,11 +5,13 @@
 <mapper namespace="com.zija.inventory.internal.persistence.StockPositionMapper">
 
     <resultMap id="stockPositionDumpMap" type="com.zija.inventory.InventoryApi$StockPositionDump">
-        <result property="lotId" column="lot_id"/>
-        <result property="itemId" column="item_id"/>
-        <result property="locationId" column="location_id"/>
-        <result property="quantity" column="quantity"/>
-        <result property="updatedAt" column="updated_at"/>
+        <constructor>
+            <arg column="lot_id" javaType="java.util.UUID"/>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="location_id" javaType="java.util.UUID"/>
+            <arg column="quantity" javaType="java.math.BigDecimal"/>
+            <arg column="updated_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
     </resultMap>
 
     <select id="dumpStockPositions" resultMap="stockPositionDumpMap">

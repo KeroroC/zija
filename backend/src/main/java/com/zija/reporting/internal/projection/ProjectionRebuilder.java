@@ -167,6 +167,7 @@ public class ProjectionRebuilder {
         e.setLotId(pos.lotId());
         e.setItemId(pos.itemId());
         e.setItemName(resolveItemName(householdId, pos.itemId()));
+        e.setUnitName(resolveUnitName(householdId, pos.itemId()));
         e.setLocationId(pos.locationId());
         e.setLocationPath(resolveLocationPath(householdId, pos.locationId()));
         e.setQuantity(pos.quantity());
@@ -178,6 +179,7 @@ public class ProjectionRebuilder {
         var e = new MovementFlatEntity();
         e.setHouseholdId(householdId);
         e.setMovementId(mov.id());
+        e.setEventId(mov.id()); // rebuild: use movement ID as synthetic event ID
         e.setLotId(mov.lotId());
         e.setItemId(mov.itemId());
         e.setItemName(resolveItemName(householdId, mov.itemId()));
@@ -197,6 +199,17 @@ public class ProjectionRebuilder {
     }
 
     // ===== 名称解析辅助方法 =====
+
+    private String resolveUnitName(UUID householdId, UUID itemId) {
+        try {
+            var item = catalogApi.requireItem(householdId, itemId);
+            if (item.unitId() == null) return null;
+            var unit = catalogApi.requireUnit(householdId, item.unitId());
+            return unit.name();
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     private String resolveItemName(UUID householdId, UUID itemId) {
         try {

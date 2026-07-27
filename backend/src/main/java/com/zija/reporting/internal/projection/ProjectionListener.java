@@ -28,8 +28,8 @@ public class ProjectionListener {
 
     private static final Logger log = LoggerFactory.getLogger(ProjectionListener.class);
 
-    private final ProcessedEventMapper processedEventMapper;
-    private final DeadLetterMapper deadLetterMapper;
+    private final ReportingProcessedEventMapper processedEventMapper;
+    private final ReportingDeadLetterMapper deadLetterMapper;
     private final SearchIndexMapper searchIndexMapper;
     private final StockFlatMapper stockFlatMapper;
     private final MovementFlatMapper movementFlatMapper;
@@ -40,8 +40,8 @@ public class ProjectionListener {
     private final HouseholdApi householdApi;
     private final TransactionTemplate requiresNewTx;
 
-    public ProjectionListener(ProcessedEventMapper processedEventMapper,
-                               DeadLetterMapper deadLetterMapper,
+    public ProjectionListener(ReportingProcessedEventMapper processedEventMapper,
+                               ReportingDeadLetterMapper deadLetterMapper,
                                SearchIndexMapper searchIndexMapper,
                                StockFlatMapper stockFlatMapper,
                                MovementFlatMapper movementFlatMapper,
