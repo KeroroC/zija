@@ -226,7 +226,9 @@ public class ReminderReconciler {
                     "link", ""));
 
             for (String email : emails) {
-                mailService.send(email, "知家 · 紧急提醒", html);
+                if (!mailService.send(email, "知家 · 紧急提醒", html)) {
+                    throw new RuntimeException("SMTP send failed to " + email);
+                }
             }
             log.info("Urgent mail sent for task {} to {} recipients", taskId, emails.size());
         } catch (RuntimeException ex) {
