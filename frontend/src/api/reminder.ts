@@ -7,6 +7,9 @@ import type {
   Dashboard,
 } from "../types/reminder";
 
+// Re-export types for consumers
+export type { ReminderTask, ReminderRule, Page, Dashboard };
+
 // ==================== Rules ====================
 
 export function fetchRules(): Promise<ReminderRule> {

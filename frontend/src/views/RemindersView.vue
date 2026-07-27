@@ -43,7 +43,7 @@
       </el-table-column>
       <el-table-column label="操作" width="120">
         <template #default="{ row }">
-          <el-dropdown trigger="click" @command="(c: string) => onAction(c, row)">
+          <el-dropdown trigger="click" @command="(c: string) => onAction(c, row as ReminderTask)">
             <el-button text size="small">操作</el-button>
             <template #dropdown>
               <el-dropdown-menu>
