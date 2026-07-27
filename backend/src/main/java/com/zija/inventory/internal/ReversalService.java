@@ -248,7 +248,8 @@ public class ReversalService {
                 "REVERSAL", originalQty,
                 reversal.getFromLocationId(), reversal.getToLocationId(),
                 OffsetDateTime.now(), reversalMovementId,
-                idempotencyKey != null ? UUID.fromString(idempotencyKey) : UUID.randomUUID()));
+                idempotencyKey != null ? UUID.fromString(idempotencyKey) : UUID.randomUUID(),
+                accountId, null, originalMovementId));
 
         return new ReversalResult(reversalMovementId, lotId);
     }

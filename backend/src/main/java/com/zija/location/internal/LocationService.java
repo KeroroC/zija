@@ -2,12 +2,15 @@ package com.zija.location.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zija.location.LocationApi;
+import com.zija.location.internal.event.LocationEventPublisher;
+import com.zija.location.internal.persistence.LocationDumpMapper;
 import com.zija.location.internal.persistence.LocationEntity;
 import com.zija.location.internal.persistence.LocationMapper;
 import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -22,11 +25,16 @@ import java.util.stream.Collectors;
 class LocationService implements LocationApi {
 
     private final LocationMapper locationMapper;
+    private final LocationDumpMapper locationDumpMapper;
     private final SystemApi systemApi;
+    private final LocationEventPublisher eventPublisher;
 
-    LocationService(LocationMapper locationMapper, SystemApi systemApi) {
+    LocationService(LocationMapper locationMapper, LocationDumpMapper locationDumpMapper,
+                    SystemApi systemApi, LocationEventPublisher eventPublisher) {
         this.locationMapper = locationMapper;
+        this.locationDumpMapper = locationDumpMapper;
         this.systemApi = systemApi;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -58,6 +66,15 @@ class LocationService implements LocationApi {
         return buildTree(all);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public LocationDumpPage dumpTree(UUID householdId, OffsetDateTime cursor, int limit) {
+        var items = locationDumpMapper.dumpTree(householdId, cursor, limit);
+        OffsetDateTime nextCursor = items.isEmpty() ? cursor : items.get(items.size() - 1).updatedAt();
+        boolean hasMore = items.size() == limit;
+        return new LocationDumpPage(items, nextCursor, hasMore);
+    }
+
     /**
      * 创建存储位置，校验父位置的有效性。
      */
@@ -81,6 +98,7 @@ class LocationService implements LocationApi {
         entity.setVersion(0);
         locationMapper.insert(entity);
         audit(householdId, "LOCATION_CREATED", entity.getId());
+        eventPublisher.publishLocationChanged(householdId, entity.getId(), "CREATED", parentId);
         return entity;
     }
 
@@ -93,6 +111,7 @@ class LocationService implements LocationApi {
             throw new LocationVersionConflictException();
         }
         audit(householdId, "LOCATION_RENAMED", id);
+        eventPublisher.publishLocationChanged(householdId, id, "RENAMED", entity.getParentId());
         return entity;
     }
 
@@ -117,6 +136,7 @@ class LocationService implements LocationApi {
             throw new LocationVersionConflictException();
         }
         audit(householdId, "LOCATION_MOVED", id);
+        eventPublisher.publishLocationChanged(householdId, id, "MOVED", targetParentId);
     }
 
     /**
@@ -135,6 +155,7 @@ class LocationService implements LocationApi {
         }
         locationMapper.deleteById(id);
         audit(householdId, "LOCATION_DELETED", id);
+        eventPublisher.publishLocationChanged(householdId, id, "DELETED", entity.getParentId());
     }
 
     // --- Helpers ---

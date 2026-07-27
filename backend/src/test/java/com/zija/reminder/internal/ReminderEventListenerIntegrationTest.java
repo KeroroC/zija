@@ -43,7 +43,8 @@ class ReminderEventListenerIntegrationTest {
     private StockChangedEvent evt(UUID eventId, UUID householdId, UUID lotId, UUID itemId) {
         return new StockChangedEvent(eventId, householdId, lotId, itemId,
                 "INBOUND", BigDecimal.ONE, null, UUID.randomUUID(),
-                OffsetDateTime.now(), UUID.randomUUID(), UUID.randomUUID());
+                OffsetDateTime.now(), UUID.randomUUID(), UUID.randomUUID(),
+                null, null, null);
     }
 
     /** 向数据库插入家庭/单位/物品，使 reconciler 不会因缺数据而失败。 */
@@ -87,7 +88,8 @@ class ReminderEventListenerIntegrationTest {
         UUID itemId = UUID.randomUUID();
         var e = new StockChangedEvent(UUID.randomUUID(), householdId, lotId, itemId,
                 "INBOUND", BigDecimal.ONE, null, UUID.randomUUID(),
-                OffsetDateTime.now(), UUID.randomUUID(), UUID.randomUUID());
+                OffsetDateTime.now(), UUID.randomUUID(), UUID.randomUUID(),
+                null, null, null);
         listener.onStockChanged(e); // 内部 reconcile 会因无家庭/物品失败 → 写 dead_letter
         var dl = deadLetterMapper.selectList(null);
         assertThat(dl).isNotEmpty();

@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -136,6 +137,24 @@ class InventoryService implements InventoryApi {
     public BigDecimal currentTotalStockOfItem(UUID householdId, UUID itemId) {
         var v = itemStockAggregateMapper.totalStockOfItem(householdId, itemId);
         return v != null ? v : BigDecimal.ZERO;
+    }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public PageDump<StockPositionDump> dumpStockPositions(UUID householdId, OffsetDateTime cursor, int limit) {
+        var items = stockPositionMapper.dumpStockPositions(householdId, cursor, limit);
+        OffsetDateTime nextCursor = items.isEmpty() ? cursor : items.get(items.size() - 1).updatedAt();
+        boolean hasMore = items.size() == limit;
+        return new PageDump<>(items, nextCursor, hasMore);
+    }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public PageDump<MovementDump> dumpMovements(UUID householdId, OffsetDateTime cursor, int limit) {
+        var items = movementMapper.dumpMovements(householdId, cursor, limit);
+        OffsetDateTime nextCursor = items.isEmpty() ? cursor : items.get(items.size() - 1).createdAt();
+        boolean hasMore = items.size() == limit;
+        return new PageDump<>(items, nextCursor, hasMore);
     }
 
     // ---- Lot commands ----

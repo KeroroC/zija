@@ -363,7 +363,8 @@ class StocktakeService {
                     UUID.randomUUID(), householdId, lotId, itemId,
                     "ADJUSTMENT", delta.abs(),
                     cmp < 0 ? locId : null, cmp > 0 ? locId : null,
-                    now, movementId, UUID.fromString(movement.getIdempotencyKey())));
+                    now, movementId, UUID.fromString(movement.getIdempotencyKey()),
+                    accountId, item.getReason(), null));
 
             adjustedCount++;
         }

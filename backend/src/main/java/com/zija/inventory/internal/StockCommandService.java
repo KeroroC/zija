@@ -161,7 +161,8 @@ public class StockCommandService {
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, cmd.itemId(),
                 "INBOUND", validatedQty, null, locationId,
-                OffsetDateTime.now(), movementId, idempotencyKeyUuid));
+                OffsetDateTime.now(), movementId, idempotencyKeyUuid,
+                accountId, null, null));
 
         // 10. Return result
         boolean serialDuplicated = cmd.serialNumber() != null
@@ -283,7 +284,8 @@ public class StockCommandService {
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, itemId,
                 "INBOUND", validatedQty, null, locationId,
-                OffsetDateTime.now(), movementId, idempotencyKeyUuid));
+                OffsetDateTime.now(), movementId, idempotencyKeyUuid,
+                accountId, null, null));
 
         // 11. Return result
         return new InboundResult(lotId, locationId, movementId, validatedQty, false);
@@ -396,7 +398,8 @@ public class StockCommandService {
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, itemId,
                 "CONSUME", validatedQty, locationId, null,
-                OffsetDateTime.now(), movementId, idempotencyKeyUuid));
+                OffsetDateTime.now(), movementId, idempotencyKeyUuid,
+                accountId, reason, null));
 
         // 11. Return result (quantity remaining after deduction)
         var updatedSp = stockPositionMapper.lockOne(householdId, lotId, locationId);
@@ -511,7 +514,8 @@ public class StockCommandService {
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, itemId,
                 "LOSS", validatedQty, locationId, null,
-                OffsetDateTime.now(), movementId, idempotencyKeyUuid));
+                OffsetDateTime.now(), movementId, idempotencyKeyUuid,
+                accountId, reason, null));
 
         // 11. Return result (quantity remaining after deduction)
         var updatedSp = stockPositionMapper.lockOne(householdId, lotId, locationId);
@@ -672,7 +676,8 @@ public class StockCommandService {
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, itemId,
                 "TRANSFER", validatedQty, fromLocationId, toLocationId,
-                OffsetDateTime.now(), movementId, idempotencyKeyUuid));
+                OffsetDateTime.now(), movementId, idempotencyKeyUuid,
+                accountId, null, null));
 
         // 13. Return result (quantity at target location after transfer)
         var updatedToSp = stockPositionMapper.lockOne(householdId, lotId, toLocationId);

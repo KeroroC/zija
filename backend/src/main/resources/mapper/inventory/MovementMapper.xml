@@ -33,4 +33,31 @@
         ORDER BY ${orderBy}
     </select>
 
+    <resultMap id="movementDumpMap" type="com.zija.inventory.InventoryApi$MovementDump">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID"/>
+            <arg column="lot_id" javaType="java.util.UUID"/>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="type" javaType="java.lang.String"/>
+            <arg column="quantity" javaType="java.math.BigDecimal"/>
+            <arg column="from_location_id" javaType="java.util.UUID"/>
+            <arg column="to_location_id" javaType="java.util.UUID"/>
+            <arg column="reason" javaType="java.lang.String"/>
+            <arg column="operator_account_id" javaType="java.util.UUID"/>
+            <arg column="reversal_of" javaType="java.util.UUID"/>
+            <arg column="business_time" javaType="java.time.OffsetDateTime"/>
+            <arg column="created_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <select id="dumpMovements" resultMap="movementDumpMap">
+        SELECT id, lot_id, item_id, type, quantity, from_location_id, to_location_id,
+               reason, operator_account_id, reversal_of, business_time, created_at
+        FROM inventory_movement
+        WHERE household_id = #{householdId}
+          AND created_at &gt; #{cursor}
+        ORDER BY created_at ASC
+        LIMIT #{limit}
+    </select>
+
 </mapper>

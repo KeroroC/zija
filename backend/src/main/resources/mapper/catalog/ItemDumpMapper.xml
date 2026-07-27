@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.catalog.internal.persistence.ItemDumpMapper">
+
+    <resultMap id="itemFlatMap" type="com.zija.catalog.CatalogApi$ItemFlat">
+        <constructor>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="household_id" javaType="java.util.UUID"/>
+            <arg column="name" javaType="java.lang.String"/>
+            <arg column="management_type" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="category_id" javaType="java.util.UUID"/>
+            <arg column="category_name" javaType="java.lang.String"/>
+            <arg column="brand_id" javaType="java.util.UUID"/>
+            <arg column="brand_name" javaType="java.lang.String"/>
+            <arg column="unit_id" javaType="java.util.UUID"/>
+            <arg column="unit_name" javaType="java.lang.String"/>
+            <arg column="tag_names" javaType="java.lang.String"/>
+            <arg column="low_stock_threshold" javaType="java.math.BigDecimal"/>
+            <arg column="low_stock_mode" javaType="java.lang.String"/>
+            <arg column="expiry_reminder_mode" javaType="java.lang.String"/>
+            <arg column="expiry_reminder_days" javaType="java.util.List"
+                 typeHandler="com.zija.catalog.internal.persistence.ShortArrayTypeHandler"/>
+            <arg column="updated_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <select id="dumpItems" resultMap="itemFlatMap">
+        SELECT
+            i.id AS item_id, i.household_id, i.name, i.management_type, i.status,
+            i.category_id, c.name AS category_name,
+            i.brand_id, b.name AS brand_name,
+            i.unit_id, u.name AS unit_name,
+            STRING_AGG(t.name, ',' ORDER BY t.name) AS tag_names,
+            i.low_stock_threshold, i.low_stock_mode,
+            i.expiry_reminder_mode, i.expiry_reminder_days,
+            i.updated_at
+        FROM catalog_item i
+        LEFT JOIN catalog_category c ON c.id = i.category_id
+        LEFT JOIN catalog_brand b ON b.id = i.brand_id
+        LEFT JOIN catalog_unit u ON u.id = i.unit_id
+        LEFT JOIN catalog_item_tag it ON it.item_id = i.id
+        LEFT JOIN catalog_tag t ON t.id = it.tag_id
+        WHERE i.household_id = #{householdId}
+          AND i.updated_at &gt; #{cursor}
+        GROUP BY i.id, i.household_id, i.name, i.management_type, i.status,
+                 i.category_id, c.name, i.brand_id, b.name, i.unit_id, u.name,
+                 i.low_stock_threshold, i.low_stock_mode,
+                 i.expiry_reminder_mode, i.expiry_reminder_days, i.updated_at
+        ORDER BY i.updated_at ASC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

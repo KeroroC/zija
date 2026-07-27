@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.reporting.internal.persistence.StockFlatMapper">
+
+    <insert id="upsert">
+        INSERT INTO reporting_stock_flat (
+            household_id, lot_id, item_id, item_name, unit_name,
+            lot_number, serial_number, expiry_date,
+            location_id, location_path, quantity, updated_at
+        ) VALUES (
+            #{householdId}, #{lotId}, #{itemId}, #{itemName}, #{unitName},
+            #{lotNumber}, #{serialNumber}, #{expiryDate},
+            #{locationId}, #{locationPath}, #{quantity}, #{updatedAt}
+        )
+        ON CONFLICT (household_id, lot_id, location_id) DO UPDATE SET
+            item_id = EXCLUDED.item_id,
+            item_name = EXCLUDED.item_name,
+            unit_name = EXCLUDED.unit_name,
+            lot_number = EXCLUDED.lot_number,
+            serial_number = EXCLUDED.serial_number,
+            expiry_date = EXCLUDED.expiry_date,
+            location_path = EXCLUDED.location_path,
+            quantity = EXCLUDED.quantity,
+            updated_at = EXCLUDED.updated_at
+    </insert>
+
+    <delete id="deleteByLot">
+        DELETE FROM reporting_stock_flat
+        WHERE household_id = #{householdId} AND lot_id = #{lotId}
+    </delete>
+
+</mapper>

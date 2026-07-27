@@ -3,10 +3,12 @@ package com.zija.inventory.internal.persistence;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.inventory.InventoryApi;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,4 +41,9 @@ public interface StockPositionMapper extends BaseMapper<StockPositionEntity> {
     /** 查询指定家庭和位置下所有库存位（不含 FOR UPDATE）。 */
     List<StockPositionEntity> findByLocation(@Param("householdId") UUID householdId,
                                               @Param("locationId") UUID locationId);
+
+    /** 按 updated_at 增量拉取（游标分批），供 reporting 投影重建。 */
+    List<InventoryApi.StockPositionDump> dumpStockPositions(@Param("householdId") UUID householdId,
+                                                            @Param("cursor") OffsetDateTime cursor,
+                                                            @Param("limit") int limit);
 }

@@ -1,0 +1,196 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mount, flushPromises, type VueWrapper } from "@vue/test-utils";
+import ElementPlus from "element-plus";
+
+vi.mock("../../../api/reporting", () => ({
+  searchReporting: vi.fn(),
+}));
+
+vi.mock("vue-router", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+import SearchView from "../SearchView.vue";
+import { searchReporting } from "../../../api/reporting";
+
+const mockSearchReporting = vi.mocked(searchReporting);
+
+const sampleResults = {
+  items: [
+    {
+      itemId: "i1",
+      name: "纸巾",
+      brand: "维达",
+      tags: "",
+      category: "日用品",
+      unit: "包",
+      matchedFields: ["name"],
+    },
+  ],
+  lots: [
+    {
+      lotId: "l1",
+      itemName: "纸巾",
+      lotNumber: "LOT-001",
+      serialNumber: "",
+      matchedFields: ["lotNumber"],
+    },
+  ],
+  locations: [
+    {
+      locationId: "loc1",
+      name: "储物间",
+      path: "家 > 储物间",
+      matchedFields: ["name"],
+    },
+  ],
+};
+
+const emptyResults = { items: [], lots: [], locations: [] };
+
+function mountV() {
+  return mount(SearchView, { global: { plugins: [ElementPlus] } });
+}
+
+describe("SearchView", () => {
+  let wrapper: VueWrapper | null = null;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockSearchReporting.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = null;
+    vi.useRealTimers();
+  });
+
+  it("renders search input and button", () => {
+    wrapper = mountV();
+    expect(wrapper.find("input").exists()).toBe(true);
+    expect(wrapper.find(".el-input-group__append").text()).toContain("搜索");
+  });
+
+  it("debounces search by 250ms after doSearch", async () => {
+    mockSearchReporting.mockResolvedValue(sampleResults);
+    wrapper = mountV();
+
+    const input = wrapper.find("input");
+    await input.setValue("纸巾");
+    // Trigger doSearch via Enter key
+    await input.trigger("keyup.enter");
+    await flushPromises();
+
+    // Not called yet (within debounce window)
+    expect(mockSearchReporting).not.toHaveBeenCalled();
+
+    // Advance past debounce
+    vi.advanceTimersByTime(250);
+    await flushPromises();
+
+    expect(mockSearchReporting).toHaveBeenCalledWith("纸巾");
+  });
+
+  it("search button triggers doSearch", async () => {
+    mockSearchReporting.mockResolvedValue(sampleResults);
+    wrapper = mountV();
+
+    await wrapper.find("input").setValue("纸巾");
+    await wrapper.find(".el-input-group__append .el-button").trigger("click");
+    await flushPromises();
+
+    vi.advanceTimersByTime(250);
+    await flushPromises();
+
+    expect(mockSearchReporting).toHaveBeenCalledWith("纸巾");
+  });
+
+  it("does not search when query is empty or whitespace", async () => {
+    wrapper = mountV();
+
+    await wrapper.find("input").setValue("  ");
+    await wrapper.find("input").trigger("keyup.enter");
+    await flushPromises();
+    vi.advanceTimersByTime(250);
+    await flushPromises();
+
+    expect(mockSearchReporting).not.toHaveBeenCalled();
+  });
+
+  it("renders results in three collapse groups", async () => {
+    mockSearchReporting.mockResolvedValue(sampleResults);
+    wrapper = mountV();
+
+    await wrapper.find("input").setValue("纸巾");
+    await wrapper.find("input").trigger("keyup.enter");
+    await flushPromises();
+    vi.advanceTimersByTime(250);
+    await flushPromises();
+
+    // All three groups should be present
+    expect(wrapper.text()).toContain("物品");
+    expect(wrapper.text()).toContain("批次");
+    expect(wrapper.text()).toContain("位置");
+
+    // Results should be rendered
+    expect(wrapper.text()).toContain("维达");
+    expect(wrapper.text()).toContain("LOT-001");
+    expect(wrapper.text()).toContain("储物间");
+  });
+
+  it("shows empty state when group has no results", async () => {
+    mockSearchReporting.mockResolvedValue(emptyResults);
+    wrapper = mountV();
+
+    await wrapper.find("input").setValue("不存在");
+    await wrapper.find("input").trigger("keyup.enter");
+    await flushPromises();
+    vi.advanceTimersByTime(250);
+    await flushPromises();
+
+    const emptyStates = wrapper.findAll(".empty-state");
+    expect(emptyStates).toHaveLength(3);
+    expect(emptyStates[0].text()).toBe("无匹配物品");
+    expect(emptyStates[1].text()).toBe("无匹配批次");
+    expect(emptyStates[2].text()).toBe("无匹配位置");
+  });
+
+  it("clear resets results and searched flag", async () => {
+    mockSearchReporting.mockResolvedValue(sampleResults);
+    wrapper = mountV();
+
+    await wrapper.find("input").setValue("纸巾");
+    await wrapper.find("input").trigger("keyup.enter");
+    await flushPromises();
+    vi.advanceTimersByTime(250);
+    await flushPromises();
+
+    // Results are shown
+    expect(wrapper.text()).toContain("维达");
+
+    // Invoke clearResults directly via component instance
+    (wrapper.vm as any).clearResults();
+    await flushPromises();
+
+    // Results should be hidden (searched=false)
+    expect(wrapper.find(".search-results").exists()).toBe(false);
+  });
+
+  it("shows matched field tags", async () => {
+    mockSearchReporting.mockResolvedValue(sampleResults);
+    wrapper = mountV();
+
+    await wrapper.find("input").setValue("纸巾");
+    await wrapper.find("input").trigger("keyup.enter");
+    await flushPromises();
+    vi.advanceTimersByTime(250);
+    await flushPromises();
+
+    // Matched field tags should appear
+    const tags = wrapper.findAll(".el-tag");
+    const tagTexts = tags.map((t) => t.text());
+    expect(tagTexts).toContain("name");
+    expect(tagTexts).toContain("lotNumber");
+  });
+});

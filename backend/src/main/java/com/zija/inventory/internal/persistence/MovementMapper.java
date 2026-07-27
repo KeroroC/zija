@@ -3,6 +3,7 @@ package com.zija.inventory.internal.persistence;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.inventory.InventoryApi;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -28,4 +29,9 @@ public interface MovementMapper extends BaseMapper<MovementEntity> {
                                    @Param("from") OffsetDateTime from,
                                    @Param("to") OffsetDateTime to,
                                    @Param("orderBy") String orderBy);
+
+    /** 按 created_at 增量拉取（游标分批），供 reporting 投影重建。 */
+    List<InventoryApi.MovementDump> dumpMovements(@Param("householdId") UUID householdId,
+                                                   @Param("cursor") OffsetDateTime cursor,
+                                                   @Param("limit") int limit);
 }

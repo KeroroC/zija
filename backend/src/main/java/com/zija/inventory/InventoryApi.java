@@ -55,4 +55,38 @@ public interface InventoryApi {
             LocalDate expiryDate,
             BigDecimal totalQuantity
     ) {}
+
+    /** 增量拉取家庭库存位（按 updated_at 游标分批）。仅供 reporting 投影重建。 */
+    PageDump<StockPositionDump> dumpStockPositions(UUID householdId, OffsetDateTime cursor, int limit);
+
+    /** 增量拉取家庭全部库存流水（按 created_at 游标分批）。仅供 reporting 投影重建。 */
+    PageDump<MovementDump> dumpMovements(UUID householdId, OffsetDateTime cursor, int limit);
+
+    /** 分页拉取结果，游标为最后一条的排序字段值。 */
+    record PageDump<T>(List<T> items, OffsetDateTime nextCursor, boolean hasMore) {}
+
+    /** 库存位快照 DTO（仅供 dump）。 */
+    record StockPositionDump(
+            UUID lotId,
+            UUID itemId,
+            UUID locationId,
+            BigDecimal quantity,
+            OffsetDateTime updatedAt
+    ) {}
+
+    /** 库存流水快照 DTO（仅供 dump）。 */
+    record MovementDump(
+            UUID id,
+            UUID lotId,
+            UUID itemId,
+            String type,
+            BigDecimal quantityDelta,
+            UUID fromLocationId,
+            UUID toLocationId,
+            String reason,
+            UUID operatorAccountId,
+            UUID reversalOf,
+            OffsetDateTime businessTime,
+            OffsetDateTime createdAt
+    ) {}
 }

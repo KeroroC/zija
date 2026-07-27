@@ -1,6 +1,7 @@
 package com.zija.catalog.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.catalog.internal.event.CatalogEventPublisher;
 import com.zija.catalog.internal.persistence.*;
 import com.zija.system.SystemApi;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +22,7 @@ class CatalogDictionaryServiceTest {
     private TagMapper tagMapper;
     private ItemMapper itemMapper;
     private SystemApi systemApi;
+    private CatalogEventPublisher eventPublisher;
     private CatalogDictionaryService service;
 
     private final UUID householdId = UUID.randomUUID();
@@ -33,7 +35,8 @@ class CatalogDictionaryServiceTest {
         tagMapper = mock(TagMapper.class);
         itemMapper = mock(ItemMapper.class);
         systemApi = mock(SystemApi.class);
-        service = new CatalogDictionaryService(categoryMapper, brandMapper, unitMapper, tagMapper, itemMapper, systemApi);
+        eventPublisher = mock(CatalogEventPublisher.class);
+        service = new CatalogDictionaryService(categoryMapper, brandMapper, unitMapper, tagMapper, itemMapper, systemApi, eventPublisher);
     }
 
     @Test
