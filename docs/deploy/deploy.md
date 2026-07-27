@@ -28,7 +28,7 @@ git clone https://github.com/<your-org>/zija.git
 cd zija
 ```
 
-如果使用私有镜像仓库，也可直接拉取预构建镜像（见 §8）。
+如果使用私有镜像仓库，也可直接拉取预构建镜像。
 
 ---
 
@@ -179,12 +179,15 @@ volumes:
 ```bash
 # 构建镜像并启动所有服务
 docker compose --env-file .env up -d --build
+```
 
-# 或使用 make（等效）
+启动后可运行冒烟测试验证部署是否成功：
+
+```bash
 make compose-smoke
 ```
 
-`make compose-smoke` 会启动完整栈并执行健康检查脚本（`scripts/compose-smoke.sh`），确认三个服务均处于 healthy 状态。
+`make compose-smoke` 会启动完整栈、执行健康检查脚本（`scripts/compose-smoke.sh`）、确认三个服务均处于 healthy 状态，**然后自动清理（teardown）所有容器和临时卷**。它是一个验证工具，不是部署命令——适用于 CI 或部署后快速校验，不适用于保持服务运行。
 
 ### 7.2 验证服务状态
 
