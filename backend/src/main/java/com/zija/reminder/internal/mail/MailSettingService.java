@@ -15,10 +15,12 @@ public class MailSettingService {
 
     private final MailSettingMapper mailSettingMapper;
     private final SystemApi systemApi;
+    private final MailService mailService;
 
-    MailSettingService(MailSettingMapper mailSettingMapper, SystemApi systemApi) {
+    MailSettingService(MailSettingMapper mailSettingMapper, SystemApi systemApi, MailService mailService) {
         this.mailSettingMapper = mailSettingMapper;
         this.systemApi = systemApi;
+        this.mailService = mailService;
     }
 
     public record MailSettingView(
@@ -29,7 +31,8 @@ public class MailSettingService {
             boolean urgentEnabled,
             List<String> recipientRoles,
             OffsetDateTime lastDigestSentAt,
-            int version
+            int version,
+            boolean smtpConfigured
     ) {}
 
     public record MailSettingUpdate(
@@ -113,7 +116,8 @@ public class MailSettingService {
                 Boolean.TRUE.equals(e.getUrgentEnabled()),
                 e.getRecipientRoles(),
                 e.getLastDigestSentAt(),
-                e.getVersion() == null ? 0 : e.getVersion()
+                e.getVersion() == null ? 0 : e.getVersion(),
+                mailService.isConfigured()
         );
     }
 }
