@@ -99,7 +99,11 @@ public class ReminderEventListener {
                 Map.entry("toLocationId", evt.toLocationId() == null ? "" : evt.toLocationId().toString()),
                 Map.entry("businessTime", evt.businessTime().toString()),
                 Map.entry("movementId", evt.movementId().toString()),
-                Map.entry("idempotencyKey", evt.idempotencyKey().toString())
+                Map.entry("idempotencyKey", evt.idempotencyKey().toString()),
+                // 阶段六追加字段：
+                Map.entry("operatorAccountId", evt.operatorAccountId() == null ? "" : evt.operatorAccountId().toString()),
+                Map.entry("reason", evt.reason() == null ? "" : evt.reason()),
+                Map.entry("reversalOf", evt.reversalOf() == null ? "" : evt.reversalOf().toString())
         );
     }
 }

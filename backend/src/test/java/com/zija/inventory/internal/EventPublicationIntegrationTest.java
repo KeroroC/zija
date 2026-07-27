@@ -59,7 +59,8 @@ class EventPublicationIntegrationTest {
         var evt = new StockChangedEvent(
                 eventId, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 "INBOUND", BigDecimal.ONE, null, UUID.randomUUID(),
-                OffsetDateTime.now(), UUID.randomUUID(), UUID.randomUUID());
+                OffsetDateTime.now(), UUID.randomUUID(), UUID.randomUUID(),
+                null, null, null);
 
         new TransactionTemplate(txManager).executeWithoutResult(s -> publisher.publish(evt));
 

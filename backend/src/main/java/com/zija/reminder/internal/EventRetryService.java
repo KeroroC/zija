@@ -113,7 +113,13 @@ public class EventRetryService {
                 ((String) m.get("toLocationId")).isEmpty() ? null : UUID.fromString((String) m.get("toLocationId")),
                 OffsetDateTime.parse((String) m.get("businessTime")),
                 UUID.fromString((String) m.get("movementId")),
-                UUID.fromString((String) m.get("idempotencyKey"))
+                UUID.fromString((String) m.get("idempotencyKey")),
+                // 阶段六追加字段，旧 dead-letter payload 缺键时容错取 null:
+                m.containsKey("operatorAccountId") && !((String) m.get("operatorAccountId")).isEmpty()
+                        ? UUID.fromString((String) m.get("operatorAccountId")) : null,
+                m.containsKey("reason") ? (String) m.get("reason") : null,
+                m.containsKey("reversalOf") && !((String) m.get("reversalOf")).isEmpty()
+                        ? UUID.fromString((String) m.get("reversalOf")) : null
         );
     }
 }

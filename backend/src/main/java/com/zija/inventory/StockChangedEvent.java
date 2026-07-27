@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /**
  * 库存变更公开事件。每个成功库存命令发布一条，带全局唯一 eventId 供消费者去重。
- * 阶段四只建立发布契约，不实现阶段五提醒消费者。
+ * 字段只追加、不重排、不删除——跨模块契约（ADR-006）。
  */
 public record StockChangedEvent(
         UUID eventId,
@@ -19,5 +19,9 @@ public record StockChangedEvent(
         UUID toLocationId,
         OffsetDateTime businessTime,
         UUID movementId,
-        UUID idempotencyKey
+        UUID idempotencyKey,
+        // 阶段六追加（ADR-006）：
+        UUID operatorAccountId,
+        String reason,
+        UUID reversalOf
 ) {}
