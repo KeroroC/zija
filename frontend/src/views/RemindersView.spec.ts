@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import ElementPlus from "element-plus";
 import { createRouter, createMemoryHistory } from "vue-router";
+import { nextTick } from "vue";
 
 vi.mock("../api/reminder", () => ({
   fetchTasks: vi.fn(),
@@ -12,7 +13,7 @@ vi.mock("../api/reminder", () => ({
 }));
 
 import RemindersView from "./RemindersView.vue";
-import { fetchTasks, completeTask, reopenTask } from "../api/reminder";
+import { fetchTasks, reopenTask } from "../api/reminder";
 
 const router = createRouter({
   history: createMemoryHistory(),
@@ -20,6 +21,7 @@ const router = createRouter({
 });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   (fetchTasks as ReturnType<typeof vi.fn>).mockResolvedValue({
     items: [
       {
@@ -71,6 +73,26 @@ describe("RemindersView", () => {
     });
     const w = mountR();
     await flushPromises();
-    expect(fetchTasks).toHaveBeenCalled();
+
+    // Click the "操作" dropdown trigger button
+    const actionBtn = w.findAll("button").find((b) => b.text().includes("操作"));
+    expect(actionBtn).toBeDefined();
+    await actionBtn!.trigger("click");
+    await nextTick();
+
+    // Click the "重新打开" dropdown item
+    const reopenItem = document.querySelector(
+      ".el-dropdown-menu__item"
+    );
+    // Find the specific reopen item among all dropdown items
+    const allItems = document.querySelectorAll(".el-dropdown-menu__item");
+    const reopenEl = Array.from(allItems).find((el) =>
+      el.textContent?.includes("重新打开")
+    );
+    expect(reopenEl).toBeDefined();
+    (reopenEl as HTMLElement).click();
+    await flushPromises();
+
+    expect(reopenTask).toHaveBeenCalledWith("t1");
   });
 });
