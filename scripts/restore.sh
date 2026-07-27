@@ -7,23 +7,6 @@ HTTP_PORT="${ZIJA_HTTP_PORT:-8088}"
 RESTORE_TS=$(date -u +%Y%m%dT%H%M%SZ)
 PROJECT_NAME="zija-restore-${RESTORE_TS}"
 
-# ── 跨平台工具函数 ───────────────────────────────────
-compute_sha256() {
-  if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$1" | cut -d' ' -f1
-  else
-    sha256sum "$1" | cut -d' ' -f1
-  fi
-}
-
-file_size() {
-  if [[ "$(uname)" == "Darwin" ]]; then
-    stat -f%z "$1"
-  else
-    stat -c%s "$1"
-  fi
-}
-
 # ── 定位最新备份 ─────────────────────────────────────
 LATEST_BACKUP=$(ls -td "${BACKUP_DIR}"/backup_*_* 2>/dev/null | head -1)
 if [ -z "$LATEST_BACKUP" ]; then
@@ -170,18 +153,18 @@ INT_HASH=$(echo "$INTEGRITY" \
   | python3 -c "import sys,json; print(json.load(sys.stdin).get('hashMismatchCount',-1))" 2>/dev/null || echo "-1")
 INT_CHECKED=$(echo "$INTEGRITY" \
   | python3 -c "import sys,json; print(json.load(sys.stdin).get('checkedCount',0))" 2>/dev/null || echo "0")
-if [ "$INT_MISSING" = "0" ] && [ "$INT_HASH" = "0" ]; then
+if [ "$INT_MISSING" = "0" ] && [ "$INT_HASH" = "0" ] && [ "$INT_CHECKED" = "$EXPECTED_CHECKED" ]; then
   echo "OK (checked=${INT_CHECKED}, missing=0, hashMismatch=0)"
 else
-  echo "FAIL (missing=${INT_MISSING}, hashMismatch=${INT_HASH})"
+  echo "FAIL (checked=${INT_CHECKED}/${EXPECTED_CHECKED}, missing=${INT_MISSING}, hashMismatch=${INT_HASH})"
   FAIL=1
 fi
 
-# 验证 3: inventory/consistency-check
-echo -n "[3/3] GET /api/v1/inventory/consistency-check ... "
+# 验证 3: inventory/consistency-report
+echo -n "[3/3] GET /api/v1/inventory/consistency-report ... "
 CONSISTENCY=$(curl -sf -b "$COOKIES" \
   -H "X-XSRF-TOKEN: ${CSRF_TOKEN}" \
-  "http://127.0.0.1:${HTTP_PORT}/api/v1/inventory/consistency-check" || echo "{}")
+  "http://127.0.0.1:${HTTP_PORT}/api/v1/inventory/consistency-report" || echo "{}")
 DISCREPANCIES=$(echo "$CONSISTENCY" \
   | python3 -c "import sys,json; d=json.load(sys.stdin).get('discrepancies',[]); print(len(d))" 2>/dev/null || echo "-1")
 if [ "$DISCREPANCIES" = "0" ]; then
