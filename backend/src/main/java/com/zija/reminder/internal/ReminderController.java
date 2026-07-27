@@ -3,6 +3,7 @@ package com.zija.reminder.internal;
 import com.zija.ZijaPrincipal;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireMember;
+import com.zija.reminder.internal.mail.MailSettingService;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -11,10 +12,10 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * 提醒模块 REST 控制器，提供规则查看/编辑、任务分页/状态机、仪表盘聚合。
+ * 提醒模块 REST 控制器，提供规则查看/编辑、任务分页/状态机、仪表盘聚合、邮件设置。
  *
  * <p>所有端点均要求当前用户为家庭的活跃成员（{@link RequireMember}）。
- * 规则编辑额外要求管理员角色。</p>
+ * 规则编辑和邮件设置编辑额外要求管理员角色。</p>
  *
  * <p>端点概览：</p>
  * <ul>
@@ -26,6 +27,8 @@ import java.util.UUID;
  *   <li>{@code POST /api/v1/reminder/tasks/{id}/ignore}    — 忽略任务</li>
  *   <li>{@code POST /api/v1/reminder/tasks/{id}/reopen}    — 重新打开任务</li>
  *   <li>{@code GET  /api/v1/reminder/dashboard}            — 仪表盘聚合</li>
+ *   <li>{@code GET  /api/v1/reminder/mail-settings}        — 查看邮件设置（懒初始化）</li>
+ *   <li>{@code PUT  /api/v1/reminder/mail-settings}        — 更新邮件设置（ADMIN+）</li>
  * </ul>
  */
 @RestController
@@ -35,13 +38,16 @@ class ReminderController {
     private final ReminderService reminderService;
     private final ReminderTaskStateService stateService;
     private final DashboardService dashboardService;
+    private final MailSettingService mailSettingService;
     private final HouseholdApi householdApi;
 
     ReminderController(ReminderService reminderService, ReminderTaskStateService stateService,
-                       DashboardService dashboardService, HouseholdApi householdApi) {
+                       DashboardService dashboardService, MailSettingService mailSettingService,
+                       HouseholdApi householdApi) {
         this.reminderService = reminderService;
         this.stateService = stateService;
         this.dashboardService = dashboardService;
+        this.mailSettingService = mailSettingService;
         this.householdApi = householdApi;
     }
 
@@ -122,6 +128,26 @@ class ReminderController {
                                              @RequestParam(defaultValue = "8") int topN) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         return dashboardService.dashboard(member.householdId(), days, topN);
+    }
+
+    // ==================== Mail Settings ====================
+
+    @RequireMember
+    @GetMapping("/mail-settings")
+    MailSettingService.MailSettingView getMailSettings(@AuthenticationPrincipal ZijaPrincipal principal) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        return mailSettingService.getOrCreate(member.householdId());
+    }
+
+    @RequireMember
+    @PutMapping("/mail-settings")
+    MailSettingService.MailSettingView updateMailSettings(@AuthenticationPrincipal ZijaPrincipal principal,
+                                                          @RequestBody MailSettingService.MailSettingUpdate body) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        if (!householdApi.hasAtLeastRole(principal.getAccountId(), HouseholdApi.MemberRole.ADMIN)) {
+            throw new AccessDeniedException("需要管理员权限");
+        }
+        return mailSettingService.update(member.householdId(), body);
     }
 
     // ==================== Request DTOs ====================

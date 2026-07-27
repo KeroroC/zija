@@ -1,5 +1,6 @@
 package com.zija.reminder.internal;
 
+import com.zija.reminder.internal.mail.MailSettingVersionConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -17,6 +18,11 @@ class ReminderExceptionHandler {
     @ExceptionHandler(ReminderRuleVersionConflictException.class)
     ProblemDetail handleVersionConflict(HttpServletRequest r) {
         return problem(r, HttpStatus.CONFLICT, "规则版本冲突", "REMINDER_RULE_VERSION_CONFLICT");
+    }
+
+    @ExceptionHandler(MailSettingVersionConflictException.class)
+    ProblemDetail handleMailSettingVersionConflict(HttpServletRequest r) {
+        return problem(r, HttpStatus.CONFLICT, "邮件设置版本冲突", "MAIL_SETTING_VERSION_CONFLICT");
     }
 
     @ExceptionHandler(ReminderRuleExpiryDaysInvalidException.class)
@@ -42,6 +48,11 @@ class ReminderExceptionHandler {
     @ExceptionHandler(ReminderTaskSnoozeUntilInvalidException.class)
     ProblemDetail handleSnoozeUntil(HttpServletRequest r) {
         return problem(r, HttpStatus.UNPROCESSABLE_ENTITY, "稍后提醒时间无效", "REMINDER_TASK_SNOOZE_UNTIL_INVALID");
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    ProblemDetail handleIllegalArgument(HttpServletRequest r, IllegalArgumentException ex) {
+        return problem(r, HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), "REMINDER_INVALID_ARGUMENT");
     }
 
     private ProblemDetail problem(HttpServletRequest request, HttpStatus status, String title, String errorCode) {
