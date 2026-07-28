@@ -1,5 +1,6 @@
 package com.zija.file.internal;
 
+import com.zija.AbstractMockMvcIntegrationTest;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.file.FileApi;
@@ -10,16 +11,12 @@ import com.zija.system.SystemApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,9 +29,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=false", "zija.session.jdbc.enabled=false"})
 @AutoConfigureMockMvc
-class FileControllerTest {
+class FileControllerTest extends AbstractMockMvcIntegrationTest {
 
     @Autowired MockMvc mockMvc;
 
@@ -44,7 +40,6 @@ class FileControllerTest {
     @MockitoBean MemberMapper memberMapper;
     @MockitoBean SystemApi systemApi;
     @MockitoBean ZijaSessionInvalidator sessionInvalidator;
-    @MockitoBean DataSource dataSource;
 
     private UUID accountId;
     private UUID householdId;
@@ -53,12 +48,6 @@ class FileControllerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Connection connection = org.mockito.Mockito.mock(Connection.class);
-        DatabaseMetaData metaData = org.mockito.Mockito.mock(DatabaseMetaData.class);
-        when(connection.getMetaData()).thenReturn(metaData);
-        when(connection.getAutoCommit()).thenReturn(true);
-        when(dataSource.getConnection()).thenReturn(connection);
-
         accountId = UUID.randomUUID();
         householdId = UUID.randomUUID();
         memberId = UUID.randomUUID();

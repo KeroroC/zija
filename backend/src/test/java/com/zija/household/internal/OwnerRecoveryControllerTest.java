@@ -1,12 +1,12 @@
 package com.zija.household.internal;
 
+import com.zija.AbstractMockMvcIntegrationTest;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.household.internal.exception.InvalidInvitationException;
 import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -21,9 +21,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=false", "zija.session.jdbc.enabled=false"})
 @AutoConfigureMockMvc
-class OwnerRecoveryControllerTest {
+class OwnerRecoveryControllerTest extends AbstractMockMvcIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean OwnerRecoveryService recoveryService;

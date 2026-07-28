@@ -1,5 +1,6 @@
 package com.zija.identity.internal;
 
+import com.zija.AbstractMockMvcIntegrationTest;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.ZijaSessionInvalidator;
@@ -11,7 +12,6 @@ import com.zija.identity.internal.persistence.AccountMapper;
 import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -36,9 +36,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=false", "zija.session.jdbc.enabled=false"})
 @AutoConfigureMockMvc
-class IdentityControllerTest {
+class IdentityControllerTest extends AbstractMockMvcIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;

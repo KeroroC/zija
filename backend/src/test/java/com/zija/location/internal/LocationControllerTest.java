@@ -1,5 +1,6 @@
 package com.zija.location.internal;
 
+import com.zija.AbstractMockMvcIntegrationTest;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.household.internal.persistence.HouseholdMapper;
@@ -15,15 +16,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,9 +31,8 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=false", "zija.session.jdbc.enabled=false"})
 @AutoConfigureMockMvc
-class LocationControllerTest {
+class LocationControllerTest extends AbstractMockMvcIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean LocationService locationService;
@@ -47,7 +43,6 @@ class LocationControllerTest {
     @MockitoBean AccountMapper accountMapper;
     @MockitoBean SystemApi systemApi;
     @MockitoBean ZijaSessionInvalidator sessionInvalidator;
-    @MockitoBean DataSource dataSource;
 
     private UUID accountId;
     private UUID householdId;
@@ -55,12 +50,6 @@ class LocationControllerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Connection connection = org.mockito.Mockito.mock(Connection.class);
-        DatabaseMetaData metaData = org.mockito.Mockito.mock(DatabaseMetaData.class);
-        when(connection.getMetaData()).thenReturn(metaData);
-        when(connection.getAutoCommit()).thenReturn(true);
-        when(dataSource.getConnection()).thenReturn(connection);
-
         accountId = UUID.randomUUID();
         householdId = UUID.randomUUID();
         principal = new ZijaPrincipal(accountId, "testuser", "测试用户", "hash", true);

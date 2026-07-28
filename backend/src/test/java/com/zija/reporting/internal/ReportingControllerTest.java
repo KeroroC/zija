@@ -1,6 +1,7 @@
 package com.zija.reporting.internal;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.AbstractMockMvcIntegrationTest;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.household.internal.persistence.*;
@@ -19,7 +20,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -35,9 +35,8 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=false", "zija.session.jdbc.enabled=false"})
 @AutoConfigureMockMvc
-class ReportingControllerTest {
+class ReportingControllerTest extends AbstractMockMvcIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean SearchService searchService;

@@ -1,5 +1,6 @@
 package com.zija.catalog.internal;
 
+import com.zija.AbstractMockMvcIntegrationTest;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.catalog.internal.persistence.BrandEntity;
@@ -16,15 +17,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,9 +33,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=false", "zija.session.jdbc.enabled=false"})
 @AutoConfigureMockMvc
-class CatalogDictionaryControllerTest {
+class CatalogDictionaryControllerTest extends AbstractMockMvcIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean CatalogDictionaryService dictionaryService;
@@ -49,7 +45,6 @@ class CatalogDictionaryControllerTest {
     @MockitoBean AccountMapper accountMapper;
     @MockitoBean SystemApi systemApi;
     @MockitoBean ZijaSessionInvalidator sessionInvalidator;
-    @MockitoBean DataSource dataSource;
 
     private static final UUID HOUSEHOLD_ID = UUID.randomUUID();
 
@@ -58,12 +53,6 @@ class CatalogDictionaryControllerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        Connection connection = org.mockito.Mockito.mock(Connection.class);
-        DatabaseMetaData metaData = org.mockito.Mockito.mock(DatabaseMetaData.class);
-        when(connection.getMetaData()).thenReturn(metaData);
-        when(connection.getAutoCommit()).thenReturn(true);
-        when(dataSource.getConnection()).thenReturn(connection);
-
         accountId = UUID.randomUUID();
         principal = new ZijaPrincipal(accountId, "member", "成员", "hash", true);
 

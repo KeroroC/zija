@@ -1,5 +1,6 @@
 package com.zija.system.internal;
 
+import com.zija.AbstractMockMvcIntegrationTest;
 import com.zija.ZijaRequestIdFilter;
 import com.zija.ZijaSecurityConfiguration;
 import com.zija.ZijaSessionInvalidator;
@@ -9,7 +10,6 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -28,14 +28,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {"spring.flyway.enabled=false", "zija.session.jdbc.enabled=false"})
 @AutoConfigureMockMvc
 @Import({
         ZijaSecurityConfiguration.class,
         ZijaRequestIdFilter.class,
         SystemExceptionHandler.class
 })
-class SystemControllerTest {
+class SystemControllerTest extends AbstractMockMvcIntegrationTest {
 
     @Autowired
     private MockMvc mvc;

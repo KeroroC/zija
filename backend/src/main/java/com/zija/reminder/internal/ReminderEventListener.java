@@ -6,9 +6,10 @@ import com.zija.reminder.internal.persistence.DeadLetterMapper;
 import com.zija.reminder.internal.persistence.ProcessedEventMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.OffsetDateTime;
@@ -41,7 +42,15 @@ public class ReminderEventListener {
         this.requiresNewTx.setPropagationBehaviorName("PROPAGATION_REQUIRES_NEW");
     }
 
-    @EventListener
+    /**
+     * 使用 {@link TransactionalEventListener} + AFTER_COMMIT 阶段，保证父事务（库存命令）
+     * 提交后再读取库存聚合。{@link ApplicationEventPublisher#publishEvent} 在事务内同步
+     * 派发到 {@code @EventListener}，会让本监听器在父事务尚未提交时启动 REQUIRES_NEW 事务，
+     * 读不到刚写入的库存位（qty=0），从而误判低库存。阶段六迁移到 {@code spring-modulith-starter-jdbc}
+     * 后，发布侧仍是同步 ApplicationEventPublisher，所以必须显式 AFTER_COMMIT 才能让
+     * reconciler 看到正确的提交后库存。
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onStockChanged(StockChangedEvent evt) {
         int rows = processedEventMapper.insertOnConflictDoNothing(evt.eventId());
         if (rows == 0) return; // 已处理，跳过
