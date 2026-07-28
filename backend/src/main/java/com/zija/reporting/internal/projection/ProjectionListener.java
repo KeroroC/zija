@@ -10,9 +10,10 @@ import com.zija.location.LocationChangedEvent;
 import com.zija.reporting.internal.persistence.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.OffsetDateTime;
@@ -20,8 +21,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 投影事件监听器。去重后在 REQUIRES_NEW 事务中 upsert 投影表。
- * 失败时写 dead-letter 并删除去重行，允许重试。
+ * 投影事件监听器。使用 AFTER_COMMIT 阶段确保发布事务提交后再读取数据，
+ * 去重与 upsert 在同一 REQUIRES_NEW 事务中完成。
+ * 失败时写 dead-letter 并允许重试。
  */
 @Service
 public class ProjectionListener {
@@ -67,13 +69,15 @@ public class ProjectionListener {
 
     // ===== 库存事件 =====
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onStockChanged(StockChangedEvent evt) {
-        int rows = processedEventMapper.insertOnConflictDoNothing(
-                evt.eventId(), "StockChangedEvent");
-        if (rows == 0) return;
         try {
-            upsertInNewTx(() -> handleStockChanged(evt));
+            requiresNewTx.executeWithoutResult(status -> {
+                int rows = processedEventMapper.insertOnConflictDoNothing(
+                        evt.eventId(), "StockChangedEvent");
+                if (rows == 0) return;
+                handleStockChanged(evt);
+            });
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "StockChangedEvent", toMap(evt), ex);
             log.warn("StockChangedEvent projection failed, wrote dead-letter: eventId={}",
@@ -136,13 +140,15 @@ public class ProjectionListener {
 
     // ===== Catalog 事件 =====
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onItemChanged(ItemChangedEvent evt) {
-        int rows = processedEventMapper.insertOnConflictDoNothing(
-                evt.eventId(), "ItemChangedEvent");
-        if (rows == 0) return;
         try {
-            upsertInNewTx(() -> handleItemChanged(evt));
+            requiresNewTx.executeWithoutResult(status -> {
+                int rows = processedEventMapper.insertOnConflictDoNothing(
+                        evt.eventId(), "ItemChangedEvent");
+                if (rows == 0) return;
+                handleItemChanged(evt);
+            });
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "ItemChangedEvent", toMap(evt), ex);
             log.warn("ItemChangedEvent projection failed: eventId={}", evt.eventId(), ex);
@@ -170,13 +176,13 @@ public class ProjectionListener {
         }
     }
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCategoryChanged(CategoryChangedEvent evt) {
-        int rows = processedEventMapper.insertOnConflictDoNothing(
-                evt.eventId(), "CategoryChangedEvent");
-        if (rows == 0) return;
         try {
-            upsertInNewTx(() -> {
+            requiresNewTx.executeWithoutResult(status -> {
+                int rows = processedEventMapper.insertOnConflictDoNothing(
+                        evt.eventId(), "CategoryChangedEvent");
+                if (rows == 0) return;
                 // 分类变更 → 重建受影响物品的 search_index 行
                 OffsetDateTime cursor = OffsetDateTime.MIN;
                 boolean hasMore = true;
@@ -197,13 +203,13 @@ public class ProjectionListener {
         }
     }
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onBrandChanged(BrandChangedEvent evt) {
-        int rows = processedEventMapper.insertOnConflictDoNothing(
-                evt.eventId(), "BrandChangedEvent");
-        if (rows == 0) return;
         try {
-            upsertInNewTx(() -> {
+            requiresNewTx.executeWithoutResult(status -> {
+                int rows = processedEventMapper.insertOnConflictDoNothing(
+                        evt.eventId(), "BrandChangedEvent");
+                if (rows == 0) return;
                 // 品牌变更 → 重建受影响物品的 search_index 行
                 OffsetDateTime cursor = OffsetDateTime.MIN;
                 boolean hasMore = true;
@@ -224,13 +230,13 @@ public class ProjectionListener {
         }
     }
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onUnitChanged(UnitChangedEvent evt) {
-        int rows = processedEventMapper.insertOnConflictDoNothing(
-                evt.eventId(), "UnitChangedEvent");
-        if (rows == 0) return;
         try {
-            upsertInNewTx(() -> {
+            requiresNewTx.executeWithoutResult(status -> {
+                int rows = processedEventMapper.insertOnConflictDoNothing(
+                        evt.eventId(), "UnitChangedEvent");
+                if (rows == 0) return;
                 // 单位变更 → 重建受影响物品的 search_index 行
                 OffsetDateTime cursor = OffsetDateTime.MIN;
                 boolean hasMore = true;
@@ -251,13 +257,13 @@ public class ProjectionListener {
         }
     }
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onTagChanged(TagChangedEvent evt) {
-        int rows = processedEventMapper.insertOnConflictDoNothing(
-                evt.eventId(), "TagChangedEvent");
-        if (rows == 0) return;
         try {
-            upsertInNewTx(() -> {
+            requiresNewTx.executeWithoutResult(status -> {
+                int rows = processedEventMapper.insertOnConflictDoNothing(
+                        evt.eventId(), "TagChangedEvent");
+                if (rows == 0) return;
                 // 标签变更 → 重建受影响物品的 search_index 行（tag_names 字段）
                 // 由于 TagChangedEvent 不含物品列表，重建该家庭所有物品的搜索索引
                 OffsetDateTime cursor = OffsetDateTime.MIN;
@@ -279,13 +285,15 @@ public class ProjectionListener {
 
     // ===== Location 事件 =====
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLocationChanged(LocationChangedEvent evt) {
-        int rows = processedEventMapper.insertOnConflictDoNothing(
-                evt.eventId(), "LocationChangedEvent");
-        if (rows == 0) return;
         try {
-            upsertInNewTx(() -> handleLocationChanged(evt));
+            requiresNewTx.executeWithoutResult(status -> {
+                int rows = processedEventMapper.insertOnConflictDoNothing(
+                        evt.eventId(), "LocationChangedEvent");
+                if (rows == 0) return;
+                handleLocationChanged(evt);
+            });
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "LocationChangedEvent", toMap(evt), ex);
             log.warn("LocationChangedEvent projection failed: eventId={}", evt.eventId(), ex);
@@ -341,10 +349,6 @@ public class ProjectionListener {
     }
 
     // ===== 辅助方法 =====
-
-    private void upsertInNewTx(Runnable action) {
-        requiresNewTx.executeWithoutResult(status -> action.run());
-    }
 
     private void saveDeadLetterInNewTx(UUID eventId, String eventType,
                                         Map<String, Object> payload, Throwable err) {

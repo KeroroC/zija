@@ -12,6 +12,6 @@ test("bootstrap creates household and owner then lands on home", async ({ page }
   await bootstrapViaUi(page, owner);
   const csrfAfterBootstrap = await readCsrf(page.request);
   expect(csrfAfterBootstrap).not.toBe(csrfBeforeBootstrap);
-  await expect(page.getByText("系统运行正常")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "首页" })).toBeVisible();
   await expect(page.getByText("所有者")).toBeVisible();
 });

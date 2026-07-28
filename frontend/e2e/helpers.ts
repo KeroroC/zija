@@ -39,7 +39,7 @@ export async function bootstrapViaUi(page: Page, user = owner): Promise<void> {
   await inputs.nth(3).fill(user.displayName);
   await page.getByRole("button", { name: "创建家庭" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "系统状态" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "首页" })).toBeVisible();
   await expect(page.getByText("所有者")).toBeVisible();
 }
 

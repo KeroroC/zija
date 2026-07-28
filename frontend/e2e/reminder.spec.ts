@@ -64,7 +64,7 @@ test("提醒规则页 owner 可保存", async ({ page }) => {
   await expect(page.locator(".page-title")).toContainText("提醒规则");
 
   // 保存按钮对 owner 可见（ensureBootstrapped 登录的是 owner）
-  await expect(page.getByRole("button", { name: "保存" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "保存", exact: true })).toBeVisible();
 });
 
 test("邮件提醒分区可见且 SMTP 状态徽章显示", async ({ page }) => {
