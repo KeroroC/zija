@@ -43,5 +43,5 @@ export function buildExportUrl(
 export async function rebuildProjection(
   householdId: string,
 ): Promise<void> {
-  await postJson<void>(`${BASE}/projection/rebuild`, { householdId })
+  await postJson<void>(`${BASE}/projection/rebuild?householdId=${householdId}`)
 }
