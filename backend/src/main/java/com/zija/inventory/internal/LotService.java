@@ -1,6 +1,9 @@
 package com.zija.inventory.internal;
 
 import com.zija.catalog.CatalogApi;
+import com.zija.inventory.internal.exception.InventoryArchivedItemException;
+import com.zija.inventory.internal.exception.InventoryLotNotFoundException;
+import com.zija.inventory.internal.exception.InventoryLotVersionConflictException;
 import com.zija.inventory.internal.persistence.LotEntity;
 import com.zija.inventory.internal.persistence.LotMapper;
 import org.springframework.stereotype.Service;

@@ -1,7 +1,0 @@
-package com.zija.catalog.internal;
-
-public class CatalogCycleDetectedException extends RuntimeException {
-    public CatalogCycleDetectedException() {
-        super("category move would create a cycle");
-    }
-}

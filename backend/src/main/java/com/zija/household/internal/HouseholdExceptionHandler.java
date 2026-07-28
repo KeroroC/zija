@@ -1,7 +1,7 @@
 package com.zija.household.internal;
 
 import com.zija.ZijaRequestIdFilter;
-import com.zija.household.internal.exception.HouseholdAlreadyInitializedException;
+import com.zija.household.internal.exception.*;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;

@@ -6,7 +6,7 @@ import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.household.internal.persistence.MemberEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.household.internal.persistence.HouseholdEntity;
-import com.zija.household.internal.InvalidInvitationException;
+import com.zija.household.internal.exception.InvalidInvitationException;
 import com.zija.identity.internal.persistence.AccountEntity;
 import com.zija.identity.internal.persistence.AccountMapper;
 import org.junit.jupiter.api.BeforeEach;

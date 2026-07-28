@@ -2,6 +2,8 @@ package com.zija.inventory.internal;
 
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
+import com.zija.inventory.internal.exception.InventoryIdempotencyConflictException;
+import com.zija.inventory.internal.exception.InventoryInsufficientStockException;
 import com.zija.inventory.internal.persistence.LotMapper;
 import com.zija.inventory.internal.persistence.MovementMapper;
 import com.zija.inventory.internal.persistence.StockPositionMapper;

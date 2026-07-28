@@ -2,6 +2,7 @@ package com.zija.household.internal;
 
 import com.zija.ZijaSessionInvalidator;
 import com.zija.ZijaSessionAuthenticationSupport;
+import com.zija.household.internal.exception.InvalidInvitationException;
 import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

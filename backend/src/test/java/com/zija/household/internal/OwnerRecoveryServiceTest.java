@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.household.internal.exception.InvalidInvitationException;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
 import com.zija.identity.IdentityApi;

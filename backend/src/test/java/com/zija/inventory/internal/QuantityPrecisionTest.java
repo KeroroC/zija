@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.inventory.internal.exception.InventoryQuantityPrecisionInvalidException;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;

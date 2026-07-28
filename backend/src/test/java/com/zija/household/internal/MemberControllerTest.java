@@ -3,6 +3,7 @@ package com.zija.household.internal;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.household.HouseholdApi;
+import com.zija.household.internal.exception.InsufficientRoleException;
 import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;

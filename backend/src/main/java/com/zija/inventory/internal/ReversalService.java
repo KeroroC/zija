@@ -2,6 +2,9 @@ package com.zija.inventory.internal;
 
 import com.zija.inventory.StockChangedEvent;
 import com.zija.inventory.internal.event.InventoryEventPublisher;
+import com.zija.inventory.internal.exception.InventoryMovementAlreadyReversedException;
+import com.zija.inventory.internal.exception.InventoryReversalNotAllowedException;
+import com.zija.inventory.internal.exception.InventoryReversalWouldNegativeException;
 import com.zija.inventory.internal.persistence.MovementEntity;
 import com.zija.inventory.internal.persistence.MovementMapper;
 import com.zija.inventory.internal.persistence.StockPositionEntity;

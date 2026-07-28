@@ -1,5 +1,8 @@
 package com.zija.file.internal;
 
+import com.zija.file.internal.exception.FileMediaTypeUnsupportedException;
+import com.zija.file.internal.exception.FileSignatureMismatchException;
+import com.zija.file.internal.exception.FileTooLargeException;
 import org.springframework.stereotype.Component;
 
 import java.util.Locale;

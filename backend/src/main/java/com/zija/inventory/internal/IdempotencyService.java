@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.inventory.internal.exception.InventoryIdempotencyConflictException;
 import com.zija.inventory.internal.persistence.IdempotencyRecordEntity;
 import com.zija.inventory.internal.persistence.IdempotencyRecordMapper;
 import org.springframework.stereotype.Service;

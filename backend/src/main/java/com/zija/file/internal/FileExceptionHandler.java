@@ -1,5 +1,8 @@
 package com.zija.file.internal;
 
+import com.zija.file.internal.exception.FileMediaTypeUnsupportedException;
+import com.zija.file.internal.exception.FileSignatureMismatchException;
+import com.zija.file.internal.exception.FileTooLargeException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;

@@ -1,5 +1,6 @@
 package com.zija.identity.internal;
 
+import com.zija.identity.internal.exception.LoginRateLimitedException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;

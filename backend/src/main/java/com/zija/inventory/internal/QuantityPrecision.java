@@ -1,5 +1,7 @@
 package com.zija.inventory.internal;
 
+import com.zija.inventory.internal.exception.InventoryQuantityPrecisionInvalidException;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 

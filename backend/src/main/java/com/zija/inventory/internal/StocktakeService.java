@@ -2,6 +2,10 @@ package com.zija.inventory.internal;
 
 import com.zija.inventory.StockChangedEvent;
 import com.zija.inventory.internal.event.InventoryEventPublisher;
+import com.zija.inventory.internal.exception.InventoryLotNotFoundException;
+import com.zija.inventory.internal.exception.InventoryLotVersionConflictException;
+import com.zija.inventory.internal.exception.StocktakeNotDraftException;
+import com.zija.inventory.internal.exception.StocktakeStaleException;
 import com.zija.inventory.internal.persistence.LotEntity;
 import com.zija.inventory.internal.persistence.LotMapper;
 import com.zija.inventory.internal.persistence.MovementEntity;

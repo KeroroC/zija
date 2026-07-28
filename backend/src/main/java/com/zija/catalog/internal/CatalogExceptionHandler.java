@@ -1,5 +1,6 @@
 package com.zija.catalog.internal;
 
+import com.zija.catalog.internal.exception.*;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;

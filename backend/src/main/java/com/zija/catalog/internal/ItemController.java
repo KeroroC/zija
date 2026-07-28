@@ -1,6 +1,7 @@
 package com.zija.catalog.internal;
 
 import com.zija.ZijaPrincipal;
+import com.zija.catalog.internal.exception.CatalogArchivedDictionaryException;
 import com.zija.catalog.internal.persistence.ItemEntity;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireMember;

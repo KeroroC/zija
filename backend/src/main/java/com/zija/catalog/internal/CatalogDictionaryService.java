@@ -2,6 +2,10 @@ package com.zija.catalog.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zija.catalog.internal.event.CatalogEventPublisher;
+import com.zija.catalog.internal.exception.CatalogCategoryHasChildrenException;
+import com.zija.catalog.internal.exception.CatalogCycleDetectedException;
+import com.zija.catalog.internal.exception.CatalogDictionaryNameExistsException;
+import com.zija.catalog.internal.exception.CatalogVersionConflictException;
 import com.zija.catalog.internal.persistence.*;
 import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;

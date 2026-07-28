@@ -1,6 +1,7 @@
 package com.zija.reminder.internal;
 
-import com.zija.reminder.internal.mail.MailSettingVersionConflictException;
+import com.zija.reminder.internal.exception.*;
+import com.zija.reminder.internal.exception.MailSettingVersionConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;

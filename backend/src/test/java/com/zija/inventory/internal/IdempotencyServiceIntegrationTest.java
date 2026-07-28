@@ -2,6 +2,7 @@ package com.zija.inventory.internal;
 
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
+import com.zija.inventory.internal.exception.InventoryIdempotencyConflictException;
 import com.zija.inventory.internal.persistence.IdempotencyRecordMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

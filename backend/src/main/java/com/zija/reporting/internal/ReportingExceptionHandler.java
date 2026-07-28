@@ -1,6 +1,6 @@
 package com.zija.reporting.internal;
 
-import com.zija.reporting.internal.export.ExportTooLargeException;
+import com.zija.reporting.internal.exception.ExportTooLargeException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;

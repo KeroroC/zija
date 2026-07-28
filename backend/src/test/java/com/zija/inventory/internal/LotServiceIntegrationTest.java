@@ -2,6 +2,8 @@ package com.zija.inventory.internal;
 
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
+import com.zija.inventory.internal.exception.InventoryArchivedItemException;
+import com.zija.inventory.internal.exception.InventoryLotVersionConflictException;
 import com.zija.inventory.internal.persistence.LotEntity;
 import com.zija.inventory.internal.persistence.LotMapper;
 import org.junit.jupiter.api.BeforeEach;

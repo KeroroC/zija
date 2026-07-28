@@ -1,6 +1,9 @@
 package com.zija.identity.internal;
 
 import com.zija.ZijaRequestIdFilter;
+import com.zija.identity.internal.exception.InvalidCredentialsException;
+import com.zija.identity.internal.exception.LoginRateLimitedException;
+import com.zija.identity.internal.exception.UsernameAlreadyExistsException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;

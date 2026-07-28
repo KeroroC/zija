@@ -2,6 +2,8 @@ package com.zija.identity.internal;
 
 import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
+import com.zija.identity.internal.exception.InvalidCredentialsException;
+import com.zija.identity.internal.exception.UsernameAlreadyExistsException;
 import com.zija.identity.internal.persistence.AccountEntity;
 import com.zija.identity.internal.persistence.AccountMapper;
 import com.zija.system.SystemApi;

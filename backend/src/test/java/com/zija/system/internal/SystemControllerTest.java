@@ -4,6 +4,7 @@ import com.zija.ZijaRequestIdFilter;
 import com.zija.ZijaSecurityConfiguration;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.system.SystemApi;
+import com.zija.system.internal.exception.SystemStateUnavailableException;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
 import org.junit.jupiter.api.Test;

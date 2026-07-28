@@ -1,6 +1,7 @@
 package com.zija.household.internal;
 
 import com.zija.household.HouseholdApi;
+import com.zija.household.internal.exception.InsufficientRoleException;
 import com.zija.household.internal.persistence.InvitationEntity;
 import com.zija.household.internal.persistence.InvitationMapper;
 import com.zija.household.internal.persistence.MemberEntity;

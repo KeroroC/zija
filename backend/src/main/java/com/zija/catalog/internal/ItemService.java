@@ -5,13 +5,15 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.catalog.CatalogApi;
 import com.zija.catalog.internal.event.CatalogEventPublisher;
+import com.zija.catalog.internal.exception.CatalogArchivedDictionaryException;
+import com.zija.catalog.internal.exception.CatalogUnitPrecisionInvalidException;
+import com.zija.catalog.internal.exception.CatalogVersionConflictException;
 import com.zija.catalog.internal.persistence.*;
 import com.zija.file.FileApi;
 import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.*;

@@ -1,6 +1,7 @@
 package com.zija.system.internal;
 
 import com.zija.system.SystemApi;
+import com.zija.system.internal.exception.SystemStateUnavailableException;
 import com.zija.system.internal.persistence.SystemInstallationMapper;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;

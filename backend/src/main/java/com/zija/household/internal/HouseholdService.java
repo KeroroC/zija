@@ -2,6 +2,7 @@ package com.zija.household.internal;
 
 import com.zija.household.HouseholdApi;
 import com.zija.household.internal.exception.HouseholdAlreadyInitializedException;
+import com.zija.household.internal.exception.InvalidCredentialsException;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.household.internal.persistence.MemberEntity;

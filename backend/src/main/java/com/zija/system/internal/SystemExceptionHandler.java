@@ -1,6 +1,7 @@
 package com.zija.system.internal;
 
 import com.zija.ZijaRequestIdFilter;
+import com.zija.system.internal.exception.SystemStateUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;

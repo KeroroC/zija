@@ -6,6 +6,7 @@ import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
 import com.zija.identity.internal.auth.ChangePasswordRequest;
 import com.zija.identity.internal.auth.LoginRequest;
+import com.zija.identity.internal.exception.LoginRateLimitedException;
 import com.zija.identity.internal.persistence.AccountMapper;
 import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;

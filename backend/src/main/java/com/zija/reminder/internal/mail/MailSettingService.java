@@ -1,6 +1,7 @@
 package com.zija.reminder.internal.mail;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.reminder.internal.exception.MailSettingVersionConflictException;
 import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
