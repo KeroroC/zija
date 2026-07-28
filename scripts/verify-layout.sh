@@ -11,7 +11,7 @@ required_files=(
   "backend/mvnw"
   "backend/src/main/java/com/zija/ZijaApplication.java"
   "backend/src/main/resources/application.yml"
-  "backend/src/main/resources/db/migration/V1__create_system_installation.sql"
+  "backend/src/main/resources/db/migration/V1__create_all_tables.sql"
   "frontend/package.json"
   "frontend/src/main.ts"
   "frontend/src/components/AppShell.vue"
