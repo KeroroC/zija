@@ -14,6 +14,7 @@ import com.zija.inventory.internal.persistence.StocktakeItemEntity;
 import com.zija.system.SystemApi;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -125,7 +126,7 @@ class InventoryService implements InventoryApi {
     }
 
     @Override
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    @Transactional(readOnly = true)
     public List<LotInfo> lotsOfItem(UUID householdId, UUID itemId) {
         return itemStockAggregateMapper.lotsOfItem(householdId, itemId).stream()
                 .map(r -> new LotInfo(r.getLotId(), r.getItemId(), r.getExpiryDate(), r.getTotalQuantity()))
@@ -133,14 +134,14 @@ class InventoryService implements InventoryApi {
     }
 
     @Override
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    @Transactional(readOnly = true)
     public BigDecimal currentTotalStockOfItem(UUID householdId, UUID itemId) {
         var v = itemStockAggregateMapper.totalStockOfItem(householdId, itemId);
         return v != null ? v : BigDecimal.ZERO;
     }
 
     @Override
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    @Transactional(readOnly = true)
     public PageDump<StockPositionDump> dumpStockPositions(UUID householdId, OffsetDateTime cursor, int limit) {
         var items = stockPositionMapper.dumpStockPositions(householdId, cursor, limit);
         OffsetDateTime nextCursor = items.isEmpty() ? cursor : items.get(items.size() - 1).updatedAt();
@@ -149,7 +150,7 @@ class InventoryService implements InventoryApi {
     }
 
     @Override
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    @Transactional(readOnly = true)
     public PageDump<MovementDump> dumpMovements(UUID householdId, OffsetDateTime cursor, int limit) {
         var items = movementMapper.dumpMovements(householdId, cursor, limit);
         OffsetDateTime nextCursor = items.isEmpty() ? cursor : items.get(items.size() - 1).createdAt();
@@ -162,6 +163,7 @@ class InventoryService implements InventoryApi {
     /**
      * 更新批次元数据。
      */
+    @Transactional
     public LotEntity updateLotMeta(UUID accountId, UUID householdId, UUID lotId,
                                    int clientVersion, LocalDate purchaseDate,
                                    LocalDate productionDate, LocalDate expiryDate,
