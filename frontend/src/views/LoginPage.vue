@@ -15,6 +15,7 @@
             v-model="form.username"
             placeholder="请输入用户名"
             size="large"
+            autocomplete="username"
             required
             @keyup.enter="submit"
           />
@@ -28,6 +29,7 @@
             type="password"
             placeholder="请输入密码"
             size="large"
+            autocomplete="current-password"
             show-password
             required
             @keyup.enter="submit"

@@ -53,6 +53,19 @@ describe("LoginPage", () => {
     expect(pushMock).toHaveBeenCalledWith({ name: "home" });
   });
 
+  it("exposes password-manager-friendly autocomplete hints so Bitwarden can identify both fields", async () => {
+    // Regression: Bitwarden identifies the password field via type="password" even
+    // when autocomplete="off", but it cannot identify a text-type username field
+    // without autocomplete="username". Without this hint Bitwarden only autofills
+    // the password, leaving the username blank. See MDN "Identify Input Purpose"
+    // and WCAG 2.2 SC 1.3.5.
+    wrapper = mount(LoginPage, { global: { plugins: [ElementPlus] } });
+    const inputs = wrapper.findAll("input");
+
+    expect(inputs[0].attributes("autocomplete")).toBe("username");
+    expect(inputs[1].attributes("autocomplete")).toBe("current-password");
+  });
+
   it("submits when the user presses Enter in the password field", async () => {
     wrapper = mount(LoginPage, { global: { plugins: [ElementPlus] } });
     const inputs = wrapper.findAll("input");
