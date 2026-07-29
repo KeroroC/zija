@@ -8,6 +8,13 @@ test("login succeeds with owner credentials and rejects bad password uniformly",
   expect(originalSession).toBeTruthy();
 
   await page.getByRole("button", { name: "登出" }).click();
+  // af0a1ae added an ElMessageBox.confirm() step before the actual logout runs;
+  // the confirm button reuses the "登出" text, so we scope to the dialog to
+  // avoid matching the header button. The dialog's confirm button uses type
+  // "primary" which Element Plus renders last among the footer buttons.
+  const logoutDialog = page.locator(".el-message-box");
+  await expect(logoutDialog).toBeVisible();
+  await logoutDialog.getByRole("button", { name: "登出" }).click();
   await expect(page).toHaveURL(/login/);
 
   await page.goto("/login");
