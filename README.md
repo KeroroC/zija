@@ -1,6 +1,6 @@
 # 知家 · zija
 
-知家是面向单个家庭、多位成员的私有化物品与库存管理系统。采用 Spring Modulith 模块化单体架构，覆盖物品分类、存储位置、库存批次、文件管理等功能。
+知家是面向单个家庭、多位成员的私有化物品与库存管理系统。采用 Spring Modulith 模块化单体架构，覆盖物品分类、存储位置、库存批次与流水、盘点、提醒、报表与 CSV 导出、文件存储与完整性检查等功能。
 
 ## 技术栈
 
@@ -46,12 +46,15 @@ make dev-frontend
 
 系统采用 Spring Modulith 模块化单体架构，按业务能力划分模块：
 
-- **system** - 健康检查、安装信息、审计日志
-- **identity** - 认证、用户管理
-- **household** - 家庭管理
+- **system** - 健康检查、安装信息、审计日志查询
+- **identity** - 认证、用户与会话管理
+- **household** - 家庭管理、引导、邀请
 - **catalog** - 物品分类
 - **location** - 存储位置
-- **file** - 文件存储
+- **file** - 文件存储与完整性检查
+- **inventory** - 批次（Lot）、库存位、流水（Movement）、盘点（Stocktake）、幂等与一致性
+- **reminder** - 提醒规则与通知
+- **reporting** - 读模型投影、报表查询端口、CSV 导出
 
 每个模块遵循 `com.zija.<module>` 包结构，包含公共 API 接口和内部实现。模块边界通过 `ModularityTests` 自动验证。
 
@@ -93,6 +96,30 @@ make recover-owner
 
 命令以非 Web 模式运行，向终端输出一次性恢复链接（`/owner-recovery#token=...`，15 分钟有效）。访问链接重置密码后，旧会话立即失效。
 
+### 库存
+
+- 物品（Item）描述「是什么」；批次（Lot）描述某次购入或独立资产，独立到期与库存
+- 库存位（Stock Position）是某批次在某位置的当前数量，由不可变流水（Movement）作为事实来源
+- 流水类型：入库 / 领用 / 报损 / 盘点调整 / 移位 / 冲正
+- 盘点（Stocktake）通过投影重建（Snapshot Ports）支持重新生成读模型
+
+### 提醒与通知
+
+- Owner/Admin 在「提醒规则」页配置规则（最低库存阈值、过期提醒等）
+- 通知中心（`/notifications`）展示未读提醒
+- 后端通过 SMTP 发送邮件提醒（可选）
+
+### 报表与数据交换
+
+- 报表模块提供只读查询端口（Query Port），外部模块通过公开 API 获取数据，不暴露原始实体或 Mapper
+- 支持 CSV 导出
+- 公共领域事件（Public Domain Event）字段只能追加，不可重排或删除
+
+### 文件完整性
+
+- `GET /api/v1/files/integrity-report` 检查已上传文件的完整性
+- 与备份恢复流程配合使用
+
 ### API 规范
 
 - 所有业务端点位于 `/api/v1` 下
@@ -114,11 +141,21 @@ make recover-owner
 
 ~~~bash
 make verify                  # 运行布局检查、所有测试、生产构建、git diff --check
+make verify-layout           # 仅布局/模块边界检查
 make compose-smoke           # Docker Compose 全栈健康检查
 make e2e-smoke               # Playwright 浏览器烟雾测试
 ~~~
 
-`make verify` 运行后端、前端、模块边界、PostgreSQL Testcontainers、类型检查和生产构建。两个 smoke 命令会创建临时 Compose 数据卷并在结束时删除。
+`make verify` 依次执行：布局检查（`verify-layout`）→ 后端测试 → 前端测试 → 后端生产构建 → 前端生产构建 → `git diff --check`。`make verify-layout` 可单独运行布局/模块边界检查。两个 smoke 命令会创建临时 Compose 数据卷并在结束时删除。
+
+### 备份与恢复
+
+~~~bash
+make backup-test             # 快照当前运行栈到 ./backups/
+make restore-smoke           # 用最近备份恢复临时空栈并验证
+~~~
+
+详见 [备份与恢复文档](docs/deploy/backup-restore.md)。
 
 ## 测试
 
@@ -139,11 +176,11 @@ npm --prefix frontend test -- --reporter=verbose     # 前端测试（详细输�
 
 ## 方案与计划
 
-- 设计方案：`docs/superpowers/specs/2026-07-18-zija-design.md`
-- 阶段二设计：`docs/superpowers/specs/2026-07-20-phase2-identity-household-design.md`
-- 交付路线：`docs/superpowers/plans/2026-07-19-delivery-roadmap.md`
-- 阶段二计划：`docs/superpowers/plans/2026-07-20-phase2-identity-household.md`
-- 工程基础计划：`docs/superpowers/plans/2026-07-19-foundation-baseline.md`
+- **设计规范：** [`docs/design/redesign-visual-spec.md`](docs/design/redesign-visual-spec.md)（松间账册 / Pine Ledger 视觉规范）
+- **领域词汇表：** [`CONTEXT.md`](CONTEXT.md)
+- **架构决策记录（ADR）：** [`docs/adr/`](docs/adr/)（9 份）
+- **历史 spec 与 plan：** [`docs/superpowers/specs/`](docs/superpowers/specs/) 与 [`docs/superpowers/plans/`](docs/superpowers/plans/)（覆盖阶段一至阶段七）
+- **AI 协作约定：** [`CLAUDE.md`](CLAUDE.md)（架构、命令、风格、Agent 技能）
 
 ## 代码风格
 
