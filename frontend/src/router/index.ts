@@ -1,42 +1,25 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useSessionStore } from "../stores/session";
-import HomeView from "../views/HomeView.vue";
-import SystemStatusView from "../views/SystemStatusView.vue";
-import RemindersView from "../views/RemindersView.vue";
-import NotificationsView from "../views/NotificationsView.vue";
-import ReminderRulesSettingsView from "../views/ReminderRulesSettingsView.vue";
-import BootstrapPage from "../views/BootstrapPage.vue";
-import LoginPage from "../views/LoginPage.vue";
-import InvitationRedeemPage from "../views/InvitationRedeemPage.vue";
-import MembersPage from "../views/MembersPage.vue";
-import ProfilePage from "../views/ProfilePage.vue";
-import OwnerRecoveryPage from "../views/OwnerRecoveryPage.vue";
-import AuditLogPage from "../views/AuditLogPage.vue";
-import ItemsPage from "../views/ItemsPage.vue";
-import LocationsPage from "../views/LocationsPage.vue";
-import CatalogSettingsPage from "../views/CatalogSettingsPage.vue";
-import InventoryPage from "../views/InventoryPage.vue";
-import NotFoundPage from "../views/NotFoundPage.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", name: "home", component: HomeView, meta: { title: "首页" } },
-    { path: "/system", name: "system-status", component: SystemStatusView, meta: { title: "系统状态" } },
-    { path: "/reminders", name: "reminders", component: RemindersView, meta: { title: "提醒中心" } },
-    { path: "/notifications", name: "notifications", component: NotificationsView, meta: { title: "通知" } },
-    { path: "/settings/reminder", name: "reminder-settings", component: ReminderRulesSettingsView, meta: { title: "提醒规则" } },
-    { path: "/bootstrap", name: "bootstrap", component: BootstrapPage, meta: { title: "初始化" } },
-    { path: "/login", name: "login", component: LoginPage, meta: { title: "登录" } },
-    { path: "/invitation/redeem", name: "invitation-redeem", component: InvitationRedeemPage, meta: { title: "加入家庭" } },
-    { path: "/members", name: "members", component: MembersPage, meta: { title: "成员管理" } },
-    { path: "/audit-logs", name: "audit-logs", component: AuditLogPage, meta: { title: "审计日志" } },
-    { path: "/profile", name: "profile", component: ProfilePage, meta: { title: "个人资料" } },
-    { path: "/owner-recovery", name: "owner-recovery", component: OwnerRecoveryPage, meta: { title: "重置密码" } },
-    { path: "/items", name: "items", component: ItemsPage, meta: { title: "物品资料" } },
-    { path: "/locations", name: "locations", component: LocationsPage, meta: { title: "位置管理" } },
-    { path: "/settings/catalog", name: "catalog-settings", component: CatalogSettingsPage, meta: { title: "目录设置" } },
-    { path: "/inventory", name: "inventory", component: InventoryPage, meta: { title: "库存管理" } },
+    { path: "/", name: "home", component: () => import("../views/HomeView.vue"), meta: { title: "首页" } },
+    { path: "/system", name: "system-status", component: () => import("../views/SystemStatusView.vue"), meta: { title: "系统状态" } },
+    { path: "/reminders", name: "reminders", component: () => import("../views/RemindersView.vue"), meta: { title: "提醒中心" } },
+    { path: "/notifications", name: "notifications", component: () => import("../views/NotificationsView.vue"), meta: { title: "通知" } },
+    { path: "/settings/reminder", name: "reminder-settings", component: () => import("../views/ReminderRulesSettingsView.vue"), meta: { title: "提醒规则" } },
+    { path: "/bootstrap", name: "bootstrap", component: () => import("../views/BootstrapPage.vue"), meta: { title: "初始化" } },
+    { path: "/login", name: "login", component: () => import("../views/LoginPage.vue"), meta: { title: "登录" } },
+    { path: "/invitation/redeem", name: "invitation-redeem", component: () => import("../views/InvitationRedeemPage.vue"), meta: { title: "加入家庭" } },
+    { path: "/members", name: "members", component: () => import("../views/MembersPage.vue"), meta: { title: "成员管理" } },
+    { path: "/audit-logs", name: "audit-logs", component: () => import("../views/AuditLogPage.vue"), meta: { title: "审计日志" } },
+    { path: "/profile", name: "profile", component: () => import("../views/ProfilePage.vue"), meta: { title: "个人资料" } },
+    { path: "/owner-recovery", name: "owner-recovery", component: () => import("../views/OwnerRecoveryPage.vue"), meta: { title: "重置密码" } },
+    { path: "/items", name: "items", component: () => import("../views/ItemsPage.vue"), meta: { title: "物品资料" } },
+    { path: "/locations", name: "locations", component: () => import("../views/LocationsPage.vue"), meta: { title: "位置管理" } },
+    { path: "/settings/catalog", name: "catalog-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "目录设置" } },
+    { path: "/inventory", name: "inventory", component: () => import("../views/InventoryPage.vue"), meta: { title: "库存管理" } },
     {
       path: "/reports",
       component: () => import("../views/reports/ReportsLayout.vue"),
@@ -52,7 +35,7 @@ export const router = createRouter({
         { path: "settings", name: "report-settings", component: () => import("../views/reports/ReportsSettingsView.vue"), meta: { title: "报表设置" } }
       ]
     },
-    { path: "/:pathMatch(.*)*", name: "not-found", component: NotFoundPage, meta: { title: "页面不存在" } }
+    { path: "/:pathMatch(.*)*", name: "not-found", component: () => import("../views/NotFoundPage.vue"), meta: { title: "页面不存在" } }
   ]
 });
 
