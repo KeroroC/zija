@@ -11,6 +11,7 @@ import "@fontsource-variable/noto-serif-sc";
 // likewise has no position rule — both render unstyled. Import the CSS for the
 // imperative APIs we actually use.
 import "element-plus/theme-chalk/el-message-box.css";
+import "element-plus/theme-chalk/el-message.css";
 import "element-plus/theme-chalk/el-overlay.css";
 import App from "./App.vue";
 import { router } from "./router";
