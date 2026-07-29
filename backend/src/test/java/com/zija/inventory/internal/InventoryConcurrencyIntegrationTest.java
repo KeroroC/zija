@@ -54,6 +54,7 @@ class InventoryConcurrencyIntegrationTest {
     @Autowired MovementMapper movementMapper;
     @Autowired StockCommandService stockCommandService;
     @Autowired ConsistencyCheckService consistencyCheckService;
+    @Autowired ReversalService reversalService;
     @Autowired PlatformTransactionManager txManager;
 
     private UUID householdId;
@@ -266,6 +267,89 @@ class InventoryConcurrencyIntegrationTest {
         var sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
         assertThat(sp).isNotNull();
         assertThat(sp.getQuantity()).isEqualByComparingTo(BigDecimal.TEN);
+    }
+
+    // =====================================================================
+    // Test 4: Two concurrent reverses of the same movement with the same
+    // Idempotency-Key must produce only one REVERSAL row and return the
+    // same reversalMovementId from both callers (replay semantics).
+    // =====================================================================
+
+    @Test
+    void concurrentReverse_sameIdempotencyKey_onlyOneReversal() throws Exception {
+        UUID lotId = seedLot(householdId, itemId);
+        UUID accountId = seedAccount();
+
+        // Seed: inbound 10, consume 6 → stock = 4
+        newTx().executeWithoutResult(s ->
+                stockCommandService.inboundExistingLot(householdId, accountId,
+                        locationId, lotId, BigDecimal.TEN, null, null));
+        var consumeResult = newTx().execute(s ->
+                stockCommandService.consume(householdId, accountId, lotId, locationId,
+                        BigDecimal.valueOf(6), "领用", null, null));
+        UUID originalMovementId = consumeResult.movementId();
+
+        var spBefore = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(spBefore.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(4));
+
+        // Two concurrent reverses, same key, same target
+        String idempotencyKey = UUID.randomUUID().toString();
+        int threadCount = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch latch = new CountDownLatch(1);
+
+        List<Callable<ReversalService.ReversalResult>> tasks = new ArrayList<>();
+        for (int i = 0; i < threadCount; i++) {
+            tasks.add(() -> {
+                latch.await();
+                return newTx().execute(s ->
+                        reversalService.reverse(householdId, accountId, originalMovementId,
+                                "冲正", "memo", idempotencyKey));
+            });
+        }
+
+        latch.countDown();
+        List<Future<ReversalService.ReversalResult>> futures = executor.invokeAll(tasks);
+        executor.shutdown();
+
+        // Both calls succeed
+        List<ReversalService.ReversalResult> results = futures.stream()
+                .map(f -> {
+                    try { return f.get(); } catch (Exception e) { throw new RuntimeException(e); }
+                })
+                .toList();
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).reversalMovementId()).isNotNull();
+        assertThat(results.get(1).reversalMovementId()).isNotNull();
+
+        // Replay: both callers see the SAME reversalMovementId
+        assertThat(results.get(1).reversalMovementId())
+                .isEqualTo(results.get(0).reversalMovementId());
+        assertThat(results.get(1).lotId())
+                .isEqualTo(results.get(0).lotId());
+
+        // Exactly 1 REVERSAL row (no double reversal)
+        Long reversalCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM inventory_movement " +
+                "WHERE household_id = ? AND type = 'REVERSAL' AND reversal_of = ?",
+                Long.class, householdId, originalMovementId);
+        assertThat(reversalCount).isEqualTo(1);
+
+        // Stock position: 4 + 6 = 10 (NOT 16, which would indicate double-reversal)
+        var spAfter = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(spAfter).isNotNull();
+        assertThat(spAfter.getQuantity()).isEqualByComparingTo(BigDecimal.TEN);
+
+        // Total movements: INBOUND + CONSUME + REVERSAL = 3
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(3);
+
+        // Exactly 1 idempotency record for this key
+        Long idemCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM inventory_idempotency_record " +
+                "WHERE household_id = ? AND idempotency_key = ?",
+                Long.class, householdId, idempotencyKey);
+        assertThat(idemCount).isEqualTo(1);
     }
 
     // =====================================================================

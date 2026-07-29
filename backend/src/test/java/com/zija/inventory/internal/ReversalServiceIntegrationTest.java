@@ -55,7 +55,8 @@ class ReversalServiceIntegrationTest {
     void setUp() {
         jdbc.execute("""
                 TRUNCATE TABLE inventory_movement, inventory_stock_position,
-                             inventory_lot, audit_log, catalog_item, catalog_unit,
+                             inventory_lot, inventory_idempotency_record,
+                             audit_log, catalog_item, catalog_unit,
                              location, household, account
                 RESTART IDENTITY CASCADE
                 """);

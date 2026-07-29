@@ -25,15 +25,18 @@ public class ReversalService {
     private final StockPositionMapper stockPositionMapper;
     private final SystemApi systemApi;
     private final InventoryEventPublisher eventPublisher;
+    private final IdempotencyService idempotencyService;
 
     public ReversalService(MovementMapper movementMapper,
                            StockPositionMapper stockPositionMapper,
                            SystemApi systemApi,
-                           InventoryEventPublisher eventPublisher) {
+                           InventoryEventPublisher eventPublisher,
+                           IdempotencyService idempotencyService) {
         this.movementMapper = movementMapper;
         this.stockPositionMapper = stockPositionMapper;
         this.systemApi = systemApi;
         this.eventPublisher = eventPublisher;
+        this.idempotencyService = idempotencyService;
     }
 
     public record ReversalResult(UUID reversalMovementId, UUID lotId) {}
@@ -43,11 +46,15 @@ public class ReversalService {
      * <p>
      * 创建一条 REVERSAL 补偿流水，不修改原始流水。事务编排顺序：
      * <ol>
+     *   <li>幂等键检查（若有）：命中缓存则直接返回缓存的 {@code reversalMovementId}。
+     *       这一步为携带相同 {@code Idempotency-Key} 的并发冲正提供串行化保证，
+     *       避免两个并发请求都通过后续的 {@code countReversalOf} 检查而插入两条 REVERSAL、导致库存双重反转。</li>
      *   <li>加载原始流水，不存在则拒绝</li>
-     *   <li>检查是否已被冲正，已冲正则拒绝</li>
+     *   <li>检查是否已被冲正（无 key 调用方的兜底；存在 TOCTOU 风险，详见内联注释）</li>
      *   <li>类型检查：REVERSAL 类型不可冲正</li>
      *   <li>计算逆向影响并执行库存位增减（若导致负库存则全量回滚）</li>
      *   <li>插入 REVERSAL 流水</li>
+     *   <li>记录幂等结果（若有 key）</li>
      *   <li>记录审计 + 发布事件</li>
      * </ol>
      * 原始流水不会被 UPDATE 或 DELETE。
@@ -56,19 +63,39 @@ public class ReversalService {
     public ReversalResult reverse(UUID householdId, UUID accountId,
                                   UUID originalMovementId, String reason,
                                   String memo, String idempotencyKey) {
-        // 1. Load original movement
+        String requestHash = idempotencyKey != null
+                ? RequestHashing.sha256("REVERSAL:" + originalMovementId + ":" + reason + ":" + memo)
+                : null;
+
+        // 1. Idempotency replay: same Idempotency-Key + same request → return cached reversalMovementId.
+        //    Placed before selectById so replay skips the movement lookup + countReversalOf round-trips.
+        if (idempotencyKey != null) {
+            var cached = idempotencyService.lockOrFind(householdId, idempotencyKey, requestHash);
+            if (cached.isPresent()) {
+                var payload = cached.get().getResponsePayload();
+                UUID cachedReversalMovementId = UUID.fromString(payload.get("reversalMovementId").toString());
+                UUID cachedLotId = UUID.fromString(payload.get("lotId").toString());
+                return new ReversalResult(cachedReversalMovementId, cachedLotId);
+            }
+        }
+
+        // 2. Load original movement
         MovementEntity original = movementMapper.selectById(originalMovementId);
         if (original == null || !original.getHouseholdId().equals(householdId)) {
             throw new InventoryReversalNotAllowedException("movement not found: " + originalMovementId);
         }
 
-        // 2. Check if already reversed
+        // 3. Check if already reversed.
+        //    Note: countReversalOf is a non-locking SELECT COUNT(*), so for concurrent
+        //    calls WITHOUT an Idempotency-Key this check has a TOCTOU window — both
+        //    callers may see count=0 and each insert a REVERSAL. This is the deliberate
+        //    fallback for the no-key path; keyed callers are protected by lockOrFind above.
         if (movementMapper.countReversalOf(householdId, originalMovementId) > 0) {
             throw new InventoryMovementAlreadyReversedException(
                     "movement already reversed: " + originalMovementId);
         }
 
-        // 3. REVERSAL type cannot be reversed
+        // 4. REVERSAL type cannot be reversed
         if ("REVERSAL".equals(original.getType())) {
             throw new InventoryReversalNotAllowedException(
                     "REVERSAL movement cannot be reversed: " + originalMovementId);
@@ -78,7 +105,7 @@ public class ReversalService {
         BigDecimal originalQty = original.getQuantity();
         String type = original.getType();
 
-        // 4. Calculate reverse impact and adjust stock positions
+        // 5. Calculate reverse impact and adjust stock positions
         //    For each subtractIfSufficient that returns 0 → throw, full rollback
         switch (type) {
             case "INBOUND" -> {
@@ -193,7 +220,7 @@ public class ReversalService {
                     "unsupported movement type for reversal: " + type);
         }
 
-        // 5. Insert REVERSAL movement
+        // 6. Insert REVERSAL movement
         //    Quantity = +originalQuantity (always positive)
         //    Endpoints express reverse of original
         UUID reversalMovementId = UUID.randomUUID();
@@ -238,14 +265,22 @@ public class ReversalService {
 
         movementMapper.insert(reversal);
 
-        // 6. Audit
+        // 6. Record idempotency success (within the same transaction as the REVERSAL insert,
+        //    so a thrown exception here rolls back the reversal — Propagation.MANDATORY).
+        if (idempotencyKey != null) {
+            idempotencyService.recordSuccess(householdId, idempotencyKey, requestHash,
+                    reversalMovementId,
+                    Map.of("reversalMovementId", reversalMovementId, "lotId", lotId));
+        }
+
+        // 7. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 "INVENTORY_REVERSAL", "SUCCESS",
                 householdId, accountId, null, null, null,
                 Map.of("reversalOf", originalMovementId, "lotId", lotId,
                         "type", type, "quantity", originalQty)));
 
-        // 7. Publish event
+        // 8. Publish event
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, original.getItemId(),
                 "REVERSAL", originalQty,
