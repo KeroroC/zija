@@ -184,7 +184,7 @@ test("报表完整链路：入库→投影→搜索→库存分布→导出→�
   await popconfirm.getByRole("button", { name: "确认重建" }).click();
 
   // Wait for rebuild to complete
-  await expect(page.getByText("重建完成")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("重建完成", { exact: true })).toBeVisible({ timeout: 30_000 });
 
   // ─── 10. Verify data still exists after rebuild ───
   await page.goto("/reports/stock-by-location");
