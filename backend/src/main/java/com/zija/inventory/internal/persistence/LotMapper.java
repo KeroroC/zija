@@ -24,6 +24,15 @@ public interface LotMapper extends BaseMapper<LotEntity> {
     Integer selectMaxSeqForDate(@Param("householdId") UUID householdId,
                                 @Param("date") java.time.LocalDate date);
 
+    /**
+     * 取该日期的进程内事务级 advisory 锁，把"读 MAX + 写 lot_number"这段临界区
+     * 串行化，避免无锁生成导致的 UNIQUE(lot_number) 冲突。
+     * <p>
+     * 日期相同 → 同一 key → 互相阻塞；日期不同 → 不同 key → 完全并行。
+     * 锁随事务结束（commit/rollback）自动释放，不需手动解锁。
+     */
+    boolean acquireDailyLotSeqLock(@Param("dateKey") long dateKey);
+
     /** 分页查询批次，包含物品名称、单位和总数量。 */
     IPage<LotWithDetails> findPage(Page<LotWithDetails> page,
                                    @Param("householdId") UUID householdId,

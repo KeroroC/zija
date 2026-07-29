@@ -27,6 +27,10 @@
           AND lot_number LIKE TO_CHAR(#{date}, 'YYYYMMDD') || '%'
     </select>
 
+    <select id="acquireDailyLotSeqLock" resultType="boolean">
+        SELECT pg_advisory_xact_lock(#{dateKey}) IS NULL
+    </select>
+
     <select id="findPage" resultType="com.zija.inventory.internal.persistence.LotWithDetails">
         SELECT l.id AS "lotId",
                l.item_id AS "itemId",

@@ -69,10 +69,18 @@ public class LotService {
     /**
      * 生成当天批次号：yyyyMMdd + 3位序号（补零），超999自动扩位。
      * 序号按 household + 天 粒度递增，每天从1重新开始。
+     * <p>
+     * 取数前先取一个 PostgreSQL 事务级 advisory lock（{@code pg_advisory_xact_lock}），
+     * 把"读 MAX + 写 lot_number"这段临界区按日期串行化，避免无锁生成两条同名
+     * lot_number 撞上 {@code uq_inventory_lot_number} 唯一约束。同日所有入库
+     * 走到同一 key → 互相阻塞；不同日不同 key → 完全并行。锁随事务结束
+     * （commit/rollback）自动释放，无须手动解锁。
      */
     private String generateLotNumber(UUID householdId) {
         LocalDate today = LocalDate.now();
         String datePart = today.format(LOT_DATE_FMT);
+        long dateKey = Long.parseLong(datePart);
+        lotMapper.acquireDailyLotSeqLock(dateKey);
         Integer maxSeq = lotMapper.selectMaxSeqForDate(householdId, today);
         int nextSeq = (maxSeq == null ? 0 : maxSeq) + 1;
         // 3位补零，超过999自动扩到4位、5位...

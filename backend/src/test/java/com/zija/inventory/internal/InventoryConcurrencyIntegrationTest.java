@@ -21,6 +21,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -389,6 +390,65 @@ class InventoryConcurrencyIntegrationTest {
         // 3 movements total (INBOUND, CONSUME, LOSS)
         var movements = movementMapper.selectList(null);
         assertThat(movements).hasSize(3);
+    }
+
+    // =====================================================================
+    // Test 5: Two concurrent inboundNewLot (no idempotency key) must each
+    // receive a unique lot_number. Guards against the lot-number generation
+    // race (SELECT MAX + 1 with no lock) vs the UNIQUE(lot_number) constraint.
+    // =====================================================================
+
+    @Test
+    void concurrentInboundNewLot_withoutIdempotencyKey_uniqueLotNumbers() throws Exception {
+        UUID accountId = seedAccount();
+
+        int threadCount = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch latch = new CountDownLatch(1);
+
+        List<Callable<StockCommandService.InboundResult>> tasks = new ArrayList<>();
+        for (int i = 0; i < threadCount; i++) {
+            tasks.add(() -> {
+                latch.await();
+                return newTx().execute(s ->
+                        stockCommandService.inboundNewLot(householdId, accountId,
+                                locationId,
+                                new StockCommandService.InboundNewLotCommand(
+                                        itemId, BigDecimal.ONE,
+                                        LocalDate.now(), null, null,
+                                        null, null, null)));
+            });
+        }
+
+        latch.countDown();
+        List<Future<StockCommandService.InboundResult>> futures = executor.invokeAll(tasks);
+        executor.shutdown();
+
+        List<StockCommandService.InboundResult> results = futures.stream()
+                .map(f -> {
+                    try { return f.get(); } catch (Exception e) { throw new RuntimeException(e); }
+                })
+                .toList();
+
+        // Both threads must succeed — without the lock this race fails the
+        // UNIQUE(lot_number) constraint on the second INSERT.
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).lotId()).isNotEqualTo(results.get(1).lotId());
+
+        // The two persisted lot_numbers must differ
+        String lotNumber1 = jdbc.queryForObject(
+                "SELECT lot_number FROM inventory_lot WHERE id = ?",
+                String.class, results.get(0).lotId());
+        String lotNumber2 = jdbc.queryForObject(
+                "SELECT lot_number FROM inventory_lot WHERE id = ?",
+                String.class, results.get(1).lotId());
+        assertThat(lotNumber1).isNotEqualTo(lotNumber2);
+
+        // Each lot has its own INBOUND movement
+        Long inboundCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM inventory_movement WHERE household_id = ? AND type = 'INBOUND'",
+                Long.class, householdId);
+        assertThat(inboundCount).isEqualTo(2);
     }
 
     // =====================================================================
