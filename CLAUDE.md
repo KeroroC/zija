@@ -30,6 +30,11 @@ make frontend-build          # npm --prefix frontend run build (includes typeche
 make compose-smoke           # Full Docker Compose stack health check
 make e2e-smoke               # Playwright browser smoke test against Compose stack
 
+# Layout & data safety
+make verify-layout           # Layout/module-boundary check only (subset of `make verify`)
+make backup-test             # Snapshot the running stack to ./backups/
+make restore-smoke           # Restore the latest backup into a temp stack and verify
+
 # Cleanup
 make clean                   # Remove build artifacts
 
@@ -59,7 +64,7 @@ com.zija.<module>/
     persistence/            # Mapper, Entity, XML — module-internal
 ```
 
-Existing modules: `system` (health check, installation info, audit), `identity` (auth, users, sessions), `household` (family management, bootstrap, invitations), `catalog` (item categories), `location` (storage places), `file` (file storage), `inventory` (lots, stock movements, stocktake, idempotency, consistency checks). Planned: `reminder`, `reporting`.
+Existing modules: `system` (health check, installation info, audit), `identity` (auth, users, sessions), `household` (family management, bootstrap, invitations), `catalog` (item categories), `location` (storage places), `file` (file storage), `inventory` (lots, stock movements, stocktake, idempotency, consistency checks), `reminder` (reminder rules, notifications), `reporting` (read-model projections, CSV export, query ports).
 
 **Rules:**
 - External modules may only depend on another module's public `Api` interface and its public DTOs/records.
@@ -87,9 +92,9 @@ Existing modules: `system` (health check, installation info, audit), `identity` 
 
 ```
 src/
-  api/          # HTTP client (http.ts) + domain API modules (auth, catalog, file, household, inventory, invitation, location, member, owner-recovery, audit)
+  api/          # HTTP client (http.ts) + domain API modules (auth, catalog, file, household, inventory, invitation, location, member, notification, reminder, reporting, owner-recovery, audit, system)
   components/   # Shared components (AppShell.vue)
-  views/        # Page-level components — see inventory/ subdirectory for stock/lot/movement/stocktake views
+  views/        # Page-level components. Notable subdirectories: inventory/ (stock, lot, movement, stocktake), reports/ (reporting read models, CSV export). Other top-level views: LoginPage, BootstrapPage, ItemsPage, LocationsPage, MembersPage, NotificationsView, RemindersView, ReminderRulesSettingsView, SystemStatusView, AuditLogPage, OwnerRecoveryPage, ProfilePage.
   stores/       # Pinia stores (session.ts — auth/session state)
   router/       # Vue Router configuration
   types/        # TypeScript interfaces for API responses
@@ -101,6 +106,7 @@ src/
 - Vite proxies `/api` to `http://localhost:8080` in development.
 - Pinia is for session/UI state only — server data is not cached as long-lived global state.
 - Tests mock API modules with `vi.mock()`, mount components with `@vue/test-utils` + Element Plus plugin.
+- Element Plus is on-demand via `ElementPlusResolver({ importStyle: "css" })` (vite.config.ts) — the resolver only scans `<template>` usage. Imperative APIs (`ElMessageBox.confirm`, `ElMessage.error`, ...) do **not** trigger CSS auto-import. When a component is used only via JS API, import its CSS explicitly in `main.ts` (e.g. `el-message-box.css`, `el-overlay.css`, `el-message.css`). Missing CSS manifests as broken positioning/visibility at runtime, never as a build error.
 
 ### API Conventions
 
