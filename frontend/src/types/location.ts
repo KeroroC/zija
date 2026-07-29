@@ -20,5 +20,4 @@ export interface LocationInfo {
   sortOrder: number
   everReferenced: boolean
   version: number
-  inventorySummary?: string
 }

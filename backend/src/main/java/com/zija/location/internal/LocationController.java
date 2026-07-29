@@ -70,8 +70,7 @@ class LocationController {
                 "name", info.name(),
                 "sortOrder", info.sortOrder(),
                 "everReferenced", info.everReferenced(),
-                "version", info.version(),
-                "inventorySummary", "库存将在阶段四启用"
+                "version", info.version()
         );
     }
 
