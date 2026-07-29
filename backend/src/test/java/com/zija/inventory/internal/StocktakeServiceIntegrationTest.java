@@ -554,6 +554,53 @@ class StocktakeServiceIntegrationTest {
         ).isInstanceOf(StocktakeNotDraftException.class);
     }
 
+    // --- confirm test case 7: backfilled overflow (book=0, actual>0) creates stock position ---
+    // 复现 bug：补录账面为零的批次、确认盘盈时，库存位必须被创建出来，数量等于 actualQuantity，
+    // 且 ADJUSTMENT 流水与库存位保持一致（不再出现"流水说加了 5、库存位不存在"的永久不一致）。
+    @Test
+    void confirm_backfilledOverflow_createsStockPosition() {
+        UUID itemId = seedItem(householdId, seedUnit(householdId));
+        UUID lotId = seedLot(householdId, itemId);
+        // 关键：(lotId, locationId) 不存在库存位 — 模拟 updateDraft 补录路径
+
+        UUID stocktakeId = newTx().execute(s ->
+                stocktakeService.createDraft(householdId, accountId, locationId));
+
+        // 通过 updateDraft 补录（账面 0，实盘 5）
+        var update = new StocktakeService.StocktakeItemUpdate(
+                lotId, locationId, BigDecimal.valueOf(5), "发现遗漏批次");
+        newTx().executeWithoutResult(s ->
+                stocktakeService.updateDraft(householdId, stocktakeId, 0, List.of(update)));
+
+        // 确认盘点
+        var result = newTx().execute(s ->
+                stocktakeService.confirm(householdId, stocktakeId, 1, accountId));
+        assertThat(result.adjustedCount()).isEqualTo(1);
+
+        // 库存位必须存在且数量 = 5（这是当前 bug 失败的关键断言）
+        var sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(sp).as("盘盈后库存位必须被创建").isNotNull();
+        assertThat(sp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
+        assertThat(sp.getRevision()).isEqualTo(1L);
+
+        // ADJUSTMENT 流水必须存在
+        var movements = movementMapper.selectList(
+                new LambdaQueryWrapper<MovementEntity>()
+                        .eq(MovementEntity::getHouseholdId, householdId)
+                        .eq(MovementEntity::getType, "ADJUSTMENT")
+                        .eq(MovementEntity::getLotId, lotId));
+        assertThat(movements).hasSize(1);
+        var mov = movements.get(0);
+        assertThat(mov.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
+        assertThat(mov.getFromLocationId()).isNull();
+        assertThat(mov.getToLocationId()).isEqualTo(locationId);
+        assertThat(mov.getReason()).isEqualTo("发现遗漏批次");
+
+        // 一致性检查：当前实现下，expectedMap 有 (lotId, locationId)→5 但 actualPositions 不含此 key，
+        // ConsistencyCheckService.check() 只遍历 actualPositions，故漏报。修复后两者一致。
+        // 这里不强加断言一致性检查的输出（属另一个 bug），仅断言 stockPosition 与 movement 不再分裂。
+    }
+
     // --- confirm test case 6: version conflict -> InventoryLotVersionConflictException ---
     @Test
     void confirm_versionConflict_throwsVersionConflict() {

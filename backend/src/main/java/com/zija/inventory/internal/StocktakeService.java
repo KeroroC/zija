@@ -332,6 +332,22 @@ class StocktakeService {
 
             // 更新库存位
             if (cmp > 0) {
+                // 盘盈：补录场景下 (lotId, locId) 可能不存在库存位(sp==null, bookQuantity=0)。
+                // addQuantity 是无脑 UPDATE，缺失行时影响 0 行但不报错 → 与 ADJUSTMENT 流水永久不一致。
+                // 与 StockCommandService.inboundNewLot 对齐：先 lockOne，sp==null 时插入新行再 addQuantity。
+                StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, locId);
+                if (sp == null) {
+                    sp = new StockPositionEntity();
+                    sp.setId(UUID.randomUUID());
+                    sp.setHouseholdId(householdId);
+                    sp.setLotId(lotId);
+                    sp.setLocationId(locId);
+                    sp.setQuantity(BigDecimal.ZERO);
+                    sp.setRevision(0L);
+                    sp.setCreatedAt(now);
+                    sp.setUpdatedAt(now);
+                    stockPositionMapper.insert(sp);
+                }
                 stockPositionMapper.addQuantity(householdId, lotId, locId, delta);
             } else {
                 stockPositionMapper.subtractIfSufficient(
