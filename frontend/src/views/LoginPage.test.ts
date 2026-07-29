@@ -50,4 +50,27 @@ describe("LoginPage", () => {
 
     expect(pushMock).toHaveBeenCalledWith({ name: "home" });
   });
+
+  it("submits when the user presses Enter in the password field", async () => {
+    wrapper = mount(LoginPage, { global: { plugins: [ElementPlus] } });
+    const inputs = wrapper.findAll("input");
+    await inputs[0].setValue("owner");
+    await inputs[1].setValue("secret");
+    await inputs[1].trigger("keyup.enter");
+    await flushPromises();
+
+    expect(loginMock).toHaveBeenCalledWith("owner", "secret");
+    expect(pushMock).toHaveBeenCalledWith({ name: "home" });
+  });
+
+  it("submits when the user presses Enter in the username field", async () => {
+    wrapper = mount(LoginPage, { global: { plugins: [ElementPlus] } });
+    const inputs = wrapper.findAll("input");
+    await inputs[0].setValue("owner");
+    await inputs[0].trigger("keyup.enter");
+    await flushPromises();
+
+    expect(loginMock).toHaveBeenCalledWith("owner", "");
+    expect(pushMock).toHaveBeenCalledWith({ name: "home" });
+  });
 });

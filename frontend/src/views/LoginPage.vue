@@ -11,13 +11,27 @@
           <template #label>
             <span class="login-label">用户名</span>
           </template>
-          <el-input v-model="form.username" placeholder="请输入用户名" size="large" required />
+          <el-input
+            v-model="form.username"
+            placeholder="请输入用户名"
+            size="large"
+            required
+            @keyup.enter="submit"
+          />
         </el-form-item>
         <el-form-item>
           <template #label>
             <span class="login-label">密码</span>
           </template>
-          <el-input v-model="form.password" type="password" placeholder="请输入密码" size="large" show-password required />
+          <el-input
+            v-model="form.password"
+            type="password"
+            placeholder="请输入密码"
+            size="large"
+            show-password
+            required
+            @keyup.enter="submit"
+          />
         </el-form-item>
         <el-button
           type="primary"
@@ -47,6 +61,7 @@ const loading = ref(false);
 const form = reactive({ username: "", password: "" });
 
 async function submit() {
+  if (loading.value) return;
   loading.value = true;
   try {
     await session.login(form.username, form.password);
