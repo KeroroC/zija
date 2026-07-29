@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.ZijaPrincipal;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireMember;
@@ -99,7 +100,7 @@ class InventoryController {
         if (pageSize < 1) pageSize = 20;
         if (page < 1) page = 1;
 
-        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.zija.inventory.internal.persistence.StockPositionWithDetails>(page, pageSize);
+        var pageObj = new Page<StockPositionWithDetails>(page, pageSize);
         var result = stockPositionMapper.findPage(pageObj, member.householdId(), itemId, locationId, "sp.updated_at DESC");
 
         var response = new LinkedHashMap<String, Object>();
@@ -126,7 +127,7 @@ class InventoryController {
         if (pageSize < 1) pageSize = 20;
         if (page < 1) page = 1;
 
-        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.zija.inventory.internal.persistence.LotWithDetails>(page, pageSize);
+        var pageObj = new Page<com.zija.inventory.internal.persistence.LotWithDetails>(page, pageSize);
         var result = lotMapper.findPage(pageObj, member.householdId(), itemId);
 
         var response = new LinkedHashMap<String, Object>();
@@ -189,7 +190,7 @@ class InventoryController {
             return response;
         }
 
-        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.zija.inventory.internal.persistence.MovementEntity>(page, pageSize);
+        var pageObj = new Page<com.zija.inventory.internal.persistence.MovementEntity>(page, pageSize);
         var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, (UUID) null, fromDt, toDt, "created_at DESC");
 
         var response = new LinkedHashMap<String, Object>();
@@ -490,7 +491,7 @@ class InventoryController {
         if (pageSize < 1) pageSize = 20;
         if (page < 1) page = 1;
 
-        var pageObj = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<StocktakeEntity>(page, pageSize);
+        var pageObj = new Page<StocktakeEntity>(page, pageSize);
         var result = stocktakeMapper.findPage(pageObj, member.householdId(), status, "created_at DESC");
 
         var response = new LinkedHashMap<String, Object>();
