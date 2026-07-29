@@ -119,7 +119,7 @@ describe("AppShell", () => {
       status: "ACTIVE",
       householdName: "测试家庭"
     };
-    vi.spyOn(session, "logout").mockRejectedValue(new Error("logout unavailable"));
+    const logoutSpy = vi.spyOn(session, "logout").mockRejectedValue(new Error("logout unavailable"));
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -139,7 +139,98 @@ describe("AppShell", () => {
     await logoutButton.trigger("click");
     await flushPromises();
 
+    const messageBox = document.querySelector(".el-message-box");
+    expect(messageBox).toBeTruthy();
+    const confirmBtn = messageBox!.querySelector(".el-button--primary") as HTMLButtonElement;
+    confirmBtn.click();
+    await flushPromises();
+
+    expect(logoutSpy).toHaveBeenCalledTimes(1);
     expect(router.currentRoute.value.name).toBe("home");
     expect(document.body.textContent).toContain("登出失败，请重试");
+  });
+
+  it("renders the logout confirmation inside the .el-overlay wrapper that provides positioning", async () => {
+    // Regression: ElMessageBox.confirm() relies on .el-overlay (position: fixed) and
+    // .el-overlay-message-box (centering) styles from element-plus. With on-demand CSS
+    // loading, those styles must be imported explicitly because the API call has no
+    // <el-message-box> template usage to trigger auto-import. This test locks in the
+    // DOM contract those CSS files target — if the overlay wrapper is missing, the
+    // dialog falls back to normal document flow and renders at the bottom of the page.
+    const session = useSessionStore();
+    session.session = { authenticated: true, username: "admin" };
+    session.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "Admin",
+      role: "ADMIN",
+      status: "ACTIVE",
+      householdName: "测试家庭"
+    };
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/", name: "home", component: { render: () => h("div", "系统状态") } }]
+    });
+    await router.push("/");
+    await router.isReady();
+    wrapper = mount(AppShell, {
+      attachTo: document.body,
+      global: { plugins: [router, ElementPlus] }
+    });
+
+    const logoutButton = wrapper.findAll("button").find(b => b.text().includes("登出"))!;
+    await logoutButton.trigger("click");
+    await flushPromises();
+
+    const overlay = document.querySelector(".el-overlay.is-message-box");
+    expect(overlay).toBeTruthy();
+    const centeringWrapper = overlay!.querySelector(".el-overlay-message-box");
+    expect(centeringWrapper).toBeTruthy();
+    expect(centeringWrapper!.querySelector(".el-message-box")).toBeTruthy();
+  });
+
+  it("does not log out when the user cancels the confirmation dialog", async () => {
+    const session = useSessionStore();
+    session.session = { authenticated: true, username: "admin" };
+    session.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "Admin",
+      role: "ADMIN",
+      status: "ACTIVE",
+      householdName: "测试家庭"
+    };
+    const logoutSpy = vi.spyOn(session, "logout").mockResolvedValue();
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/", name: "home", component: { render: () => h("div", "系统状态") } },
+        { path: "/login", name: "login", component: { render: () => h("div", "登录") } }
+      ]
+    });
+    await router.push("/");
+    await router.isReady();
+    wrapper = mount(AppShell, {
+      attachTo: document.body,
+      global: { plugins: [router, ElementPlus] }
+    });
+
+    const logoutButton = wrapper.findAll("button").find(b => b.text().includes("登出"))!;
+    await logoutButton.trigger("click");
+    await flushPromises();
+
+    const messageBox = document.querySelector(".el-message-box");
+    expect(messageBox).toBeTruthy();
+    const cancelBtn = Array.from(messageBox!.querySelectorAll(".el-button"))
+      .find(b => b.textContent?.includes("取消")) as HTMLButtonElement;
+    cancelBtn.click();
+    await flushPromises();
+
+    expect(logoutSpy).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.name).toBe("home");
   });
 });

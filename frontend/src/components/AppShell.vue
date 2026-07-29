@@ -111,7 +111,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import {
   House,
   Box,
@@ -162,6 +162,15 @@ const roleLabel = computed(() => {
 });
 
 async function onLogout() {
+  try {
+    await ElMessageBox.confirm("确定要登出当前账号吗？", "确认登出", {
+      confirmButtonText: "登出",
+      cancelButtonText: "取消",
+      type: "warning"
+    });
+  } catch {
+    return;
+  }
   try {
     await session.logout();
     router.push({ name: "login" });
