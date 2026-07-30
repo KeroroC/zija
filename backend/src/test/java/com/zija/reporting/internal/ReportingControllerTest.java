@@ -13,11 +13,15 @@ import com.zija.reporting.internal.search.SearchService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.List;
 import java.util.Map;
@@ -29,8 +33,22 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = ReportingController.class)
-@Import({HouseholdAuthzTestSupport.class, ReportingExceptionHandler.class})
+@Import({HouseholdAuthzTestSupport.class, ReportingExceptionHandler.class,
+        ReportingControllerTest.SyncAsyncConfig.class})
 class ReportingControllerTest extends AbstractWebMvcSliceTest {
+
+    /**
+     * 强制 StreamingResponseBody 在调用线程同步执行，
+     * 避免与 Security HeaderWriterFilter 并发修改 MockHttpServletResponse header map
+     * 导致 ConcurrentModificationException。
+     */
+    @TestConfiguration(proxyBeanMethods = false)
+    static class SyncAsyncConfig implements WebMvcConfigurer {
+        @Override
+        public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+            configurer.setTaskExecutor((AsyncTaskExecutor) Runnable::run);
+        }
+    }
 
     @Autowired MockMvc mockMvc;
     @MockitoBean SearchService searchService;
