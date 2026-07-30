@@ -1,13 +1,13 @@
 package com.zija.household.internal;
 
-import com.zija.AbstractMockMvcIntegrationTest;
-import com.zija.ZijaSessionInvalidator;
+import com.zija.AbstractWebMvcSliceTest;
 import com.zija.ZijaSessionAuthenticationSupport;
+import com.zija.identity.IdentityApi;
 import com.zija.household.internal.exception.InvalidInvitationException;
-import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -21,14 +21,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@AutoConfigureMockMvc
-class OwnerRecoveryControllerTest extends AbstractMockMvcIntegrationTest {
+@WebMvcTest(controllers = OwnerRecoveryController.class)
+@Import(HouseholdExceptionHandler.class)
+class OwnerRecoveryControllerTest extends AbstractWebMvcSliceTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean OwnerRecoveryService recoveryService;
-    @MockitoBean SystemApi systemApi;
-    @MockitoBean ZijaSessionInvalidator sessionInvalidator;
     @MockitoBean ZijaSessionAuthenticationSupport sessionAuth;
+    @MockitoBean IdentityApi identityApi;
 
     @Test
     void resetRejectsShortPassword() throws Exception {

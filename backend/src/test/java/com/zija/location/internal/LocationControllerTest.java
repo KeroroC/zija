@@ -1,28 +1,22 @@
 package com.zija.location.internal;
 
-import com.zija.AbstractMockMvcIntegrationTest;
+import com.zija.AbstractWebMvcSliceTest;
 import com.zija.ZijaPrincipal;
-import com.zija.ZijaSessionInvalidator;
-import com.zija.household.internal.persistence.HouseholdMapper;
-import com.zija.household.internal.persistence.InvitationMapper;
-import com.zija.household.internal.persistence.MemberEntity;
-import com.zija.household.internal.persistence.MemberMapper;
-import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
-import com.zija.identity.internal.persistence.AccountMapper;
+import com.zija.household.HouseholdApi;
+import com.zija.household.internal.HouseholdAuthzTestSupport;
 import com.zija.location.LocationApi;
 import com.zija.location.internal.persistence.LocationEntity;
-import com.zija.system.SystemApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -31,37 +25,31 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@AutoConfigureMockMvc
-class LocationControllerTest extends AbstractMockMvcIntegrationTest {
+@WebMvcTest(controllers = LocationController.class)
+@Import({HouseholdAuthzTestSupport.class, LocationExceptionHandler.class})
+class LocationControllerTest extends AbstractWebMvcSliceTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean LocationService locationService;
-    @MockitoBean HouseholdMapper householdMapper;
-    @MockitoBean MemberMapper memberMapper;
-    @MockitoBean InvitationMapper invitationMapper;
-    @MockitoBean OwnerRecoveryTokenMapper ownerRecoveryTokenMapper;
-    @MockitoBean AccountMapper accountMapper;
-    @MockitoBean SystemApi systemApi;
-    @MockitoBean ZijaSessionInvalidator sessionInvalidator;
+    @MockitoBean HouseholdApi householdApi;
 
     private UUID accountId;
     private UUID householdId;
     private ZijaPrincipal principal;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         accountId = UUID.randomUUID();
         householdId = UUID.randomUUID();
         principal = new ZijaPrincipal(accountId, "testuser", "测试用户", "hash", true);
 
-        // Configure memberMapper so HouseholdService.requireActiveMember() and hasAtLeastRole() work
-        var memberEntity = new MemberEntity();
-        memberEntity.setId(UUID.randomUUID());
-        memberEntity.setHouseholdId(householdId);
-        memberEntity.setAccountId(accountId);
-        memberEntity.setRole("MEMBER");
-        memberEntity.setStatus("ACTIVE");
-        when(memberMapper.selectByAccount(accountId)).thenReturn(Optional.of(memberEntity));
+        var member = new HouseholdApi.MemberInfo(
+                UUID.randomUUID(), householdId, accountId,
+                "testuser", "测试用户",
+                HouseholdApi.MemberRole.MEMBER, "ACTIVE");
+        when(householdApi.requireActiveMember(accountId)).thenReturn(member);
+        when(householdApi.hasAtLeastRole(accountId, HouseholdApi.MemberRole.MEMBER))
+                .thenReturn(true);
     }
 
     @Test

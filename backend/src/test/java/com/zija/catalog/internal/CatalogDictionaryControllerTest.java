@@ -1,29 +1,23 @@
 package com.zija.catalog.internal;
 
-import com.zija.AbstractMockMvcIntegrationTest;
+import com.zija.AbstractWebMvcSliceTest;
 import com.zija.ZijaPrincipal;
-import com.zija.ZijaSessionInvalidator;
 import com.zija.catalog.internal.persistence.BrandEntity;
 import com.zija.catalog.internal.persistence.CategoryEntity;
 import com.zija.catalog.internal.persistence.UnitEntity;
-import com.zija.household.internal.persistence.HouseholdMapper;
-import com.zija.household.internal.persistence.InvitationMapper;
-import com.zija.household.internal.persistence.MemberEntity;
-import com.zija.household.internal.persistence.MemberMapper;
-import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
-import com.zija.identity.internal.persistence.AccountMapper;
-import com.zija.system.SystemApi;
+import com.zija.household.HouseholdApi;
+import com.zija.household.internal.HouseholdAuthzTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -33,18 +27,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@AutoConfigureMockMvc
-class CatalogDictionaryControllerTest extends AbstractMockMvcIntegrationTest {
+@WebMvcTest(controllers = CatalogDictionaryController.class)
+@Import({HouseholdAuthzTestSupport.class, CatalogExceptionHandler.class})
+class CatalogDictionaryControllerTest extends AbstractWebMvcSliceTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean CatalogDictionaryService dictionaryService;
-    @MockitoBean HouseholdMapper householdMapper;
-    @MockitoBean MemberMapper memberMapper;
-    @MockitoBean InvitationMapper invitationMapper;
-    @MockitoBean OwnerRecoveryTokenMapper ownerRecoveryTokenMapper;
-    @MockitoBean AccountMapper accountMapper;
-    @MockitoBean SystemApi systemApi;
-    @MockitoBean ZijaSessionInvalidator sessionInvalidator;
+    @MockitoBean HouseholdApi householdApi;
 
     private static final UUID HOUSEHOLD_ID = UUID.randomUUID();
 
@@ -52,17 +41,17 @@ class CatalogDictionaryControllerTest extends AbstractMockMvcIntegrationTest {
     private ZijaPrincipal principal;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         accountId = UUID.randomUUID();
         principal = new ZijaPrincipal(accountId, "member", "成员", "hash", true);
 
-        var memberEntity = new MemberEntity();
-        memberEntity.setId(UUID.randomUUID());
-        memberEntity.setHouseholdId(HOUSEHOLD_ID);
-        memberEntity.setAccountId(accountId);
-        memberEntity.setRole("ADMIN");
-        memberEntity.setStatus("ACTIVE");
-        when(memberMapper.selectByAccount(accountId)).thenReturn(Optional.of(memberEntity));
+        var member = new HouseholdApi.MemberInfo(
+                UUID.randomUUID(), HOUSEHOLD_ID, accountId,
+                "member", "成员",
+                HouseholdApi.MemberRole.ADMIN, "ACTIVE");
+        when(householdApi.requireActiveMember(accountId)).thenReturn(member);
+        when(householdApi.hasAtLeastRole(eq(accountId), any(HouseholdApi.MemberRole.class)))
+                .thenReturn(true);
     }
 
     // --- GET /api/v1/categories/tree ---

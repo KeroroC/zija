@@ -1,14 +1,14 @@
 package com.zija.household.internal;
 
-import com.zija.AbstractMockMvcIntegrationTest;
+import com.zija.AbstractWebMvcSliceTest;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionAuthenticationSupport;
-import com.zija.ZijaSessionInvalidator;
 import com.zija.household.HouseholdApi;
-import com.zija.system.SystemApi;
+import com.zija.identity.IdentityApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
@@ -24,16 +24,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@AutoConfigureMockMvc
-class InvitationControllerTest extends AbstractMockMvcIntegrationTest {
+@WebMvcTest(controllers = InvitationController.class)
+@Import({HouseholdAuthzTestSupport.class, HouseholdExceptionHandler.class})
+class InvitationControllerTest extends AbstractWebMvcSliceTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean InvitationService invitationService;
     @MockitoBean HouseholdService householdService;
     @MockitoBean MemberService memberService;
     @MockitoBean ZijaSessionAuthenticationSupport sessionAuth;
-    @MockitoBean SystemApi systemApi;
-    @MockitoBean ZijaSessionInvalidator sessionInvalidator;
+    @MockitoBean IdentityApi identityApi;
 
     @Test
     void createRejectsInvalidRoleAndExpiry() throws Exception {

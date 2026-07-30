@@ -1,57 +1,43 @@
 package com.zija.reporting.internal;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.zija.AbstractMockMvcIntegrationTest;
+import com.zija.AbstractWebMvcSliceTest;
 import com.zija.ZijaPrincipal;
-import com.zija.ZijaSessionInvalidator;
-import com.zija.household.internal.persistence.*;
-
-import com.zija.identity.internal.persistence.AccountMapper;
+import com.zija.household.HouseholdApi;
+import com.zija.household.internal.HouseholdAuthzTestSupport;
 import com.zija.reporting.internal.export.ExportService;
 import com.zija.reporting.internal.exception.ExportTooLargeException;
-import com.zija.reporting.internal.persistence.ReportingDeadLetterMapper;
-import com.zija.reporting.internal.persistence.ReportingProcessedEventMapper;
 import com.zija.reporting.internal.projection.ProjectionRebuilder;
 import com.zija.reporting.internal.reports.ReportService;
 import com.zija.reporting.internal.search.SearchService;
-import com.zija.system.SystemApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@AutoConfigureMockMvc
-class ReportingControllerTest extends AbstractMockMvcIntegrationTest {
+@WebMvcTest(controllers = ReportingController.class)
+@Import({HouseholdAuthzTestSupport.class, ReportingExceptionHandler.class})
+class ReportingControllerTest extends AbstractWebMvcSliceTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean SearchService searchService;
     @MockitoBean ReportService reportService;
     @MockitoBean ExportService exportService;
     @MockitoBean ProjectionRebuilder projectionRebuilder;
-    @MockitoBean HouseholdMapper householdMapper;
-    @MockitoBean MemberMapper memberMapper;
-    @MockitoBean InvitationMapper invitationMapper;
-    @MockitoBean OwnerRecoveryTokenMapper ownerRecoveryTokenMapper;
-    @MockitoBean AccountMapper accountMapper;
-    @MockitoBean SystemApi systemApi;
-    @MockitoBean ZijaSessionInvalidator sessionInvalidator;
-    @MockitoBean ReportingDeadLetterMapper deadLetterMapper;
-    @MockitoBean ReportingProcessedEventMapper processedEventMapper;
+    @MockitoBean HouseholdApi householdApi;
 
     private static final UUID HOUSEHOLD_ID = UUID.randomUUID();
 
@@ -63,14 +49,14 @@ class ReportingControllerTest extends AbstractMockMvcIntegrationTest {
         accountId = UUID.randomUUID();
         principal = new ZijaPrincipal(accountId, "testuser", "测试用户", "hash", true);
 
-        // Configure memberMapper so HouseholdService.requireActiveMember() and hasAtLeastRole() work
-        var memberEntity = new MemberEntity();
-        memberEntity.setId(UUID.randomUUID());
-        memberEntity.setHouseholdId(HOUSEHOLD_ID);
-        memberEntity.setAccountId(accountId);
-        memberEntity.setRole("ADMIN");
-        memberEntity.setStatus("ACTIVE");
-        when(memberMapper.selectByAccount(accountId)).thenReturn(Optional.of(memberEntity));
+        // ADMIN so /exports and /projection/rebuild (RequireAdmin) are allowed.
+        var member = new HouseholdApi.MemberInfo(
+                UUID.randomUUID(), HOUSEHOLD_ID, accountId,
+                "testuser", "测试用户",
+                HouseholdApi.MemberRole.ADMIN, "ACTIVE");
+        when(householdApi.requireActiveMember(accountId)).thenReturn(member);
+        when(householdApi.hasAtLeastRole(eq(accountId), any(HouseholdApi.MemberRole.class)))
+                .thenReturn(true);
     }
 
     // --- GET /search?q=xxx ---
@@ -147,14 +133,16 @@ class ReportingControllerTest extends AbstractMockMvcIntegrationTest {
 
     @Test
     void nonAdminCallingExportReturns403() throws Exception {
-        // Override to return MEMBER role (not ADMIN)
-        var memberEntity = new MemberEntity();
-        memberEntity.setId(UUID.randomUUID());
-        memberEntity.setHouseholdId(HOUSEHOLD_ID);
-        memberEntity.setAccountId(accountId);
-        memberEntity.setRole("MEMBER");
-        memberEntity.setStatus("ACTIVE");
-        when(memberMapper.selectByAccount(accountId)).thenReturn(Optional.of(memberEntity));
+        // Override: now return MEMBER role (not ADMIN).
+        var memberRole = new HouseholdApi.MemberInfo(
+                UUID.randomUUID(), HOUSEHOLD_ID, accountId,
+                "testuser", "测试用户",
+                HouseholdApi.MemberRole.MEMBER, "ACTIVE");
+        when(householdApi.requireActiveMember(accountId)).thenReturn(memberRole);
+        when(householdApi.hasAtLeastRole(accountId, HouseholdApi.MemberRole.OWNER))
+                .thenReturn(false);
+        when(householdApi.hasAtLeastRole(accountId, HouseholdApi.MemberRole.ADMIN))
+                .thenReturn(false);
 
         mockMvc.perform(get("/api/v1/reporting/exports/stock-by-location")
                         .with(SecurityMockMvcRequestPostProcessors.user(principal)))
@@ -190,20 +178,5 @@ class ReportingControllerTest extends AbstractMockMvcIntegrationTest {
     void unauthenticatedReturns401() throws Exception {
         mockMvc.perform(get("/api/v1/reporting/search").param("q", "test"))
                 .andExpect(status().isUnauthorized());
-    }
-
-    @TestConfiguration
-    static class DataSourceConfig {
-        @Bean
-        DataSource dataSource() throws Exception {
-            DataSource ds = org.mockito.Mockito.mock(DataSource.class);
-            Connection conn = org.mockito.Mockito.mock(Connection.class);
-            DatabaseMetaData meta = org.mockito.Mockito.mock(DatabaseMetaData.class);
-            org.mockito.Mockito.when(conn.getMetaData()).thenReturn(meta);
-            org.mockito.Mockito.when(meta.getDatabaseProductName()).thenReturn("PostgreSQL");
-            org.mockito.Mockito.when(conn.getAutoCommit()).thenReturn(true);
-            org.mockito.Mockito.when(ds.getConnection()).thenReturn(conn);
-            return ds;
-        }
     }
 }

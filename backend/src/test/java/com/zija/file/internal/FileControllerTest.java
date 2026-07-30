@@ -1,17 +1,15 @@
 package com.zija.file.internal;
 
-import com.zija.AbstractMockMvcIntegrationTest;
+import com.zija.AbstractWebMvcSliceTest;
 import com.zija.ZijaPrincipal;
-import com.zija.ZijaSessionInvalidator;
 import com.zija.file.FileApi;
-import com.zija.household.internal.persistence.HouseholdMapper;
-import com.zija.household.internal.persistence.MemberEntity;
-import com.zija.household.internal.persistence.MemberMapper;
-import com.zija.system.SystemApi;
+import com.zija.household.HouseholdApi;
+import com.zija.household.internal.HouseholdAuthzTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -29,37 +27,34 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@AutoConfigureMockMvc
-class FileControllerTest extends AbstractMockMvcIntegrationTest {
+@WebMvcTest(controllers = FileController.class)
+@Import({HouseholdAuthzTestSupport.class, FileExceptionHandler.class})
+class FileControllerTest extends AbstractWebMvcSliceTest {
 
     @Autowired MockMvc mockMvc;
 
     @MockitoBean FileApi fileApi;
     @MockitoBean FileStorage fileStorage;
-    @MockitoBean HouseholdMapper householdMapper;
-    @MockitoBean MemberMapper memberMapper;
-    @MockitoBean SystemApi systemApi;
-    @MockitoBean ZijaSessionInvalidator sessionInvalidator;
+    @MockitoBean FileIntegrityService fileIntegrityService;
+    @MockitoBean HouseholdApi householdApi;
 
     private UUID accountId;
     private UUID householdId;
-    private UUID memberId;
     private ZijaPrincipal principal;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         accountId = UUID.randomUUID();
         householdId = UUID.randomUUID();
-        memberId = UUID.randomUUID();
         principal = new ZijaPrincipal(accountId, "owner", "所有者", "{bcrypt}hash", true);
 
-        var memberEntity = new MemberEntity();
-        memberEntity.setId(memberId);
-        memberEntity.setHouseholdId(householdId);
-        memberEntity.setAccountId(accountId);
-        memberEntity.setRole("OWNER");
-        memberEntity.setStatus("ACTIVE");
-        when(memberMapper.selectByAccount(accountId)).thenReturn(Optional.of(memberEntity));
+        var member = new HouseholdApi.MemberInfo(
+                UUID.randomUUID(), householdId, accountId,
+                "owner", "所有者",
+                HouseholdApi.MemberRole.OWNER, "ACTIVE");
+        when(householdApi.requireActiveMember(accountId)).thenReturn(member);
+        when(householdApi.hasAtLeastRole(accountId, HouseholdApi.MemberRole.OWNER))
+                .thenReturn(true);
     }
 
     @Test

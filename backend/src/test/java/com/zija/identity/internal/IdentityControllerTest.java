@@ -1,18 +1,17 @@
 package com.zija.identity.internal;
 
-import com.zija.AbstractMockMvcIntegrationTest;
+import com.zija.AbstractWebMvcSliceTest;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionAuthenticationSupport;
-import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
 import com.zija.identity.internal.auth.ChangePasswordRequest;
 import com.zija.identity.internal.auth.LoginRequest;
 import com.zija.identity.internal.exception.LoginRateLimitedException;
 import com.zija.identity.internal.persistence.AccountMapper;
-import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -22,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -36,8 +36,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@AutoConfigureMockMvc
-class IdentityControllerTest extends AbstractMockMvcIntegrationTest {
+@WebMvcTest(controllers = IdentityController.class)
+@Import(IdentityExceptionHandler.class)
+class IdentityControllerTest extends AbstractWebMvcSliceTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
@@ -46,8 +47,6 @@ class IdentityControllerTest extends AbstractMockMvcIntegrationTest {
     @MockitoBean AuthenticationManager authenticationManager;
     @MockitoBean ZijaSessionAuthenticationSupport sessionAuthSupport;
     @MockitoBean LoginRateLimiter rateLimiter;
-    @MockitoBean SystemApi systemApi;
-    @MockitoBean ZijaSessionInvalidator sessionInvalidator;
 
     @Test
     void loginReturnsSessionAndAccountIdentity() throws Exception {
@@ -58,7 +57,7 @@ class IdentityControllerTest extends AbstractMockMvcIntegrationTest {
         when(auth.isAuthenticated()).thenReturn(true);
         when(sessionAuthSupport.authenticate(any(), any(), any(), any())).thenReturn(auth);
         when(identityService.findByNormalizedUsername("owner"))
-                .thenReturn(java.util.Optional.of(new IdentityApi.AccountInfo(
+                .thenReturn(Optional.of(new IdentityApi.AccountInfo(
                         accountId, "owner", "所有者", null, "ACTIVE")));
 
         mockMvc.perform(post("/api/v1/auth/login")

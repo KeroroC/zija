@@ -1,19 +1,15 @@
 package com.zija.system.internal;
 
-import com.zija.AbstractMockMvcIntegrationTest;
-import com.zija.ZijaRequestIdFilter;
-import com.zija.ZijaSecurityConfiguration;
-import com.zija.ZijaSessionInvalidator;
+import com.zija.AbstractWebMvcSliceTest;
 import com.zija.system.SystemApi;
 import com.zija.system.internal.exception.SystemStateUnavailableException;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.CannotCreateTransactionException;
 
@@ -28,22 +24,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@AutoConfigureMockMvc
-@Import({
-        ZijaSecurityConfiguration.class,
-        ZijaRequestIdFilter.class,
-        SystemExceptionHandler.class
-})
-class SystemControllerTest extends AbstractMockMvcIntegrationTest {
+@WebMvcTest(controllers = SystemController.class)
+@Import(SystemExceptionHandler.class)
+class SystemControllerTest extends AbstractWebMvcSliceTest {
 
     @Autowired
     private MockMvc mvc;
-
-    @MockitoBean
-    private SystemApi systemApi;
-
-    @MockitoBean
-    private ZijaSessionInvalidator sessionInvalidator;
 
     @Test
     void returnsPublicSystemInformation() throws Exception {
