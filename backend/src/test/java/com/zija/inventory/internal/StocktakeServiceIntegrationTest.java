@@ -747,8 +747,11 @@ class StocktakeServiceIntegrationTest {
 
     private UUID seedLot(UUID householdId, UUID itemId) {
         UUID id = UUID.randomUUID();
-        String lotNumber = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))
-                + String.format("%03d", (int) (Math.random() * 900) + 100);
+        // Use UUID prefix to guarantee uniqueness across all 22 seedLot calls
+        // sharing the same static Testcontainers container. Math.random-based
+        // suffixes collided on uq_inventory_lot_number ~22% of the time when
+        // run in the full suite (consumed from a different RNG offset).
+        String lotNumber = "LOT-" + id.toString().substring(0, 8);
         jdbc.update("""
                 INSERT INTO inventory_lot (id, household_id, item_id, lot_number, created_at, updated_at, version)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
