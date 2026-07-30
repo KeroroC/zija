@@ -16,13 +16,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Testcontainers
 @SpringBootTest(properties = {
         "spring.datasource.hikari.connection-timeout=1000",
         "spring.datasource.hikari.validation-timeout=1000",
         "zija.session.jdbc.enabled=false"
 })
 @AutoConfigureMockMvc
+@Testcontainers
 class SystemReadinessIntegrationTest {
 
     @Container

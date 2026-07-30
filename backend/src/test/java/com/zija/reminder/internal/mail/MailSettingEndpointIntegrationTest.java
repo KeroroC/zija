@@ -10,7 +10,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,15 +18,15 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import com.zija.SharedPostgres;
 
 /**
  * MailSetting 端点集成测试。
@@ -40,14 +39,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * </ol>
  */
 @SpringBootTest
-@Testcontainers
 @TestPropertySource(properties = "spring.session.jdbc.initialize-schema=never")
 @AutoConfigureMockMvc
 class MailSettingEndpointIntegrationTest {
 
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
+    @DynamicPropertySource
+    static void pgProps(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", () -> SharedPostgres.get().getJdbcUrl());
+        r.add("spring.datasource.username", () -> SharedPostgres.get().getUsername());
+        r.add("spring.datasource.password", () -> SharedPostgres.get().getPassword());
+    }
 
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbcTemplate;

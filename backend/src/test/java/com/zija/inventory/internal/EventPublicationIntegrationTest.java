@@ -6,22 +6,21 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import com.zija.SharedPostgres;
 
 /**
  * 验证 Spring Modulith 2.0.5 事件可靠投递：
@@ -29,14 +28,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 事务提交后由 {@code OrderedTransactionEventPublisher} 派发给监听器。
  */
 @SpringBootTest
-@Testcontainers
 @TestPropertySource(properties = "spring.session.jdbc.initialize-schema=never")
 @Import(EventPublicationIntegrationTest.TestListener.class)
 class EventPublicationIntegrationTest {
 
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
+    @DynamicPropertySource
+    static void pgProps(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", () -> SharedPostgres.get().getJdbcUrl());
+        r.add("spring.datasource.username", () -> SharedPostgres.get().getUsername());
+        r.add("spring.datasource.password", () -> SharedPostgres.get().getPassword());
+    }
 
     @Autowired InventoryEventPublisher publisher;
     @Autowired JdbcTemplate jdbc;

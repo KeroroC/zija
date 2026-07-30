@@ -1,10 +1,8 @@
 package com.zija;
 
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * 共享基类：MockMvc/Web 集成测试用真实 Postgres（Testcontainers）+ ServiceConnection，
@@ -13,15 +11,18 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  *
  * <p>继承方只需在子类上声明 {@code @AutoConfigureMockMvc} 并 mock 业务依赖，
  * 不必关心数据库或 Modulith 自动配置。
+ *
+ * <p>容器使用 {@link SharedPostgres} JVM 级单例，所有测试类共享同一个 Postgres 实例。
  */
 @SpringBootTest(properties = {
         "zija.session.jdbc.enabled=false"
 })
-@Testcontainers
 public abstract class AbstractMockMvcIntegrationTest {
 
-    @Container
-    @ServiceConnection
-    @SuppressWarnings("resource")
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
+    @DynamicPropertySource
+    static void pgProps(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", () -> SharedPostgres.get().getJdbcUrl());
+        r.add("spring.datasource.username", () -> SharedPostgres.get().getUsername());
+        r.add("spring.datasource.password", () -> SharedPostgres.get().getPassword());
+    }
 }

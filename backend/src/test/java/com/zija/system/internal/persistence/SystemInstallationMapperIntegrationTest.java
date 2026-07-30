@@ -4,23 +4,23 @@ import com.zija.ZijaSessionInvalidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import com.zija.SharedPostgres;
 
-@Testcontainers
 @SpringBootTest
 class SystemInstallationMapperIntegrationTest {
 
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:17-alpine");
+    @DynamicPropertySource
+    static void pgProps(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", () -> SharedPostgres.get().getJdbcUrl());
+        r.add("spring.datasource.username", () -> SharedPostgres.get().getUsername());
+        r.add("spring.datasource.password", () -> SharedPostgres.get().getPassword());
+    }
 
     @Autowired
     private SystemInstallationMapper mapper;

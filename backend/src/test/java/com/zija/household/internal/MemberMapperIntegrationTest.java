@@ -7,38 +7,47 @@ import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.identity.internal.persistence.AccountEntity;
 import com.zija.identity.internal.persistence.AccountMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import com.zija.SharedPostgres;
 
 @SpringBootTest
-@Testcontainers
 @TestPropertySource(properties = "spring.session.jdbc.initialize-schema=never")
 class MemberMapperIntegrationTest {
 
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
+    @DynamicPropertySource
+    static void pgProps(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", () -> SharedPostgres.get().getJdbcUrl());
+        r.add("spring.datasource.username", () -> SharedPostgres.get().getUsername());
+        r.add("spring.datasource.password", () -> SharedPostgres.get().getPassword());
+    }
 
     @Autowired HouseholdMapper householdMapper;
     @Autowired MemberMapper memberMapper;
     @Autowired AccountMapper accountMapper;
+    @Autowired JdbcTemplate jdbc;
 
     @MockitoBean
     ZijaSessionInvalidator sessionInvalidator;
+
+    @BeforeEach
+    void cleanTables() {
+        jdbc.execute("TRUNCATE TABLE member, account, household RESTART IDENTITY CASCADE");
+    }
 
     @Test
     @Transactional

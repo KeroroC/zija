@@ -19,15 +19,15 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import com.zija.SharedPostgres;
 
 /**
  * 对抗测试：验证敏感值（密码、会话 Cookie、恢复令牌）不会泄漏到应用日志。
@@ -42,16 +42,18 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * 在 {@code @BeforeAll} 中执行 household bootstrap 创建 Owner 账号，
  * 随后各测试方法分别验证登录失败、登录成功、恢复令牌场景。</p>
  */
-@Testcontainers
 @SpringBootTest(properties = "spring.session.jdbc.initialize-schema=never")
 @AutoConfigureMockMvc
 class SensitiveValueLogTest {
 
-    private static final String OWNER_PASSWORD = "Bootstrap1!";
+    @DynamicPropertySource
+    static void pgProps(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", () -> SharedPostgres.get().getJdbcUrl());
+        r.add("spring.datasource.username", () -> SharedPostgres.get().getUsername());
+        r.add("spring.datasource.password", () -> SharedPostgres.get().getPassword());
+    }
 
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
+    private static final String OWNER_PASSWORD = "Bootstrap1!";
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper objectMapper;
@@ -65,7 +67,8 @@ class SensitiveValueLogTest {
      * 整个测试类只执行一次：bootstrap 家庭并创建 Owner 账号，随后登出。
      */
     @BeforeAll
-    static void bootstrapHousehold(@Autowired MockMvc mvc) throws Exception {
+    static void bootstrapHousehold(@Autowired MockMvc mvc, @Autowired JdbcTemplate jdbc) throws Exception {
+        jdbc.execute("TRUNCATE TABLE member, account, household RESTART IDENTITY CASCADE");
         mvc.perform(post("/api/v1/household/bootstrap")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)

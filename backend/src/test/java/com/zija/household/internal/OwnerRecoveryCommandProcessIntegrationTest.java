@@ -4,12 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.nio.file.Files;
 import java.time.Duration;
@@ -17,15 +13,20 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import com.zija.SharedPostgres;
 
 @SpringBootTest
-@Testcontainers
 @TestPropertySource(properties = "spring.session.jdbc.initialize-schema=never")
 class OwnerRecoveryCommandProcessIntegrationTest {
 
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
+    @DynamicPropertySource
+    static void pgProps(DynamicPropertyRegistry r) {
+        r.add("spring.datasource.url", () -> SharedPostgres.get().getJdbcUrl());
+        r.add("spring.datasource.username", () -> SharedPostgres.get().getUsername());
+        r.add("spring.datasource.password", () -> SharedPostgres.get().getPassword());
+    }
 
     @Autowired
     JdbcTemplate jdbcTemplate;
@@ -82,9 +83,9 @@ class OwnerRecoveryCommandProcessIntegrationTest {
                     "com.zija.ZijaApplication",
                     "--spring.main.web-application-type=none",
                     "--zija.command=recover-owner",
-                    "--spring.datasource.url=" + postgres.getJdbcUrl(),
-                    "--spring.datasource.username=" + postgres.getUsername(),
-                    "--spring.datasource.password=" + postgres.getPassword(),
+                    "--spring.datasource.url=" + SharedPostgres.get().getJdbcUrl(),
+                    "--spring.datasource.username=" + SharedPostgres.get().getUsername(),
+                    "--spring.datasource.password=" + SharedPostgres.get().getPassword(),
                     "--spring.flyway.enabled=false",
                     "--spring.session.jdbc.initialize-schema=never"
             )
