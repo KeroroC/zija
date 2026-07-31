@@ -10,7 +10,7 @@ PG_BIN=$(ls -d /usr/lib/postgresql/*/bin | head -1)
 ZIJA_DB=${ZIJA_DB_NAME:-zija}
 
 mkdir -p "$PGDATA"
-chown -R postgres:postgres "$PGDATA"
+chown -R postgres:postgres "$(dirname "$PGDATA")"
 
 if [ ! -f "$PGDATA/PG_VERSION" ]; then
   su postgres -c "$PG_BIN/initdb -D $PGDATA -U postgres -A trust"
