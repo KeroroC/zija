@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Spring Security 异常处理器。
@@ -58,6 +59,9 @@ public class ZijaProblemHandlers implements AuthenticationEntryPoint, AccessDeni
                 request.getAttribute(ZijaRequestIdFilter.ATTRIBUTE));
         response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        // Must be set before getWriter(): the Servlet spec defaults the response
+        // encoding to ISO-8859-1, which turns every Chinese title/detail into "????".
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.getWriter().write(objectMapper.writeValueAsString(problem));
     }
 }
