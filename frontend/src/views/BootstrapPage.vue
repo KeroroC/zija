@@ -28,7 +28,7 @@
         </el-button>
       </el-form>
     </div>
-    <p class="auth-foot">家庭物品管理系统 · 让每一件物品都有迹可循</p>
+    <p class="auth-foot">知家 · 让每一件物品都有迹可循</p>
   </div>
 </template>
 
@@ -38,6 +38,7 @@ import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { householdApi } from "../api/household";
 import { authApi } from "../api/auth";
+import { ApiError } from "../api/http";
 import { useSessionStore } from "../stores/session";
 import type { BootstrapRequest } from "../types/identity";
 
@@ -61,7 +62,18 @@ async function submit() {
     await session.applySession(sessionInfo);
     router.push({ name: "home" });
   } catch (e) {
-    ElMessage.error((e as Error).message);
+    if (e instanceof ApiError && e.fieldErrors) {
+      const labels: Record<string, string> = {
+        householdName: "家庭名称", username: "用户名", password: "密码",
+        displayName: "显示名", email: "邮箱"
+      };
+      const msg = Object.entries(e.fieldErrors)
+        .map(([k, v]) => `${labels[k] ?? k}：${v}`)
+        .join("；");
+      ElMessage.error(msg);
+    } else {
+      ElMessage.error((e as Error).message);
+    }
   } finally {
     loading.value = false;
   }

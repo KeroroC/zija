@@ -8,38 +8,52 @@
       </div>
       <h2 class="auth-title">加入家庭</h2>
       <template v-if="info?.valid">
-        <p class="invite-meta">家庭：{{ info.householdName }}</p>
-        <p class="invite-meta">角色：{{ info.role }}</p>
-        <el-form :model="form" label-position="top" @submit.prevent="redeem">
-          <el-form-item label="用户名">
-            <el-input v-model="form.username" required />
-          </el-form-item>
-          <el-form-item label="密码">
-            <el-input v-model="form.password" type="password" required show-password />
-          </el-form-item>
-          <el-form-item label="显示名">
-            <el-input v-model="form.displayName" required />
-          </el-form-item>
-          <el-form-item label="邮箱（可选）">
-            <el-input v-model="form.email" type="email" />
-          </el-form-item>
-          <el-button type="primary" :loading="loading" @click="redeem">加入</el-button>
-        </el-form>
+        <template v-if="!session.authenticated">
+          <p class="invite-meta">家庭：{{ info.householdName }}</p>
+          <p class="invite-meta">角色：{{ info.role }}</p>
+          <el-form :model="form" label-position="top" @submit.prevent="redeem">
+            <el-form-item label="用户名">
+              <el-input v-model="form.username" required />
+            </el-form-item>
+            <el-form-item label="密码">
+              <el-input v-model="form.password" type="password" required show-password />
+            </el-form-item>
+            <el-form-item label="显示名">
+              <el-input v-model="form.displayName" required />
+            </el-form-item>
+            <el-form-item label="邮箱（可选）">
+              <el-input v-model="form.email" type="email" />
+            </el-form-item>
+            <el-button type="primary" :loading="loading" @click="redeem">加入</el-button>
+          </el-form>
+        </template>
+        <template v-else>
+          <p class="invite-meta">家庭：{{ info.householdName }}</p>
+          <p class="invite-meta">角色：{{ info.role }}</p>
+          <p class="invite-notice">
+            你当前已登录为 <strong>{{ currentDisplayName }}</strong>（{{ currentUsername }}）。邀请链接只能用于注册新账号，请先登出后再继续。
+          </p>
+          <div class="invite-actions">
+            <el-button text @click="goHome">返回首页</el-button>
+            <el-button type="primary" :loading="loggingOut" @click="logoutAndContinue">登出并继续</el-button>
+          </div>
+        </template>
       </template>
       <template v-else>
         <p class="invite-meta">邀请链接无效或已过期。</p>
       </template>
     </div>
-    <p class="auth-foot">家庭物品管理系统 · 让每一件物品都有迹可循</p>
+    <p class="auth-foot">知家 · 让每一件物品都有迹可循</p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { invitationApi } from "../api/invitation";
 import { authApi } from "../api/auth";
+import { ApiError } from "../api/http";
 import { useSessionStore } from "../stores/session";
 import type { InvitationInspect } from "../types/identity";
 
@@ -47,6 +61,7 @@ const router = useRouter();
 const session = useSessionStore();
 const info = ref<InvitationInspect | null>(null);
 const loading = ref(false);
+const loggingOut = ref(false);
 const token = ref("");
 const form = reactive({
   username: "",
@@ -55,17 +70,32 @@ const form = reactive({
   email: ""
 });
 
+const currentDisplayName = computed(
+  () => session.currentMember?.displayName ?? session.session?.displayName ?? ""
+);
+const currentUsername = computed(
+  () => session.session?.username ?? ""
+);
+
+const TOKEN_KEY = "zija-invite-token";
+
 onMounted(async () => {
   const hash = window.location.hash;
   const match = hash.match(/token=([^&]+)/);
-  if (!match) {
+  if (match) {
+    token.value = decodeURIComponent(match[1]);
+    sessionStorage.setItem(TOKEN_KEY, token.value);
+    window.history.replaceState(null, "", window.location.pathname);
+  } else {
+    token.value = sessionStorage.getItem(TOKEN_KEY) ?? "";
+  }
+  if (!token.value) {
     info.value = { valid: false };
     return;
   }
-  token.value = decodeURIComponent(match[1]);
-  window.history.replaceState(null, "", window.location.pathname);
 
   try {
+    await session.ensureInitialized();
     await authApi.initializeCsrf();
     info.value = await invitationApi.inspect(token.value);
   } catch {
@@ -78,12 +108,39 @@ async function redeem() {
   try {
     await authApi.initializeCsrf();
     const sessionInfo = await invitationApi.redeem(token.value, form);
+    sessionStorage.removeItem(TOKEN_KEY);
     await session.applySession(sessionInfo);
     router.push({ name: "home" });
   } catch (e) {
-    ElMessage.error((e as Error).message);
+    if (e instanceof ApiError && e.fieldErrors) {
+      const labels: Record<string, string> = {
+        username: "用户名", password: "密码", displayName: "显示名", email: "邮箱"
+      };
+      const msg = Object.entries(e.fieldErrors)
+        .map(([k, v]) => `${labels[k] ?? k}：${v}`)
+        .join("；");
+      ElMessage.error(msg);
+    } else {
+      ElMessage.error((e as Error).message);
+    }
   } finally {
     loading.value = false;
+  }
+}
+
+function goHome() {
+  router.push({ name: "home" });
+}
+
+async function logoutAndContinue() {
+  loggingOut.value = true;
+  try {
+    await session.logout();
+    // 不跳转；响应式切回表单分支
+  } catch {
+    ElMessage.error("登出失败，请重试");
+  } finally {
+    loggingOut.value = false;
   }
 }
 </script>
@@ -93,5 +150,17 @@ async function redeem() {
   margin: 0 0 8px;
   font-size: 13px;
   color: var(--zj-ink-600);
+}
+.invite-notice {
+  margin: 16px 0 24px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--zj-ink-600);
+}
+.invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
 }
 </style>

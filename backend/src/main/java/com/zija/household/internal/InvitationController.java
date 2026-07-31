@@ -76,11 +76,11 @@ class InvitationController {
     }
 
     public record RedeemRequest(
-            @NotBlank @Size(max = 200) String token,
-            @NotBlank @Size(max = 50) String username,
-            @NotBlank @Size(min = 8, max = 72) @Utf8ByteLength(max = 72) String password,
-            @NotBlank @Size(max = 100) String displayName,
-            @Email @Size(max = 255) String email) {
+            @NotBlank(message = "不能为空") @Size(max = 200, message = "长度不能超过 {max} 个字符") String token,
+            @NotBlank(message = "不能为空") @Size(max = 50, message = "长度不能超过 {max} 个字符") String username,
+            @NotBlank(message = "不能为空") @Size(min = 8, max = 72, message = "长度必须在 {min} 到 {max} 个字符之间") @Utf8ByteLength(max = 72) String password,
+            @NotBlank(message = "不能为空") @Size(max = 100, message = "长度不能超过 {max} 个字符") String displayName,
+            @Email(message = "格式不正确") @Size(max = 255, message = "长度不能超过 {max} 个字符") String email) {
     }
 
     /**

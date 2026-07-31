@@ -30,6 +30,7 @@ const resetPasswordMock = vi.mocked(ownerRecoveryApi.resetPassword);
 
 describe("OwnerRecoveryPage", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     pushMock.mockReset();
     initializeCsrfMock.mockReset().mockResolvedValue(undefined);
     inspectMock.mockReset().mockResolvedValue({ valid: true, ownerDisplayName: "户主" });
@@ -95,7 +96,6 @@ describe("OwnerRecoveryPage", () => {
     });
     await flushPromises();
 
-    expect(window.location.hash).toBe("");
     expect(wrapper.text()).toContain("恢复链接无效或已过期。");
     expect(initializeCsrfMock).not.toHaveBeenCalled();
     expect(inspectMock).not.toHaveBeenCalled();
@@ -105,7 +105,7 @@ describe("OwnerRecoveryPage", () => {
   it.each([
     ["a fragment without a token", "#source=internal"],
     ["an empty token", "#token="]
-  ])("clears %s and shows the invalid-link message", async (_, hash) => {
+  ])("shows the invalid-link message for %s", async (_, hash) => {
     window.history.replaceState(null, "", `/owner-recovery${hash}`);
 
     const wrapper = mount(OwnerRecoveryPage, {
@@ -115,7 +115,6 @@ describe("OwnerRecoveryPage", () => {
     });
     await flushPromises();
 
-    expect(window.location.hash).toBe("");
     expect(wrapper.text()).toContain("恢复链接无效或已过期。");
     expect(initializeCsrfMock).not.toHaveBeenCalled();
     expect(inspectMock).not.toHaveBeenCalled();

@@ -1,5 +1,5 @@
 <template>
-  <template v-if="!session.authenticated">
+  <template v-if="!session.authenticated || session.isPublicRoute(route)">
     <router-view />
   </template>
   <el-container v-else class="app-shell">
@@ -110,7 +110,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   House,
@@ -132,6 +132,7 @@ import { householdApi } from "../api/household";
 import NotificationBell from "./NotificationBell.vue";
 
 const router = useRouter();
+const route = useRoute();
 const session = useSessionStore();
 const householdName = ref("我的家");
 

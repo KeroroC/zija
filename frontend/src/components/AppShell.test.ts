@@ -106,6 +106,46 @@ describe("AppShell", () => {
     expect(wrapper.text()).not.toContain("登出");
   });
 
+  it("hides the shell when authenticated but the current route is a public full-screen route", async () => {
+    const session = useSessionStore();
+    session.session = { authenticated: true, accountId: "a1", username: "admin", displayName: "Admin" };
+    session.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "Admin",
+      role: "ADMIN",
+      status: "ACTIVE",
+      householdName: "测试家庭"
+    };
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/login", name: "login", component: { render: () => h("div", "登录页") } },
+        { path: "/invitation/redeem", name: "invitation-redeem", component: { render: () => h("div", "邀请页") } }
+      ]
+    });
+    await router.push("/login");
+    await router.isReady();
+    wrapper = mount(AppShell, {
+      global: {
+        plugins: [router, ElementPlus]
+      }
+    });
+
+    expect(wrapper.text()).toContain("登录页");
+    expect(wrapper.text()).not.toContain("知家");
+    expect(wrapper.text()).not.toContain("成员管理");
+    expect(wrapper.text()).not.toContain("登出");
+
+    await router.push("/invitation/redeem");
+    await flushPromises();
+    expect(wrapper.text()).toContain("邀请页");
+    expect(wrapper.text()).not.toContain("知家");
+    expect(wrapper.text()).not.toContain("成员管理");
+  });
+
   it("shows an error and stays on the current route when logout fails", async () => {
     const session = useSessionStore();
     session.session = { authenticated: true, username: "admin" };

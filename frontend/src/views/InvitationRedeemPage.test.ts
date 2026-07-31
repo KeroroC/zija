@@ -8,6 +8,30 @@ import InvitationRedeemPage from "./InvitationRedeemPage.vue";
 const pushMock = vi.fn();
 const applySessionMock = vi.fn();
 const ensureInitializedMock = vi.fn();
+const logoutMock = vi.fn();
+
+const sessionState = {
+  applySession: applySessionMock,
+  ensureInitialized: ensureInitializedMock,
+  logout: logoutMock,
+  authenticated: false,
+  currentMember: null as null | {
+    householdId: string;
+    memberId: string;
+    accountId: string;
+    username: string;
+    displayName: string;
+    role: string;
+    status: string;
+    householdName: string;
+  },
+  session: null as null | {
+    authenticated: boolean;
+    accountId?: string;
+    username?: string;
+    displayName?: string;
+  }
+};
 
 vi.mock("vue-router", () => ({
   useRouter: () => ({ push: pushMock })
@@ -25,10 +49,7 @@ vi.mock("../api/invitation", () => ({
 }));
 
 vi.mock("../stores/session", () => ({
-  useSessionStore: () => ({
-    applySession: applySessionMock,
-    ensureInitialized: ensureInitializedMock
-  })
+  useSessionStore: () => sessionState
 }));
 
 const sessionInfo = {
@@ -45,9 +66,14 @@ describe("InvitationRedeemPage", () => {
   let wrapper: VueWrapper | null = null;
 
   beforeEach(() => {
+    sessionStorage.clear();
     pushMock.mockReset();
     applySessionMock.mockReset().mockResolvedValue(true);
     ensureInitializedMock.mockReset().mockResolvedValue(undefined);
+    logoutMock.mockReset().mockResolvedValue(undefined);
+    sessionState.authenticated = false;
+    sessionState.currentMember = null;
+    sessionState.session = null;
     vi.mocked(authApi.initializeCsrf).mockReset().mockResolvedValue(undefined);
     inspectMock.mockReset().mockResolvedValue({
       valid: true,
@@ -79,7 +105,8 @@ describe("InvitationRedeemPage", () => {
       displayName: "成员"
     }));
     expect(applySessionMock).toHaveBeenCalledWith(sessionInfo);
-    expect(ensureInitializedMock).not.toHaveBeenCalled();
+    // ensureInitialized runs once during mount, redeem path must not call it again
+    expect(ensureInitializedMock).toHaveBeenCalledTimes(1);
     expect(pushMock).toHaveBeenCalledWith({ name: "home" });
   });
 
@@ -96,5 +123,74 @@ describe("InvitationRedeemPage", () => {
     await flushPromises();
 
     expect(pushMock).toHaveBeenCalledWith({ name: "home" });
+  });
+
+  it("renders an already-logged-in notice instead of the form when the session is authenticated", async () => {
+    sessionState.authenticated = true;
+    sessionState.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "管理员",
+      role: "ADMIN",
+      status: "ACTIVE",
+      householdName: "原家庭"
+    };
+    sessionState.session = {
+      authenticated: true,
+      accountId: "a1",
+      username: "admin",
+      displayName: "管理员"
+    };
+
+    wrapper = mount(InvitationRedeemPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("你当前已登录");
+    expect(wrapper.text()).toContain("管理员");
+    expect(wrapper.findAll("input").length).toBe(0);
+    expect(wrapper.text()).toContain("返回首页");
+    expect(wrapper.text()).toContain("登出并继续");
+  });
+
+  it("calls logout and lets reactivity switch the view back to the form", async () => {
+    sessionState.authenticated = true;
+    sessionState.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "管理员",
+      role: "ADMIN",
+      status: "ACTIVE",
+      householdName: "原家庭"
+    };
+    sessionState.session = {
+      authenticated: true,
+      accountId: "a1",
+      username: "admin",
+      displayName: "管理员"
+    };
+
+    logoutMock.mockImplementation(async () => {
+      sessionState.authenticated = false;
+      sessionState.currentMember = null;
+      sessionState.session = null;
+    });
+
+    wrapper = mount(InvitationRedeemPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+    expect(wrapper.text()).toContain("你当前已登录");
+
+    const logoutBtn = wrapper.findAll("button").find(b => b.text().includes("登出并继续"))!;
+    expect(logoutBtn).toBeDefined();
+    await logoutBtn.trigger("click");
+    await flushPromises();
+
+    expect(logoutMock).toHaveBeenCalledTimes(1);
+    expect(wrapper.findAll("input").length).toBe(4);
+    expect(wrapper.text()).toContain("加入");
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

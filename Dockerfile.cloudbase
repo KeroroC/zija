@@ -6,20 +6,20 @@
 # ⚠️ 构建上下文必须是**仓库根目录**：
 #   本文件的 COPY 全部相对仓库根书写（frontend/、backend/、deploy/cloudbase/），
 #   而 Docker 的 COPY 源路径不能超出构建上下文（`../` 会被剥离，
-#   指向上下文外的符号链接也不跟随）。所以必须在仓库根执行构建，用 -f 指定本文件。
+#   指向上下文外的符号链接也不跟随）。所以必须在仓库根执行构建。
+#   本文件刻意放在仓库根（名为 Dockerfile.cloudbase），这样既能
+#     docker buildx build -f Dockerfile.cloudbase . （方式 B：本地交叉构建推送）
+#   也能被 CloudBase 控制台表单式构建直接选用（控制台「Dockerfile 名称」栏不接受路径，
+#   但接受与目标目录同级的文件名）。
 #
 # 本地交叉构建（Apple Silicon 必须指定 amd64，否则云托管拉取报
 # "no match for platform in manifest" → ImagePullBackOff）：
 #   cd <仓库根目录>
 #   docker buildx build --platform linux/amd64 --provenance=false \
-#     -f deploy/cloudbase/Dockerfile -t <registry>/zija:<tag> --push .
+#     -f Dockerfile.cloudbase -t <registry>/zija:<tag> --push .
 #
-# 云端部署（CLI / MCP）：上下文与 Dockerfile 路径解耦，可直接指定
-#   Dockerfile: "deploy/cloudbase/Dockerfile"
-#
-# ⚠️ CloudBase 控制台的表单式构建不兼容本布局：
-#   「Dockerfile 名称」栏不接受路径，且要求与「目标目录」同级。
-#   若必须走控制台，需先把本文件复制到仓库根目录再填写。
+# 云端部署（CLI / MCP）：直接指定 Dockerfile 字段即可
+#   Dockerfile: "Dockerfile.cloudbase"
 #
 # 注意：本地 Docker Compose 用的是 deploy/app/Dockerfile 与 deploy/web/Dockerfile，
 # 与本文件互不影响。
@@ -65,8 +65,8 @@ FROM eclipse-temurin:25-jre-noble
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl nginx postgresql postgresql-contrib \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /var/lib/zija/files /var/lib/postgresql/data /var/log/nginx /var/run/nginx \
-    && chown -R postgres:postgres /var/lib/postgresql/data \
+    && mkdir -p /var/lib/zija/files /var/lib/zija/postgresql/data /var/log/nginx /var/run/nginx \
+    && chown -R postgres:postgres /var/lib/zija/postgresql/data \
     && rm -f /etc/nginx/sites-enabled/default
 
 WORKDIR /app

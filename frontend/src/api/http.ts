@@ -4,18 +4,21 @@ export class ApiError extends Error {
   readonly errorCode: string;
   readonly requestId?: string;
   readonly status: number;
+  readonly fieldErrors?: Record<string, string>;
 
   constructor(
     message: string,
     errorCode: string,
     status: number,
-    requestId?: string
+    requestId?: string,
+    fieldErrors?: Record<string, string>
   ) {
     super(message);
     this.name = "ApiError";
     this.errorCode = errorCode;
     this.status = status;
     this.requestId = requestId;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -147,7 +150,8 @@ async function coreRequest<T>(
     problem.title ?? "Request failed",
     problem.errorCode ?? "http_error",
     response.status,
-    problem.requestId ?? response.headers.get("X-Request-Id") ?? undefined
+    problem.requestId ?? response.headers.get("X-Request-Id") ?? undefined,
+    problem.fieldErrors
   );
 }
 
