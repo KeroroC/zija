@@ -45,6 +45,7 @@ describe("InvitationRedeemPage", () => {
   let wrapper: VueWrapper | null = null;
 
   beforeEach(() => {
+    sessionStorage.clear();
     pushMock.mockReset();
     applySessionMock.mockReset().mockResolvedValue(true);
     ensureInitializedMock.mockReset().mockResolvedValue(undefined);

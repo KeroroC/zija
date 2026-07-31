@@ -56,15 +56,22 @@ const form = reactive({
   email: ""
 });
 
+const TOKEN_KEY = "zija-invite-token";
+
 onMounted(async () => {
   const hash = window.location.hash;
   const match = hash.match(/token=([^&]+)/);
-  if (!match) {
+  if (match) {
+    token.value = decodeURIComponent(match[1]);
+    sessionStorage.setItem(TOKEN_KEY, token.value);
+    window.history.replaceState(null, "", window.location.pathname);
+  } else {
+    token.value = sessionStorage.getItem(TOKEN_KEY) ?? "";
+  }
+  if (!token.value) {
     info.value = { valid: false };
     return;
   }
-  token.value = decodeURIComponent(match[1]);
-  window.history.replaceState(null, "", window.location.pathname);
 
   try {
     await authApi.initializeCsrf();
@@ -79,6 +86,7 @@ async function redeem() {
   try {
     await authApi.initializeCsrf();
     const sessionInfo = await invitationApi.redeem(token.value, form);
+    sessionStorage.removeItem(TOKEN_KEY);
     await session.applySession(sessionInfo);
     router.push({ name: "home" });
   } catch (e) {

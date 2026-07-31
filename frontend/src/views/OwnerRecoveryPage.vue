@@ -48,17 +48,24 @@ const passwordsMatch = computed(
   () => form.newPassword.length > 0 && form.newPassword === confirmPassword.value
 );
 
+const TOKEN_KEY = "zija-recovery-token";
+
 onMounted(async () => {
   const hash = window.location.hash;
-  window.history.replaceState(null, "", window.location.pathname);
   const match = hash.match(/token=([^&]+)/);
-  if (!match) {
-    info.value = { valid: false };
-    return;
+  if (match) {
+    try {
+      token.value = decodeURIComponent(match[1]);
+      sessionStorage.setItem(TOKEN_KEY, token.value);
+      window.history.replaceState(null, "", window.location.pathname);
+    } catch {
+      info.value = { valid: false };
+      return;
+    }
+  } else {
+    token.value = sessionStorage.getItem(TOKEN_KEY) ?? "";
   }
-  try {
-    token.value = decodeURIComponent(match[1]);
-  } catch {
+  if (!token.value) {
     info.value = { valid: false };
     return;
   }
@@ -77,6 +84,7 @@ async function reset() {
   loading.value = true;
   try {
     await ownerRecoveryApi.resetPassword({ token: token.value, newPassword: form.newPassword });
+    sessionStorage.removeItem(TOKEN_KEY);
     ElMessage.success("密码已重置，请使用新密码登录");
     router.push({ name: "login" });
   } catch {
