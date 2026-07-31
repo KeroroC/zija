@@ -11,4 +11,5 @@ export interface ApiProblem {
   detail?: string;
   errorCode?: string;
   requestId?: string;
+  fieldErrors?: Record<string, string>;
 }
