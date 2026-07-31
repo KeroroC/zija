@@ -1,10 +1,16 @@
 name: ci
 
+# 开发在 dev 分支上进行，PR 合并到 main 后视为发布。
+# 合并到 main 时跑完整 CI（含 deployment-smoke），dev 上只跑单元/构建测试。
 on:
   push:
     branches:
       - main
+      - dev
   pull_request:
+    branches:
+      - main
+      - dev
 
 jobs:
   backend:
@@ -38,8 +44,11 @@ jobs:
       - name: Build frontend
         run: npm --prefix frontend run build
 
+  # 仅在 main 分支（push 或 PR target）上跑 smoke，避免 dev 上反复起容器浪费时间。
   deployment-smoke:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+    needs: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
