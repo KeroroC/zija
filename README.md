@@ -174,6 +174,39 @@ npm --prefix frontend test -- --reporter=verbose     # 前端测试（详细输�
 - [故障排除](docs/deploy/troubleshooting.md)
 - [发行说明](docs/deploy/release-notes.md)
 
+### 腾讯云 CloudBase 云托管（单容器自包含部署）
+
+适合希望免运维、单域同源部署的家庭用户：一个 CloudRun 容器内同时运行 PostgreSQL + Spring Boot + nginx + Vue 静态资源。
+
+**特点**
+- 单域同源：nginx 监听 `8080`，静态资源与 `/api` 反向代理到同容器后端（`127.0.0.1:8081`），无需 CORS、VPC 或外部数据库。
+- 部署文件位于 `deploy/cloudbase/`：`Dockerfile`、`default.conf`、`entrypoint.sh`。
+  ⚠️ 构建上下文必须是**仓库根目录**（Dockerfile 中的 `COPY frontend/…`、`COPY backend/…` 均相对仓库根），构建时用 `-f deploy/cloudbase/Dockerfile` 指定。
+- 后端构建阶段显式安装 Maven 3.9.11（避免 Maven Wrapper 在无 `unzip` 的环境中降级导致构建失败）。
+
+**部署步骤**
+1. 确认 CloudBase 环境已开通「云托管（CloudRun）」（体验版套餐默认不含，需手动开通）。
+2. 通过云托管控制台 / `manageCloudRun` 创建容器服务：
+   - 构建配置：上下文 = 仓库根目录，`Dockerfile` 指向 `deploy/cloudbase/Dockerfile`，服务端口 `8080`
+     （控制台表单式构建的「Dockerfile 名称」栏不接受路径，需改用 CLI / MCP 部署；详见 `deploy/cloudbase/README.md`）
+   - 环境变量（示例）：
+     ```
+     ZIJA_DB_URL=jdbc:postgresql://127.0.0.1:5432/zija
+     ZIJA_DB_USERNAME=postgres
+     ZIJA_DB_PASSWORD=postgres
+     ZIJA_DB_NAME=zija
+     ZIJA_VERSION=cloudbase
+     ZIJA_FILE_STORAGE_PATH=/var/lib/zija/files
+     MANAGEMENT_HEALTH_MAIL_ENABLED=false   # 未配置 SMTP 时关闭邮件健康检查，避免 readiness=DOWN
+     ```
+3. 部署完成后访问公网域名，前端会自动跳转 `/bootstrap` 完成家庭初始化。
+
+**已知限制（重要）**
+- ⚠️ **数据持久化（已实测纠正）**：CloudBase 云托管容器实例的**可写磁盘（含 `/var/lib/postgresql/data` 与上传文件）在「重新部署 / 镜像发布」时是保留的**——本项目实测：重新部署后 `POST /api/v1/household/bootstrap` 直接返回 `409 家庭已初始化`（空库应为 `201`），且 `installationId` 跨部署保持不变，证明容器磁盘未被重置。**但这是实例级持久化**：当平台因节点维护、实例回收、缩容到 0 后再拉起、或跨可用区调度而**新建实例**时，新实例使用全新镜像、磁盘为空，数据会丢失。因此：
+  - 日常「重新部署」：数据保留，无需担心；
+  - 需要对抗「实例被平台重建」导致的数据丢失：给容器挂载 CFS 文件存储卷（`VolumesConf`）到 `/var/lib/postgresql/data` 与 `/var/lib/zija/files`，并相应增大实例规格。
+- 未配置 SMTP 时，邮件提醒不可用（不影响站内通知）。
+
 ## 方案与计划
 
 - **设计规范：** [`docs/design/redesign-visual-spec.md`](docs/design/redesign-visual-spec.md)（松间账册 / Pine Ledger 视觉规范）

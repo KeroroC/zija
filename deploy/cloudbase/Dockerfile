@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1
+#
+# CloudBase 云托管（CloudRun）单容器自包含镜像：
+#   PostgreSQL + Spring Boot + nginx + Vue 静态资源 全部在一个容器内。
+#
+# ⚠️ 构建上下文必须是**仓库根目录**：
+#   本文件的 COPY 全部相对仓库根书写（frontend/、backend/、deploy/cloudbase/），
+#   而 Docker 的 COPY 源路径不能超出构建上下文（`../` 会被剥离，
+#   指向上下文外的符号链接也不跟随）。所以必须在仓库根执行构建，用 -f 指定本文件。
+#
+# 本地交叉构建（Apple Silicon 必须指定 amd64，否则云托管拉取报
+# "no match for platform in manifest" → ImagePullBackOff）：
+#   cd <仓库根目录>
+#   docker buildx build --platform linux/amd64 --provenance=false \
+#     -f deploy/cloudbase/Dockerfile -t <registry>/zija:<tag> --push .
+#
+# 云端部署（CLI / MCP）：上下文与 Dockerfile 路径解耦，可直接指定
+#   Dockerfile: "deploy/cloudbase/Dockerfile"
+#
+# ⚠️ CloudBase 控制台的表单式构建不兼容本布局：
+#   「Dockerfile 名称」栏不接受路径，且要求与「目标目录」同级。
+#   若必须走控制台，需先把本文件复制到仓库根目录再填写。
+#
+# 注意：本地 Docker Compose 用的是 deploy/app/Dockerfile 与 deploy/web/Dockerfile，
+# 与本文件互不影响。
+
+# ---- Frontend build (Vue 3 + Vite) ----
+FROM node:24-alpine AS frontend-build
+WORKDIR /workspace
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# ---- Backend build (Spring Boot, Java 25) ----
+# NOTE: do NOT use ./mvnw here.
+# The wrapper prefers the pinned .zip distribution but silently falls back to the
+# .tar.gz one when `unzip` is missing, then extracts it with GNU tar. On the
+# CloudBase build host that fails with
+#   "tar: ...: Cannot mkdir: Function not implemented"
+# (seccomp profile blocks syscalls used by modern tar). `unzip` is unaffected,
+# so we install Maven explicitly from the official .zip instead.
+# Do NOT use `apt-get install maven`: Ubuntu Noble ships 3.8.7, older than the
+# 3.9.11 this project pins and too old for the Spring Boot 4.1 plugin.
+FROM eclipse-temurin:25-jdk AS backend-build
+ARG MAVEN_VERSION=3.9.11
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL -o /tmp/maven.zip \
+       "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.zip" \
+    && unzip -q /tmp/maven.zip -d /opt \
+    && rm -f /tmp/maven.zip \
+    && ln -s "/opt/apache-maven-${MAVEN_VERSION}/bin/mvn" /usr/local/bin/mvn \
+    && mvn -v
+WORKDIR /workspace
+COPY backend/pom.xml backend/
+# Warm the dependency cache in its own layer; tolerate partial resolution failures.
+RUN cd backend && (mvn -B -q -DskipTests dependency:go-offline || true)
+COPY backend/src backend/src
+# mvn picks up JAVA_HOME=/opt/java/openjdk (Temurin 25) from the base image.
+RUN cd backend && mvn -B -DskipTests package
+
+# ---- Runtime: PostgreSQL + Spring Boot + nginx in one container ----
+FROM eclipse-temurin:25-jre-noble
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl nginx postgresql postgresql-contrib \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/lib/zija/files /var/lib/postgresql/data /var/log/nginx /var/run/nginx \
+    && chown -R postgres:postgres /var/lib/postgresql/data \
+    && rm -f /etc/nginx/sites-enabled/default
+
+WORKDIR /app
+COPY --from=backend-build /workspace/backend/target/*.jar /app/zija.jar
+COPY --from=frontend-build /workspace/dist /usr/share/nginx/html
+COPY deploy/cloudbase/default.conf /etc/nginx/conf.d/default.conf
+COPY deploy/cloudbase/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
