@@ -25,7 +25,7 @@
         <p class="recovery-meta">恢复链接无效或已过期。</p>
       </template>
     </div>
-    <p class="auth-foot">家庭物品管理系统 · 让每一件物品都有迹可循</p>
+    <p class="auth-foot">知家 · 让每一件物品都有迹可循</p>
   </div>
 </template>
 
