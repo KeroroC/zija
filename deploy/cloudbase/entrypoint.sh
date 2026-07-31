@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # CloudBase CloudRun entrypoint:
-#   1. Initialize + start an in-container PostgreSQL (data on ephemeral container disk)
+#   1. Initialize + start an in-container PostgreSQL (data on /var/lib/zija/postgresql/data)
 #   2. Start the Spring Boot backend (jar) on 127.0.0.1:8081
 #   3. Start nginx on 8080 (CloudRun PORT) serving the SPA + reverse-proxying /api
 set -euo pipefail
 
-PGDATA=/var/lib/postgresql/data
+PGDATA=/var/lib/zija/postgresql/data
 PG_BIN=$(ls -d /usr/lib/postgresql/*/bin | head -1)
 ZIJA_DB=${ZIJA_DB_NAME:-zija}
 
@@ -16,7 +16,7 @@ if [ ! -f "$PGDATA/PG_VERSION" ]; then
   su postgres -c "$PG_BIN/initdb -D $PGDATA -U postgres -A trust"
 fi
 
-su postgres -c "$PG_BIN/pg_ctl -D $PGDATA -o '-c listen_addresses=127.0.0.1 -p 5432' -l /var/lib/postgresql/pg.log start"
+su postgres -c "$PG_BIN/pg_ctl -D $PGDATA -o '-c listen_addresses=127.0.0.1 -p 5432' -l /var/lib/zija/postgresql/pg.log start"
 
 # Wait for PostgreSQL to accept connections
 for i in $(seq 1 60); do

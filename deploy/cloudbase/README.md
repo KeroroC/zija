@@ -5,14 +5,15 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `Dockerfile` | 多阶段构建：前端 `npm build` → 后端 Maven `package` → 运行时镜像装 PostgreSQL + nginx |
+| `Dockerfile.cloudbase`（仓库根） | 多阶段构建：前端 `npm build` → 后端 Maven `package` → 运行时镜像装 PostgreSQL + nginx |
 | `entrypoint.sh` | 初始化并启动 PostgreSQL、以 `--server.port=8081` 启动后端、启动 nginx，并用 `wait -n` 做双进程监管 |
 | `default.conf` | nginx 监听 **8080**，静态资源 + `/api`、`/actuator` 反代到 `127.0.0.1:8081` |
 
 ⚠️ **构建上下文必须是仓库根目录**。Dockerfile 里的 `COPY frontend/…`、`COPY backend/…`、
 `COPY deploy/cloudbase/…` 全部相对仓库根书写，而 Docker 的 `COPY` 源路径不能超出构建上下文
 （`../` 会被剥离，指向上下文外的符号链接也不跟随）。所以构建时始终在仓库根执行，
-用 `-f deploy/cloudbase/Dockerfile` 指定 Dockerfile。
+用 `-f Dockerfile.cloudbase` 指定 Dockerfile（本仓库刻意把 Dockerfile 放在根目录，
+这样 CloudBase 控制台表单式构建也能直接用，详见下文）。
 
 端口分配：**nginx = 8080（对外）**，**后端 = 8081（仅容器内）**。
 后端必须让出 8080，否则会和 nginx 抢端口，表现为服务 502、日志 `Port 8080 was already in use`。
@@ -57,7 +58,7 @@ docker image inspect <镜像> --format '{{.Os}}/{{.Architecture}}'
    serverName:  zija
    serverType:  container
    targetPath:  <仓库根目录>
-   Dockerfile:  deploy/cloudbase/Dockerfile
+   Dockerfile:  Dockerfile.cloudbase
    Port:        8080
    OpenAccessTypes: ["PUBLIC"]
    规格参考:     Cpu=1 / Mem=2 / MinNum=1 / MaxNum=3
@@ -65,16 +66,9 @@ docker image inspect <镜像> --format '{{.Os}}/{{.Architecture}}'
 
    > 「未配置 VPC」的提示可忽略——数据库在容器内部（`127.0.0.1:5432`），不走 VPC。
 
-3. ⚠️ **控制台表单式构建不兼容当前目录布局**。
-   控制台的「Dockerfile 名称」栏**不接受路径**，且要求该文件与「目标目录」（构建上下文）同级；
-   而本镜像的上下文必须是仓库根。两条约束联立后无解：
-
-   - 目标目录填 `deploy/cloudbase` → 上下文里只有这几个文件，
-     `COPY frontend/ …`、`COPY backend/pom.xml …` 直接报 `not found`；
-   - 目标目录填 `.` → 名称栏又填不了 `deploy/cloudbase/Dockerfile`。
-
-   若必须走控制台，先把 `deploy/cloudbase/Dockerfile` 复制一份到仓库根
-   （例如 `Dockerfile.cloudbase`），再填「目标目录 = `.`、Dockerfile 名称 = 该文件名」。
+3. 控制台表单式构建也可以走：`Dockerfile.cloudbase` 已在仓库根，
+   与「目标目录 = `.`」同级，控制台「Dockerfile 名称」直接填 `Dockerfile.cloudbase` 即可，
+   与 CLI / MCP 部署共用同一份 Dockerfile。
 
 ---
 
@@ -92,7 +86,7 @@ docker login ccr.ccs.tencentyun.com
 docker buildx build \
   --platform linux/amd64 \
   --provenance=false \
-  -f deploy/cloudbase/Dockerfile \
+  -f Dockerfile.cloudbase \
   -t ccr.ccs.tencentyun.com/<命名空间>/zija:<版本号> \
   --push .
 
@@ -150,13 +144,15 @@ curl -s -m 15 "$URL/api/v1/system/info"
 
 ## 数据持久化
 
-容器内 PostgreSQL 的数据目录为 `/var/lib/postgresql/data`，上传文件为 `/var/lib/zija/files`。
+容器内持久化目录统一收敛在 `/var/lib/zija/` 下：PostgreSQL 数据为 `/var/lib/zija/postgresql/data`，
+上传文件为 `/var/lib/zija/files`。
 
 - **重新部署 / 发布新镜像**：实例磁盘保留，数据**不会**丢失（实测：重部署后 bootstrap 返回 `409 家庭已初始化`，`installationId` 保持不变）。
 - **平台新建实例**（节点维护、实例回收、缩容到 0 后重新拉起、跨可用区调度）：新实例使用全新镜像、磁盘为空，数据**会**丢失。
 - **环境被删除**：服务与数据一并消失，访问域名返回 404。
 
-如需对抗上述后两种情况，在服务配置的 `VolumesConf` 中把 CFS 文件存储卷挂载到 `/var/lib/postgresql/data` 与 `/var/lib/zija/files`。
+如需对抗上述后两种情况，在服务配置的 `VolumesConf` 中把 CFS 文件存储卷挂载到
+`/var/lib/zija/postgresql/data` 与 `/var/lib/zija/files`（两个挂载点同源时也可共用一份卷）。
 
 ---
 
