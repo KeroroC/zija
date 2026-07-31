@@ -109,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -128,24 +128,14 @@ import {
   AlarmClock
 } from "@element-plus/icons-vue";
 import { useSessionStore } from "../stores/session";
-import { householdApi } from "../api/household";
 import NotificationBell from "./NotificationBell.vue";
 
 const router = useRouter();
 const route = useRoute();
 const session = useSessionStore();
-const householdName = ref("我的家");
-
-onMounted(async () => {
-  try {
-    const member = await householdApi.getCurrentMember();
-    if (member.householdName) {
-      householdName.value = member.householdName;
-    }
-  } catch {
-    // fallback to default
-  }
-});
+// The store already resolves the current member on login and on session
+// restore, so the name is reactive and correct without a separate fetch.
+const householdName = computed(() => session.currentMember?.householdName || "我的家");
 
 const isAdmin = computed(() => session.role === "OWNER" || session.role === "ADMIN");
 

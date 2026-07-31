@@ -79,6 +79,45 @@ describe("AppShell", () => {
     expect(inventoryItem!.classes()).not.toContain("is-disabled");
   });
 
+  it("shows the initialized household name right after login, without requiring a page refresh", async () => {
+    const session = useSessionStore();
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/", name: "home", component: { render: () => h("div", "系统状态") } },
+        { path: "/login", name: "login", component: { render: () => h("div", "登录页") } }
+      ]
+    });
+    await router.push("/");
+    await router.isReady();
+
+    // AppShell mounts at app startup, before login. Its one-shot household-name
+    // lookup fails (unauthenticated) and silently falls back to the default.
+    wrapper = mount(AppShell, {
+      global: { plugins: [router, ElementPlus] }
+    });
+    await flushPromises();
+
+    // Simulate a successful login: the session store now carries the authenticated
+    // session plus the current member, including the real household name.
+    session.session = { authenticated: true, accountId: "a1", username: "admin", displayName: "Admin" };
+    session.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "Admin",
+      role: "ADMIN",
+      status: "ACTIVE",
+      householdName: "测试家庭"
+    };
+    await router.push({ name: "home" });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("测试家庭");
+    expect(wrapper.text()).not.toContain("家庭：我的家");
+  });
+
   it("hides sidebar completely when not signed in", async () => {
     const router = createRouter({
       history: createMemoryHistory(),
