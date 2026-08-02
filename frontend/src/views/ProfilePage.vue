@@ -75,6 +75,9 @@ function syncDisplayName() {
 syncDisplayName();
 
 async function saveDisplayName() {
+  if (savingName.value) {
+    return;
+  }
   const name = profile.displayName.trim();
   if (!name) {
     ElMessage.error("显示名不能为空");

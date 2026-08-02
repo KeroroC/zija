@@ -91,9 +91,9 @@ describe("ProfilePage", () => {
 
   it("clears only the local session and navigates to login after changing password", async () => {
     wrapper = mount(ProfilePage, { global: { plugins: [ElementPlus] } });
-    const inputs = wrapper.findAll("input");
-    await inputs[1].setValue("old-secret");
-    await inputs[2].setValue("new-secret");
+    const inputs = wrapper.find("form").findAll("input");
+    await inputs[0].setValue("old-secret");
+    await inputs[1].setValue("new-secret");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
@@ -108,9 +108,9 @@ describe("ProfilePage", () => {
   it("keeps the local session and current route when changing password fails", async () => {
     changePasswordMock.mockRejectedValue(new Error("password change failed"));
     wrapper = mount(ProfilePage, { global: { plugins: [ElementPlus] } });
-    const inputs = wrapper.findAll("input");
-    await inputs[1].setValue("old-secret");
-    await inputs[2].setValue("new-secret");
+    const inputs = wrapper.find("form").findAll("input");
+    await inputs[0].setValue("old-secret");
+    await inputs[1].setValue("new-secret");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
