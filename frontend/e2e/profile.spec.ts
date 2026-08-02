@@ -11,12 +11,18 @@ test("owner edits display name from profile and header reflects it", async ({ pa
   const nameInput = page.locator(".name-edit input");
   await expect(nameInput).toHaveValue(owner.displayName);
 
-  await nameInput.fill("E2E所有者2");
-  await page.getByRole("button", { name: "保存" }).click();
-  await expect(page.locator(".user-trigger")).toContainText("E2E所有者2");
-
-  // Revert so later specs see the canonical owner display name.
-  await nameInput.fill(owner.displayName);
-  await page.getByRole("button", { name: "保存" }).click();
-  await expect(page.locator(".user-trigger")).toContainText(owner.displayName);
+  const renamed = `${owner.displayName}2`;
+  try {
+    await nameInput.fill(renamed);
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.locator(".user-trigger")).toContainText(renamed);
+  } finally {
+    // Always restore the canonical name so later specs (and long-lived dev
+    // stacks) never see a poisoned display name, even if the rename failed.
+    await page.goto("/profile");
+    const restoreInput = page.locator(".name-edit input");
+    await restoreInput.fill(owner.displayName);
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.locator(".user-trigger")).toContainText(owner.displayName);
+  }
 });
