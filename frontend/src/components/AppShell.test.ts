@@ -22,6 +22,15 @@ describe("AppShell", () => {
     wrapper = null;
   });
 
+  async function triggerUserCommand(command: string) {
+    const userDropdown = wrapper!
+      .findAllComponents({ name: "ElDropdown" })
+      .find((c) => c.find(".user-trigger").exists());
+    expect(userDropdown).toBeDefined();
+    await userDropdown!.vm.$emit("command", command);
+    await flushPromises();
+  }
+
   it("renders the approved desktop navigation when authenticated", async () => {
     const session = useSessionStore();
     session.session = {
@@ -69,8 +78,13 @@ describe("AppShell", () => {
     expect(wrapper.text()).toContain("提醒中心");
     expect(wrapper.text()).toContain("报表与导出");
     expect(wrapper.text()).toContain("家庭设置");
-    expect(wrapper.text()).toContain("管理员");
-    expect(wrapper.text()).toContain("登出");
+    // 顶栏显示当前成员显示名（不再显示角色徽章）
+    const userTrigger = wrapper.find(".user-trigger");
+    expect(userTrigger.exists()).toBe(true);
+    expect(userTrigger.text()).toContain("Admin");
+    // 角色徽章已移除，登出收纳在下拉菜单中（未展开不渲染）
+    expect(wrapper.text()).not.toContain("管理员");
+    expect(wrapper.text()).not.toContain("登出");
     expect(wrapper.text()).toContain("库存操作");
 
     // inventory menu item should be enabled (not disabled)
@@ -213,17 +227,13 @@ describe("AppShell", () => {
       global: { plugins: [router, ElementPlus] }
     });
 
-    const buttons = wrapper.findAll("button");
-    const logoutButton = buttons.find(b => b.text().includes("登出"))!;
-    await logoutButton.trigger("click");
-    await flushPromises();
+    await triggerUserCommand("logout");
 
     const messageBox = document.querySelector(".el-message-box");
     expect(messageBox).toBeTruthy();
     const confirmBtn = messageBox!.querySelector(".el-button--primary") as HTMLButtonElement;
     confirmBtn.click();
     await flushPromises();
-
     expect(logoutSpy).toHaveBeenCalledTimes(1);
     expect(router.currentRoute.value.name).toBe("home");
     expect(document.body.textContent).toContain("登出失败，请重试");
@@ -259,9 +269,7 @@ describe("AppShell", () => {
       global: { plugins: [router, ElementPlus] }
     });
 
-    const logoutButton = wrapper.findAll("button").find(b => b.text().includes("登出"))!;
-    await logoutButton.trigger("click");
-    await flushPromises();
+    await triggerUserCommand("logout");
 
     const overlay = document.querySelector(".el-overlay.is-message-box");
     expect(overlay).toBeTruthy();
@@ -298,9 +306,7 @@ describe("AppShell", () => {
       global: { plugins: [router, ElementPlus] }
     });
 
-    const logoutButton = wrapper.findAll("button").find(b => b.text().includes("登出"))!;
-    await logoutButton.trigger("click");
-    await flushPromises();
+    await triggerUserCommand("logout");
 
     const messageBox = document.querySelector(".el-message-box");
     expect(messageBox).toBeTruthy();
@@ -311,5 +317,30 @@ describe("AppShell", () => {
 
     expect(logoutSpy).not.toHaveBeenCalled();
     expect(router.currentRoute.value.name).toBe("home");
+  });
+
+  it("navigates to profile when the user dropdown profile command fires", async () => {
+    const session = useSessionStore();
+    session.session = { authenticated: true, username: "admin" };
+    session.currentMember = {
+      householdId: "h1", memberId: "m1", accountId: "a1",
+      username: "admin", displayName: "Admin", role: "ADMIN",
+      status: "ACTIVE", householdName: "测试家庭"
+    };
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/", name: "home", component: { render: () => h("div", "系统状态") } },
+        { path: "/profile", name: "profile", component: { render: () => h("div", "个人资料页") } }
+      ]
+    });
+    await router.push("/");
+    await router.isReady();
+    wrapper = mount(AppShell, {
+      global: { plugins: [router, ElementPlus] }
+    });
+
+    await triggerUserCommand("profile");
+    expect(router.currentRoute.value.name).toBe("profile");
   });
 });

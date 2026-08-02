@@ -90,15 +90,18 @@
             </template>
           </el-dropdown>
           <NotificationBell />
-          <span class="zj-badge zj-badge-plain">{{ roleLabel }}</span>
-          <el-button
-            size="small"
-            text
-            @click="onLogout"
-          >
-            <el-icon style="margin-right: 4px"><SwitchButton /></el-icon>
-            登出
-          </el-button>
+          <el-dropdown trigger="click" @command="onUserCommand">
+            <button class="user-trigger" type="button">
+              {{ session.currentMember?.displayName || "-" }}
+              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">个人资料</el-dropdown-item>
+                <el-dropdown-item command="logout" divided>登出</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </el-header>
       <el-main class="app-main">
@@ -123,7 +126,6 @@ import {
   Document,
   Postcard,
   Setting,
-  SwitchButton,
   ArrowDown,
   AlarmClock
 } from "@element-plus/icons-vue";
@@ -138,19 +140,6 @@ const session = useSessionStore();
 const householdName = computed(() => session.currentMember?.householdName || "我的家");
 
 const isAdmin = computed(() => session.role === "OWNER" || session.role === "ADMIN");
-
-const roleLabel = computed(() => {
-  switch (session.role) {
-    case "OWNER":
-      return "所有者";
-    case "ADMIN":
-      return "管理员";
-    case "MEMBER":
-      return "成员";
-    default:
-      return "访客";
-  }
-});
 
 async function onLogout() {
   try {
@@ -174,4 +163,33 @@ function onInventoryCommand(command: string) {
   // TODO: wire up inventory operation modals/dialogs
   console.log("inventory command:", command);
 }
+
+function onUserCommand(command: string) {
+  if (command === "profile") {
+    router.push({ name: "profile" });
+  } else if (command === "logout") {
+    onLogout();
+  }
+}
 </script>
+
+<style scoped>
+.user-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid var(--zj-line);
+  border-radius: var(--zj-radius-sm);
+  background: var(--zj-surface);
+  color: var(--zj-ink-600);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--zj-dur-fast) var(--zj-ease-out),
+              color var(--zj-dur-fast) var(--zj-ease-out);
+}
+.user-trigger:hover {
+  border-color: var(--zj-pine-600);
+  color: var(--zj-pine-600);
+}
+</style>
