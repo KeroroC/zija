@@ -90,16 +90,33 @@
             </template>
           </el-dropdown>
           <NotificationBell />
-          <el-dropdown trigger="click" @command="onUserCommand">
-            <button class="user-trigger" type="button">
-              {{ session.currentMember?.displayName || "-" }}
-              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          <el-dropdown trigger="click" placement="bottom-end" @command="onUserCommand">
+            <button class="user-trigger" type="button" :title="displayName">
+              <span class="user-initial" :class="`user-initial-${initialTone}`" aria-hidden="true">
+                {{ initial }}
+              </span>
+              <span class="user-name">{{ displayName }}</span>
+              <el-icon class="user-caret"><ArrowDown /></el-icon>
             </button>
             <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="profile">个人资料</el-dropdown-item>
-                <el-dropdown-item command="logout" divided>登出</el-dropdown-item>
-              </el-dropdown-menu>
+              <div class="user-menu">
+                <header class="user-menu-header">
+                  <span class="user-menu-name">{{ displayName }}</span>
+                  <span class="user-menu-meta">
+                    <span class="user-menu-role">{{ roleLabel }}</span>
+                    <span class="user-menu-sep" aria-hidden="true">·</span>
+                    <span class="user-menu-household">{{ householdName }}</span>
+                  </span>
+                </header>
+                <el-dropdown-menu class="user-menu-list">
+                  <el-dropdown-item command="profile">
+                    <el-icon class="el-icon--left"><User /></el-icon>个人资料
+                  </el-dropdown-item>
+                  <el-dropdown-item command="logout" divided class="user-menu-item-danger">
+                    <el-icon class="el-icon--left"><SwitchButton /></el-icon>登出
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </div>
             </template>
           </el-dropdown>
         </div>
@@ -127,7 +144,8 @@ import {
   Postcard,
   Setting,
   ArrowDown,
-  AlarmClock
+  AlarmClock,
+  SwitchButton
 } from "@element-plus/icons-vue";
 import { useSessionStore } from "../stores/session";
 import NotificationBell from "./NotificationBell.vue";
@@ -140,6 +158,45 @@ const session = useSessionStore();
 const householdName = computed(() => session.currentMember?.householdName || "我的家");
 
 const isAdmin = computed(() => session.role === "OWNER" || session.role === "ADMIN");
+
+const displayName = computed(
+  () => session.currentMember?.displayName?.trim() || session.currentMember?.username || "-"
+);
+
+// Single Chinese-character initial; fall back to the first letter for ASCII
+// displayNames ("Admin" → "A") so non-CJK households still get a meaningful glyph.
+const initial = computed(() => {
+  const name = displayName.value;
+  if (!name || name === "-") return "·";
+  return Array.from(name)[0] ?? "·";
+});
+
+// Tone buckets match the role. Owners get the deepest pine, members the
+// mid-tone, so the trigger's accent rings consistent with the rest of the
+// shell but distinguishes power-users at a glance.
+const initialTone = computed(() => {
+  switch (session.role) {
+    case "OWNER":
+      return "deep";
+    case "ADMIN":
+      return "mid";
+    default:
+      return "soft";
+  }
+});
+
+const roleLabel = computed(() => {
+  switch (session.role) {
+    case "OWNER":
+      return "所有者";
+    case "ADMIN":
+      return "管理员";
+    case "MEMBER":
+      return "成员";
+    default:
+      return "访客";
+  }
+});
 
 async function onLogout() {
   try {
@@ -174,22 +231,83 @@ function onUserCommand(command: string) {
 </script>
 
 <style scoped>
+/* 身份药丸：左侧首字母圆形 + 显示名 + 折叠箭头，hover 整圈描边变松绿 */
 .user-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px 0 6px;
   border: 1px solid var(--zj-line);
-  border-radius: var(--zj-radius-sm);
+  border-radius: 999px;
   background: var(--zj-surface);
-  color: var(--zj-ink-600);
+  color: var(--zj-ink-900);
+  font-family: inherit;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: border-color var(--zj-dur-fast) var(--zj-ease-out),
+  transition:
+    border-color var(--zj-dur-fast) var(--zj-ease-out),
+    background-color var(--zj-dur-fast) var(--zj-ease-out),
+    color var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.user-trigger:hover {
+  border-color: var(--zj-pine-500);
+  background: var(--zj-pine-50);
+}
+
+.user-trigger:focus-visible {
+  outline: 2px solid rgba(61, 114, 96, 0.55);
+  outline-offset: 2px;
+}
+
+/* 首字母圆形：与角色挂钩的色阶，从深松绿到雾松 */
+.user-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-family: var(--zj-serif);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #f4f7f3;
+  flex-shrink: 0;
+}
+
+.user-initial-deep {
+  background: var(--zj-pine-800);
+}
+
+.user-initial-mid {
+  background: var(--zj-pine-600);
+}
+
+.user-initial-soft {
+  background: var(--zj-pine-500);
+}
+
+.user-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--zj-ink-900);
+}
+
+.user-caret {
+  font-size: 12px;
+  color: var(--zj-ink-400);
+  transition: transform var(--zj-dur-fast) var(--zj-ease-out),
               color var(--zj-dur-fast) var(--zj-ease-out);
 }
-.user-trigger:hover {
-  border-color: var(--zj-pine-600);
+
+.user-trigger:hover .user-caret {
   color: var(--zj-pine-600);
 }
+
+/* Element Plus 把 .user-menu 挂在 body 上（teleport），所以弹窗内部样式统一在 index.css 的 .user-menu-* 里。 */
 </style>
