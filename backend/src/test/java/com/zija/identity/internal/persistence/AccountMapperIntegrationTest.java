@@ -75,4 +75,25 @@ class AccountMapperIntegrationTest {
         assertThatThrownBy(() -> mapper.insert(dup))
                 .isInstanceOf(DuplicateKeyException.class);
     }
+
+    @Test
+    @Transactional
+    void updatesDisplayNameAndBumpsVersion() {
+        var entity = new AccountEntity();
+        entity.setId(UUID.randomUUID());
+        entity.setUsername("alice");
+        entity.setUsernameNormalized("alice");
+        entity.setPasswordHash("{bcrypt}$2a$10$examplehash");
+        entity.setDisplayName("Alice");
+        entity.setStatus("ACTIVE");
+        entity.setVersion(0);
+        mapper.insert(entity);
+
+        var affected = mapper.updateDisplayName(entity.getId(), "Alice 2", entity.getVersion());
+
+        assertThat(affected).isEqualTo(1);
+        var found = mapper.selectById(entity.getId());
+        assertThat(found.getDisplayName()).isEqualTo("Alice 2");
+        assertThat(found.getVersion()).isEqualTo(entity.getVersion() + 1);
+    }
 }
