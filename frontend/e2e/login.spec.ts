@@ -37,7 +37,7 @@ test("login succeeds with owner credentials and rejects bad password uniformly",
   }
 
   await loginViaUi(page, owner.username, owner.password);
-  await expect(page.getByText("E2E所有者")).toBeVisible();
+  await expect(page.locator(".user-trigger")).toContainText("E2E所有者");
   const newSession = (await page.context().cookies())
     .find((cookie) => cookie.name === "ZIJA_SESSION")?.value;
   expect(newSession).toBeTruthy();

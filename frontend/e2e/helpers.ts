@@ -40,7 +40,7 @@ export async function bootstrapViaUi(page: Page, user = owner): Promise<void> {
   await page.getByRole("button", { name: "创建家庭" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "首页" })).toBeVisible();
-  await expect(page.getByText("E2E所有者")).toBeVisible();
+  await expect(page.locator(".user-trigger")).toContainText("E2E所有者");
 }
 
 export async function loginViaUi(

@@ -13,5 +13,5 @@ test("bootstrap creates household and owner then lands on home", async ({ page }
   const csrfAfterBootstrap = await readCsrf(page.request);
   expect(csrfAfterBootstrap).not.toBe(csrfBeforeBootstrap);
   await expect(page.getByRole("heading", { name: "首页" })).toBeVisible();
-  await expect(page.getByText("E2E所有者")).toBeVisible();
+  await expect(page.locator(".user-trigger")).toContainText("E2E所有者");
 });
