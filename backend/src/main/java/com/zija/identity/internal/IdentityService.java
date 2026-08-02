@@ -189,6 +189,26 @@ class IdentityService implements IdentityApi {
         }
     }
 
+    /**
+     * 修改指定账户的显示名称，返回更新后的账户信息。
+     * 此操作不改动会话：调用方负责刷新当前会话的认证主体。
+     *
+     * @throws InvalidCredentialsException 如果账户不存在或乐观锁失败
+     */
+    @Transactional
+    public AccountInfo updateDisplayName(UUID accountId, String displayName) {
+        var account = accountMapper.selectById(accountId);
+        if (account == null) {
+            throw new InvalidCredentialsException();
+        }
+        var trimmed = displayName.trim();
+        if (accountMapper.updateDisplayName(accountId, trimmed, account.getVersion()) != 1) {
+            throw new InvalidCredentialsException();
+        }
+        account.setDisplayName(trimmed);
+        return toInfo(account);
+    }
+
     static String normalize(String username) {
         return username.trim().toLowerCase(Locale.ROOT);
     }

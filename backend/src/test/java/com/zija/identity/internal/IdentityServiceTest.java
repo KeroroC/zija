@@ -110,4 +110,39 @@ class IdentityServiceTest {
         verifyNoInteractions(passwordEncoder);
         verify(accountMapper, never()).updatePasswordHash(any(), any(), any());
     }
+
+    @Test
+    void updateDisplayNameTrimsAndPersists() {
+        var account = new AccountEntity();
+        account.setId(java.util.UUID.randomUUID());
+        account.setVersion(2);
+        account.setDisplayName("旧名字");
+        when(accountMapper.selectById(account.getId())).thenReturn(account);
+        when(accountMapper.updateDisplayName(account.getId(), "新名字", 2)).thenReturn(1);
+
+        var info = service.updateDisplayName(account.getId(), "  新名字  ");
+
+        assertThat(info.displayName()).isEqualTo("新名字");
+        verify(accountMapper).updateDisplayName(account.getId(), "新名字", 2);
+    }
+
+    @Test
+    void updateDisplayNameThrowsWhenAccountMissing() {
+        when(accountMapper.selectById(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.updateDisplayName(java.util.UUID.randomUUID(), "名字"))
+                .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    void updateDisplayNameThrowsOnOptimisticLockFailure() {
+        var account = new AccountEntity();
+        account.setId(java.util.UUID.randomUUID());
+        account.setVersion(1);
+        when(accountMapper.selectById(account.getId())).thenReturn(account);
+        when(accountMapper.updateDisplayName(account.getId(), "名字", 1)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.updateDisplayName(account.getId(), "名字"))
+                .isInstanceOf(InvalidCredentialsException.class);
+    }
 }
