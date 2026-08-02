@@ -81,5 +81,5 @@ test("owner manages a member and transfers ownership with role boundaries", asyn
   await expect(page).toHaveURL(/\/login/);
 
   await loginViaUi(page, owner.username, owner.password);
-  await expect(page.getByText("所有者")).toBeVisible();
+  await expect(page.locator(".user-trigger")).toContainText("E2E所有者");
 });

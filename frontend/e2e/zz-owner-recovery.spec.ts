@@ -57,7 +57,7 @@ test("owner recovery resets password and invalidates old credentials and session
 
   const recoveredPassword = "N3wPassw0rd!";
   await loginViaUi(page, owner.username, recoveredPassword);
-  await expect(page.getByText("所有者")).toBeVisible();
+  await expect(page.locator(".user-trigger")).toContainText("E2E所有者");
 
   await page.goto("/profile");
   const profileInputs = page.locator("form input");
