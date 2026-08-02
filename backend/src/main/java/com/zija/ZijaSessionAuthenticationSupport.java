@@ -90,4 +90,34 @@ public class ZijaSessionAuthenticationSupport {
         csrfTokenRepository.saveToken(null, request, response);
         csrfTokenRepository.loadDeferredToken(request, response).get();
     }
+
+    /**
+     * 用新主体刷新当前会话的认证信息（不轮换会话 ID）。
+     * <p>
+     * 用于就地更新会话内的 {@link ZijaPrincipal}（例如改名后），
+     * 使后续请求（含审计 actor 名）立即反映新值。会话主索引按 accountId
+     * 存储，主体变更不影响索引。
+     *
+     * @param principal 新的认证主体
+     * @param request   当前 HTTP 请求
+     * @param response  当前 HTTP 响应
+     * @return 重新构造的已认证 {@link Authentication}
+     */
+    public Authentication refreshPrincipal(
+            ZijaPrincipal principal,
+            HttpServletRequest request,
+            HttpServletResponse response
+    ) {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                principal, null, principal.getAuthorities());
+
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(authentication);
+        SecurityContextHolder.setContext(context);
+        securityContextRepository.saveContext(context, request, response);
+        request.getSession().setAttribute(
+                FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME,
+                principal.getAccountId().toString());
+        return authentication;
+    }
 }

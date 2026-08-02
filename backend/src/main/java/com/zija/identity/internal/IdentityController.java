@@ -6,6 +6,7 @@ import com.zija.identity.IdentityApi;
 import com.zija.identity.SessionInfo;
 import com.zija.identity.internal.auth.ChangePasswordRequest;
 import com.zija.identity.internal.auth.LoginRequest;
+import com.zija.identity.internal.auth.UpdateDisplayNameRequest;
 import com.zija.identity.internal.exception.InvalidCredentialsException;
 import com.zija.identity.internal.exception.LoginRateLimitedException;
 import com.zija.system.SystemApi;
@@ -36,6 +37,7 @@ import java.util.Map;
  *   <li>{@code GET /api/v1/auth/session} — 获取当前会话信息</li>
  *   <li>{@code GET /api/v1/auth/csrf} — 获取 CSRF 令牌</li>
  *   <li>{@code PUT /api/v1/auth/password} — 修改当前用户密码</li>
+ *   <li>{@code PUT /api/v1/auth/display-name} — 修改当前用户显示名</li>
  * </ul>
  */
 @RestController
@@ -184,6 +186,37 @@ class IdentityController {
                 principal.getAccountId(), principal.getAccountId(),
                 (String) httpRequest.getAttribute("zija.request-id"),
                 resolveClientIp(httpRequest), null
+        ));
+    }
+
+    /**
+     * 修改当前登录用户的显示名称。改库后立即刷新当前会话主体，
+     * 并记录审计日志。
+     *
+     * @param request     修改显示名请求（新显示名）
+     * @param httpRequest HTTP 请求
+     * @param httpResponse HTTP 响应
+     */
+    @PutMapping("/display-name")
+    void changeDisplayName(
+            @Valid @RequestBody UpdateDisplayNameRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
+    ) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var principal = (ZijaPrincipal) authentication.getPrincipal();
+        var updated = identityService.updateDisplayName(
+                principal.getAccountId(), request.displayName());
+        var refreshed = new ZijaPrincipal(
+                principal.getAccountId(), principal.getUsername(),
+                updated.displayName(), principal.getPassword(), principal.isEnabled());
+        sessionAuth.refreshPrincipal(refreshed, httpRequest, httpResponse);
+        httpResponse.setStatus(HttpServletResponse.SC_NO_CONTENT);
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                "DISPLAY_NAME_CHANGED", "SUCCESS", null,
+                principal.getAccountId(), principal.getAccountId(),
+                (String) httpRequest.getAttribute("zija.request-id"),
+                resolveClientIp(httpRequest), Map.of("displayName", updated.displayName())
         ));
     }
 

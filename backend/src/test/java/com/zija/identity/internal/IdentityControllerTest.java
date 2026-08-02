@@ -21,10 +21,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -185,5 +187,59 @@ class IdentityControllerTest extends AbstractWebMvcSliceTest {
                 .andExpect(status().isUnauthorized());
 
         verify(rateLimiter).recordFailure("ghost", "203.0.113.10");
+    }
+
+    @Test
+    void changeDisplayNameUpdatesPrincipalAndAudits() throws Exception {
+        var principal = new ZijaPrincipal(UUID.randomUUID(), "owner", "旧名字", "{bcrypt}x", true);
+        var updatedInfo = new IdentityApi.AccountInfo(
+                principal.getAccountId(), "owner", "新名字", null, "ACTIVE");
+        when(identityService.updateDisplayName(principal.getAccountId(), "  新名字  "))
+                .thenReturn(updatedInfo);
+
+        mockMvc.perform(put("/api/v1/auth/display-name")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("displayName", "  新名字  "))))
+                .andExpect(status().isNoContent());
+
+        verify(identityService).updateDisplayName(principal.getAccountId(), "  新名字  ");
+        verify(sessionAuthSupport).refreshPrincipal(any(ZijaPrincipal.class), any(), any());
+        verify(systemApi).recordAudit(argThat(e ->
+                "DISPLAY_NAME_CHANGED".equals(e.action())
+                        && principal.getAccountId().equals(e.actorAccountId())));
+    }
+
+    @Test
+    void changeDisplayNameRejectsBlank() throws Exception {
+        var principal = new ZijaPrincipal(UUID.randomUUID(), "owner", "旧", "{bcrypt}x", true);
+
+        mockMvc.perform(put("/api/v1/auth/display-name")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("displayName", "   "))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.displayName").exists());
+
+        verifyNoInteractions(identityService);
+    }
+
+    @Test
+    void changeDisplayNameRejectsTooLong() throws Exception {
+        var principal = new ZijaPrincipal(UUID.randomUUID(), "owner", "旧", "{bcrypt}x", true);
+
+        mockMvc.perform(put("/api/v1/auth/display-name")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("displayName", "长".repeat(101)))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.displayName").exists());
+
+        verifyNoInteractions(identityService);
     }
 }
