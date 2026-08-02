@@ -6,6 +6,7 @@ import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.identity.IdentityApi;
 import com.zija.identity.internal.auth.ChangePasswordRequest;
 import com.zija.identity.internal.auth.LoginRequest;
+import com.zija.identity.internal.exception.AccountVersionConflictException;
 import com.zija.identity.internal.exception.LoginRateLimitedException;
 import com.zija.identity.internal.persistence.AccountMapper;
 import org.junit.jupiter.api.Test;
@@ -241,5 +242,37 @@ class IdentityControllerTest extends AbstractWebMvcSliceTest {
                 .andExpect(jsonPath("$.fieldErrors.displayName").exists());
 
         verifyNoInteractions(identityService);
+    }
+
+    @Test
+    void changePasswordReturns409OnVersionConflict() throws Exception {
+        var principal = new ZijaPrincipal(
+                UUID.randomUUID(), "owner", "所有者", "{bcrypt}x", true);
+        doThrow(new AccountVersionConflictException())
+                .when(identityService).changePassword(any(), any());
+
+        mockMvc.perform(put("/api/v1/auth/password")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new ChangePasswordRequest("OldPass1", "NewPass2"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("IDENTITY_VERSION_CONFLICT"));
+    }
+
+    @Test
+    void changeDisplayNameReturns409OnVersionConflict() throws Exception {
+        var principal = new ZijaPrincipal(UUID.randomUUID(), "owner", "旧", "{bcrypt}x", true);
+        doThrow(new AccountVersionConflictException())
+                .when(identityService).updateDisplayName(any(), any());
+
+        mockMvc.perform(put("/api/v1/auth/display-name")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("displayName", "新名字"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("IDENTITY_VERSION_CONFLICT"));
     }
 }

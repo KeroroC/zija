@@ -1,6 +1,7 @@
 package com.zija.identity.internal;
 
 import com.zija.ZijaRequestIdFilter;
+import com.zija.identity.internal.exception.AccountVersionConflictException;
 import com.zija.identity.internal.exception.InvalidCredentialsException;
 import com.zija.identity.internal.exception.LoginRateLimitedException;
 import com.zija.identity.internal.exception.UsernameAlreadyExistsException;
@@ -32,6 +33,11 @@ class IdentityExceptionHandler {
     @ExceptionHandler(UsernameAlreadyExistsException.class)
     ProblemDetail handleDuplicate(HttpServletRequest request) {
         return problem(request, HttpStatus.CONFLICT, "用户名已存在", "IDENTITY_USERNAME_TAKEN");
+    }
+
+    @ExceptionHandler(AccountVersionConflictException.class)
+    ProblemDetail handleVersionConflict(HttpServletRequest request) {
+        return problem(request, HttpStatus.CONFLICT, "版本冲突", "IDENTITY_VERSION_CONFLICT");
     }
 
     private ProblemDetail problem(HttpServletRequest request, HttpStatus status,

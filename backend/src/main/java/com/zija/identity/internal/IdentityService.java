@@ -2,6 +2,7 @@ package com.zija.identity.internal;
 
 import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
+import com.zija.identity.internal.exception.AccountVersionConflictException;
 import com.zija.identity.internal.exception.InvalidCredentialsException;
 import com.zija.identity.internal.exception.UsernameAlreadyExistsException;
 import com.zija.identity.internal.persistence.AccountEntity;
@@ -94,6 +95,7 @@ class IdentityService implements IdentityApi {
      * @param accountId 账户 ID
      * @param command   修改密码命令（当前密码、新密码）
      * @throws InvalidCredentialsException 如果账户不存在或当前密码不正确
+     * @throws AccountVersionConflictException 如果乐观锁失败
      */
     @Override
     @Transactional
@@ -108,7 +110,7 @@ class IdentityService implements IdentityApi {
         }
         var newHash = passwordEncoder.encode(command.newPassword());
         if (accountMapper.updatePasswordHash(accountId, newHash, account.getVersion()) != 1) {
-            throw new InvalidCredentialsException();
+            throw new AccountVersionConflictException();
         }
         sessionInvalidator.invalidateAllForAccount(accountId);
     }
@@ -119,7 +121,8 @@ class IdentityService implements IdentityApi {
      *
      * @param accountId 账户 ID
      * @param newPassword 新密码
-     * @throws InvalidCredentialsException 如果账户不存在或乐观锁失败
+     * @throws InvalidCredentialsException 如果账户不存在
+     * @throws AccountVersionConflictException 如果乐观锁失败
      */
     @Override
     @Transactional
@@ -130,7 +133,7 @@ class IdentityService implements IdentityApi {
         }
         var newHash = passwordEncoder.encode(newPassword);
         if (accountMapper.updatePasswordHash(accountId, newHash, account.getVersion()) != 1) {
-            throw new InvalidCredentialsException();
+            throw new AccountVersionConflictException();
         }
         sessionInvalidator.invalidateAllForAccount(accountId);
     }
@@ -193,7 +196,8 @@ class IdentityService implements IdentityApi {
      * 修改指定账户的显示名称，返回更新后的账户信息。
      * 此操作不改动会话：调用方负责刷新当前会话的认证主体。
      *
-     * @throws InvalidCredentialsException 如果账户不存在或乐观锁失败
+     * @throws InvalidCredentialsException 如果账户不存在
+     * @throws AccountVersionConflictException 如果乐观锁失败
      */
     @Transactional
     public AccountInfo updateDisplayName(UUID accountId, String displayName) {
@@ -203,7 +207,7 @@ class IdentityService implements IdentityApi {
         }
         var trimmed = displayName.trim();
         if (accountMapper.updateDisplayName(accountId, trimmed, account.getVersion()) != 1) {
-            throw new InvalidCredentialsException();
+            throw new AccountVersionConflictException();
         }
         account.setDisplayName(trimmed);
         return toInfo(account);
