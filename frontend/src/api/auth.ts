@@ -1,4 +1,4 @@
-import type { SessionInfo, LoginRequest, ChangePasswordRequest } from "../types/identity";
+import type { SessionInfo, LoginRequest, ChangePasswordRequest, UpdateDisplayNameRequest } from "../types/identity";
 import {
   getJson,
   postJsonAndRefreshCsrf,
@@ -15,6 +15,8 @@ export const authApi = {
   initializeCsrf: () => ensureCsrf(),
   changePassword: (data: ChangePasswordRequest) =>
     putJson("/api/v1/auth/password", data),
+  updateDisplayName: (data: UpdateDisplayNameRequest) =>
+    putJson("/api/v1/auth/display-name", data),
 };
 
 export { ensureCsrf, clearCsrf };

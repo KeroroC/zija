@@ -62,6 +62,10 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+export interface UpdateDisplayNameRequest {
+  displayName: string;
+}
+
 export interface OwnerRecoveryInspect {
   valid: boolean;
   ownerDisplayName?: string;
