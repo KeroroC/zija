@@ -60,7 +60,7 @@ test("owner recovery resets password and invalidates old credentials and session
   await expect(page.getByText("所有者")).toBeVisible();
 
   await page.goto("/profile");
-  const profileInputs = page.locator("input");
+  const profileInputs = page.locator("form input");
   await profileInputs.nth(0).fill(recoveredPassword);
   await profileInputs.nth(1).fill(owner.password);
   await page.getByRole("button", { name: "修改密码" }).click();

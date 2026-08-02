@@ -7,11 +7,11 @@ test("login succeeds with owner credentials and rejects bad password uniformly",
     .find((cookie) => cookie.name === "ZIJA_SESSION")?.value;
   expect(originalSession).toBeTruthy();
 
-  await page.getByRole("button", { name: "登出" }).click();
-  // af0a1ae added an ElMessageBox.confirm() step before the actual logout runs;
-  // the confirm button reuses the "登出" text, so we scope to the dialog to
-  // avoid matching the header button. The dialog's confirm button uses type
-  // "primary" which Element Plus renders last among the footer buttons.
+  await page.locator(".user-trigger").click();
+  await page.locator(".el-dropdown-menu__item").filter({ hasText: "登出" }).click();
+  // The logout flow keeps an ElMessageBox.confirm() step; the confirm button
+  // reuses the "登出" text, so we scope to the dialog. The dropdown menu item
+  // has already closed by now, so the dialog button is unambiguous.
   const logoutDialog = page.locator(".el-message-box");
   await expect(logoutDialog).toBeVisible();
   await logoutDialog.getByRole("button", { name: "登出" }).click();
@@ -37,7 +37,7 @@ test("login succeeds with owner credentials and rejects bad password uniformly",
   }
 
   await loginViaUi(page, owner.username, owner.password);
-  await expect(page.getByText("所有者")).toBeVisible();
+  await expect(page.getByText("E2E所有者")).toBeVisible();
   const newSession = (await page.context().cookies())
     .find((cookie) => cookie.name === "ZIJA_SESSION")?.value;
   expect(newSession).toBeTruthy();
