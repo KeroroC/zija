@@ -24,4 +24,11 @@
         WHERE id = #{id, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
           AND version = #{version}
     </update>
+
+    <update id="updateDisplayName">
+        UPDATE account
+        SET display_name = #{displayName}, updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE id = #{id, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
+          AND version = #{version}
+    </update>
 </mapper>

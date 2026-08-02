@@ -2,6 +2,7 @@ package com.zija.identity.internal;
 
 import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
+import com.zija.identity.internal.exception.AccountVersionConflictException;
 import com.zija.identity.internal.exception.InvalidCredentialsException;
 import com.zija.identity.internal.exception.UsernameAlreadyExistsException;
 import com.zija.identity.internal.persistence.AccountEntity;
@@ -109,5 +110,73 @@ class IdentityServiceTest {
 
         verifyNoInteractions(passwordEncoder);
         verify(accountMapper, never()).updatePasswordHash(any(), any(), any());
+    }
+
+    @Test
+    void updateDisplayNameTrimsAndPersists() {
+        var account = new AccountEntity();
+        account.setId(java.util.UUID.randomUUID());
+        account.setVersion(2);
+        account.setDisplayName("旧名字");
+        when(accountMapper.selectById(account.getId())).thenReturn(account);
+        when(accountMapper.updateDisplayName(account.getId(), "新名字", 2)).thenReturn(1);
+
+        var info = service.updateDisplayName(account.getId(), "  新名字  ");
+
+        assertThat(info.displayName()).isEqualTo("新名字");
+        verify(accountMapper).updateDisplayName(account.getId(), "新名字", 2);
+    }
+
+    @Test
+    void updateDisplayNameThrowsWhenAccountMissing() {
+        when(accountMapper.selectById(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.updateDisplayName(java.util.UUID.randomUUID(), "名字"))
+                .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    void updateDisplayNameThrowsOnOptimisticLockFailure() {
+        var account = new AccountEntity();
+        account.setId(java.util.UUID.randomUUID());
+        account.setVersion(1);
+        when(accountMapper.selectById(account.getId())).thenReturn(account);
+        when(accountMapper.updateDisplayName(account.getId(), "名字", 1)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.updateDisplayName(account.getId(), "名字"))
+                .isInstanceOf(AccountVersionConflictException.class);
+    }
+
+    @Test
+    void changePasswordThrowsOnOptimisticLockFailure() {
+        var account = new AccountEntity();
+        account.setId(java.util.UUID.randomUUID());
+        account.setVersion(5);
+        account.setPasswordHash("{bcrypt}hash");
+        when(passwordEncoder.matches("OldPass1", "{bcrypt}hash")).thenReturn(true);
+        when(passwordEncoder.encode("NewPass2")).thenReturn("{bcrypt}newhash");
+        when(accountMapper.selectById(account.getId())).thenReturn(account);
+        when(accountMapper.updatePasswordHash(account.getId(), "{bcrypt}newhash", 5)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.changePassword(account.getId(),
+                new IdentityApi.ChangePasswordCommand("OldPass1", "NewPass2")))
+                .isInstanceOf(AccountVersionConflictException.class);
+
+        verifyNoInteractions(sessionInvalidator);
+    }
+
+    @Test
+    void resetPasswordThrowsOnOptimisticLockFailure() {
+        var account = new AccountEntity();
+        account.setId(java.util.UUID.randomUUID());
+        account.setVersion(2);
+        when(accountMapper.selectById(account.getId())).thenReturn(account);
+        when(passwordEncoder.encode("NewPass2")).thenReturn("{bcrypt}newhash");
+        when(accountMapper.updatePasswordHash(account.getId(), "{bcrypt}newhash", 2)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.resetPassword(account.getId(), "NewPass2"))
+                .isInstanceOf(AccountVersionConflictException.class);
+
+        verifyNoInteractions(sessionInvalidator);
     }
 }

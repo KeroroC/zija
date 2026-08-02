@@ -101,6 +101,12 @@ export const useSessionStore = defineStore("session", {
       this.currentMember = null;
     },
 
+    async refreshCurrentMember(): Promise<CurrentMember> {
+      const currentMember = await householdApi.getCurrentMember();
+      this.currentMember = currentMember;
+      return currentMember;
+    },
+
     clearLocalSession() {
       ++this.sessionEpoch;
       this.session = null;

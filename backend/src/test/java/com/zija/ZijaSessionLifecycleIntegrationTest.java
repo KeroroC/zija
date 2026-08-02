@@ -1,5 +1,6 @@
 package com.zija;
 
+import com.zija.identity.internal.persistence.AccountMapper;
 import com.zija.system.SystemApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -30,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ZijaSessionLifecycleIntegrationTest extends AbstractMockMvcIntegrationTest {
 
     @Autowired MockMvc mockMvc;
+    @Autowired AccountMapper accountMapper;
     @MockitoBean AuthenticationManager authenticationManager;
     @MockitoBean SystemApi systemApi;
     @MockitoBean ZijaSessionInvalidator sessionInvalidator;
@@ -97,5 +100,75 @@ class ZijaSessionLifecycleIntegrationTest extends AbstractMockMvcIntegrationTest
                 "LOGOUT".equals(event.action())
                         && accountId.equals(event.actorAccountId())
                         && "logout-request".equals(event.requestId())));
+    }
+
+    @Test
+    void changeDisplayNameRefreshesPrincipalWithinSession() throws Exception {
+        var accountId = UUID.randomUUID();
+        var username = "owner" + UUID.randomUUID().toString().substring(0, 8).toLowerCase();
+        var originalPrincipal = new ZijaPrincipal(
+                accountId, username, "旧名字", "{bcrypt}x", true);
+        var authentication = mock(Authentication.class);
+        when(authentication.getPrincipal()).thenReturn(originalPrincipal);
+        when(authentication.isAuthenticated()).thenReturn(true);
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+
+        var account = new com.zija.identity.internal.persistence.AccountEntity();
+        account.setId(accountId);
+        account.setUsername(username);
+        account.setUsernameNormalized(username);
+        account.setPasswordHash("{bcrypt}$2a$10$examplehash");
+        account.setDisplayName("旧名字");
+        account.setStatus("ACTIVE");
+        accountMapper.insert(account);
+
+        var session = new MockHttpSession();
+        var csrfResult = mockMvc.perform(get("/api/v1/auth/csrf").session(session))
+                .andExpect(status().isOk())
+                .andReturn();
+        var csrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+        assertThat(csrfCookie).isNotNull();
+
+        var loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .session(session)
+                        .cookie(csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + username + "\",\"password\":\"Passw0rd!\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        // CSRF token rotates on login; use the new cookie for subsequent requests.
+        var newCsrfCookie = Arrays.stream(loginResult.getResponse().getCookies())
+                .filter(c -> "XSRF-TOKEN".equals(c.getName()))
+                .filter(c -> !c.getValue().isBlank())
+                .findFirst()
+                .orElse(csrfCookie);
+
+        mockMvc.perform(put("/api/v1/auth/display-name")
+                        .session(session)
+                        .cookie(newCsrfCookie)
+                        .header("X-Request-Id", "rename-request")
+                        .header("X-XSRF-TOKEN", newCsrfCookie.getValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"displayName":"新名字"}
+                                """))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string("X-Request-Id", "rename-request"));
+
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .session(session)
+                        .cookie(newCsrfCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.authenticated").value(true))
+                .andExpect(jsonPath("$.accountId").value(accountId.toString()))
+                .andExpect(jsonPath("$.displayName").value("新名字"));
+
+        verify(systemApi).recordAudit(argThat(event ->
+                "DISPLAY_NAME_CHANGED".equals(event.action())
+                        && accountId.equals(event.actorAccountId())));
+
+        accountMapper.deleteById(accountId);
     }
 }

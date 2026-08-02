@@ -15,4 +15,6 @@ public interface AccountMapper extends BaseMapper<AccountEntity> {
     int updateStatus(@Param("id") UUID id, @Param("status") String status, @Param("version") Integer version);
 
     int updatePasswordHash(@Param("id") UUID id, @Param("passwordHash") String passwordHash, @Param("version") Integer version);
+
+    int updateDisplayName(@Param("id") UUID id, @Param("displayName") String displayName, @Param("version") Integer version);
 }

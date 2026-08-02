@@ -27,7 +27,7 @@ test("owner creates invitation and new member redeems once", async ({ browser, p
   await inputs.nth(2).fill("E2E成员");
   await memberPage.getByRole("button", { name: "加入" }).click();
   await expect(memberPage).toHaveURL(/\/$/);
-  await expect(memberPage.getByText("成员", { exact: true })).toBeVisible();
+  await expect(memberPage.locator(".user-trigger")).toContainText("E2E成员");
 
   const secondContext = await browser.newContext({ baseURL: e2eBaseURL });
   const secondPage = await secondContext.newPage();

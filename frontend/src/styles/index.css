@@ -398,3 +398,133 @@ body::after {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ============ 用户菜单（AppShell 顶栏身份药丸） ============ */
+/* Element Plus 将 .user-menu teleport 到 body 上，因此这里写在全局样式里。
+   结构：.user-menu > (.user-menu-header, .user-menu-list.el-dropdown-menu)
+         .user-menu-list > .el-dropdown-menu__item
+   视觉目标：实色暖白卡 + 发丝边框 + 阴影，把用户名 / 角色徽章 / 家庭名放在
+   「菜单头」里，把「登出」做成低饱和警告色，主区只有「个人资料 / 登出」两条。 */
+.el-popper .user-menu {
+  min-width: 260px;
+  padding: 0;
+  border: 1px solid var(--zj-line);
+  border-radius: var(--zj-radius-lg);
+  background: var(--zj-surface);
+  box-shadow: var(--zj-shadow-md);
+  overflow: hidden;
+}
+
+.user-menu-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px 12px;
+  background: var(--zj-canvas);
+  border-bottom: 1px solid var(--zj-line);
+}
+
+.user-menu-name {
+  font-family: var(--zj-serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--zj-ink-900);
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.user-menu-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--zj-ink-600);
+}
+
+.user-menu-role {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--zj-pine-500);
+  border-radius: 999px;
+  color: var(--zj-pine-600);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.user-menu-sep {
+  color: var(--zj-ink-300);
+}
+
+.user-menu-household {
+  color: var(--zj-ink-600);
+}
+
+.user-menu-list {
+  padding: 6px;
+}
+
+.el-popper .user-menu-list .el-dropdown-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 12px;
+  margin: 0;
+  border-radius: var(--zj-radius-sm);
+  font-size: 13px;
+  color: var(--zj-ink-900);
+  transition:
+    background-color var(--zj-dur-fast) var(--zj-ease-out),
+    color var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.el-popper .user-menu-list .el-dropdown-menu__item .el-icon {
+  font-size: 15px;
+  color: var(--zj-ink-400);
+  transition: color var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.el-popper .user-menu-list .el-dropdown-menu__item:not(.is-disabled):hover {
+  background: var(--zj-pine-50);
+  color: var(--zj-pine-600);
+}
+
+.el-popper .user-menu-list .el-dropdown-menu__item:not(.is-disabled):hover .el-icon {
+  color: var(--zj-pine-600);
+}
+
+/* Element Plus 自己的 divided 加的是带灰背景的水平线，把它改造成节制的发丝分隔 */
+.el-popper .user-menu-list .el-dropdown-menu__item--divided {
+  position: relative;
+  margin-top: 6px;
+  padding-top: 12px;
+}
+
+.el-popper .user-menu-list .el-dropdown-menu__item--divided::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: var(--zj-line);
+}
+
+/* 登出走低饱和警告色而非实色红，避免破坏全站克制气质 */
+.user-menu-item-danger {
+  color: var(--zj-warning);
+}
+
+.user-menu-item-danger .el-icon {
+  color: var(--zj-warning);
+}
+
+.el-popper .user-menu-list .user-menu-item-danger:not(.is-disabled):hover {
+  background: rgba(156, 116, 38, 0.08);
+  color: var(--zj-warning);
+}
+
+.el-popper .user-menu-list .user-menu-item-danger:not(.is-disabled):hover .el-icon {
+  color: var(--zj-warning);
+}

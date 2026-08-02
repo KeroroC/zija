@@ -21,7 +21,7 @@ async function waitForAppReady(page: Page): Promise<void> {
     page.getByRole("heading", { name: "系统状态" }).waitFor({ state: "visible", timeout: 15_000 }),
     page.getByRole("heading", { name: "初始化你的家庭" }).waitFor({ state: "visible", timeout: 15_000 }),
     page.locator(".auth-brand-cn").waitFor({ state: "visible", timeout: 15_000 }),
-    page.getByRole("button", { name: "登出" }).waitFor({ state: "visible", timeout: 15_000 })
+    page.locator(".user-trigger").waitFor({ state: "visible", timeout: 15_000 })
   ]).catch(() => undefined);
 }
 
@@ -40,7 +40,7 @@ export async function bootstrapViaUi(page: Page, user = owner): Promise<void> {
   await page.getByRole("button", { name: "创建家庭" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "首页" })).toBeVisible();
-  await expect(page.getByText("所有者")).toBeVisible();
+  await expect(page.locator(".user-trigger")).toContainText("E2E所有者");
 }
 
 export async function loginViaUi(
@@ -55,7 +55,7 @@ export async function loginViaUi(
   await inputs.nth(1).fill(password);
   await page.locator(".login-btn").click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("button", { name: "登出" })).toBeVisible();
+  await expect(page.locator(".user-trigger")).toBeVisible();
 }
 
 export async function ensureBootstrapped(page: Page): Promise<void> {
@@ -68,7 +68,7 @@ export async function ensureBootstrapped(page: Page): Promise<void> {
     return;
   }
 
-  if (await page.getByRole("button", { name: "登出" }).isVisible().catch(() => false)) {
+  if (await page.locator(".user-trigger").isVisible().catch(() => false)) {
     return;
   }
 
