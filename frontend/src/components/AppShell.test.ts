@@ -31,6 +31,15 @@ describe("AppShell", () => {
     await flushPromises();
   }
 
+  async function triggerInventoryCommand(command: string) {
+    const inventoryDropdown = wrapper!
+      .findAllComponents({ name: "ElDropdown" })
+      .find((c) => c.find(".el-button").text().includes("库存操作"));
+    expect(inventoryDropdown).toBeDefined();
+    await inventoryDropdown!.vm.$emit("command", command);
+    await flushPromises();
+  }
+
   it("renders the approved desktop navigation when authenticated", async () => {
     const session = useSessionStore();
     session.session = {
@@ -342,5 +351,37 @@ describe("AppShell", () => {
 
     await triggerUserCommand("profile");
     expect(router.currentRoute.value.name).toBe("profile");
+  });
+
+  it("navigates to inventory with the action query when an inventory command fires", async () => {
+    const session = useSessionStore();
+    session.session = { authenticated: true, accountId: "a1", username: "admin", displayName: "Admin" };
+    session.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "Admin",
+      role: "ADMIN",
+      status: "ACTIVE",
+      householdName: "测试家庭"
+    };
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/", name: "home", component: { render: () => h("div", "首页") } },
+        { path: "/inventory", name: "inventory", component: { render: () => h("div", "库存管理") } }
+      ]
+    });
+    await router.push("/");
+    await router.isReady();
+    wrapper = mount(AppShell, {
+      global: { plugins: [router, ElementPlus] }
+    });
+
+    await triggerInventoryCommand("consume");
+
+    expect(router.currentRoute.value.name).toBe("inventory");
+    expect(router.currentRoute.value.query.action).toBe("consume");
   });
 });

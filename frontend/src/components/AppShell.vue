@@ -217,8 +217,7 @@ async function onLogout() {
 }
 
 function onInventoryCommand(command: string) {
-  // TODO: wire up inventory operation modals/dialogs
-  console.log("inventory command:", command);
+  router.push({ name: "inventory", query: { action: command } });
 }
 
 function onUserCommand(command: string) {
