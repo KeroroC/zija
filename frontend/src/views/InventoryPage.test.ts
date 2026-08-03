@@ -57,11 +57,13 @@ vi.mock("../api/member", () => ({
   },
 }));
 
+const routeState: { query: Record<string, string> } = { query: {} };
 const pushMock = vi.fn();
+const replaceMock = vi.fn();
 
 vi.mock("vue-router", () => ({
-  useRouter: () => ({ push: pushMock }),
-  useRoute: () => ({ query: {} }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
+  useRoute: () => routeState,
 }));
 
 describe("InventoryPage", () => {
@@ -69,6 +71,8 @@ describe("InventoryPage", () => {
 
   beforeEach(() => {
     pushMock.mockReset();
+    replaceMock.mockReset();
+    routeState.query = {};
   });
 
   afterEach(() => {
@@ -118,5 +122,22 @@ describe("InventoryPage", () => {
 
     // The active tab pane should contain the CurrentStockTab content (filter bar)
     expect(wrapper.text()).toContain("筛选物品");
+  });
+
+  it("opens the consistency dialog when action=consistency", async () => {
+    routeState.query = { action: "consistency" };
+    wrapper = mount(InventoryPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("一致性检查");
+  });
+
+  it("clears the action query after opening a dialog", async () => {
+    routeState.query = { action: "consistency" };
+    wrapper = mount(InventoryPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    expect(replaceMock.mock.calls[0][0].query.action).toBeUndefined();
   });
 });

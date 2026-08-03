@@ -27,12 +27,13 @@
       :start-step="0"
       @saved="onStocktakeDone"
     />
+    <ConsistencyDialog v-model="showConsistency" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import CurrentStockTab from './inventory/CurrentStockTab.vue'
 import LotsTab from './inventory/LotsTab.vue'
 import MovementsTab from './inventory/MovementsTab.vue'
@@ -42,8 +43,10 @@ import ConsumeDialog from './inventory/ConsumeDialog.vue'
 import LossDialog from './inventory/LossDialog.vue'
 import TransferDialog from './inventory/TransferDialog.vue'
 import StocktakeDialog from './inventory/StocktakeDialog.vue'
+import ConsistencyDialog from './inventory/ConsistencyDialog.vue'
 
 const route = useRoute()
+const router = useRouter()
 
 const activeTab = ref('stock')
 
@@ -52,6 +55,7 @@ const showConsume = ref(false)
 const showLoss = ref(false)
 const showTransfer = ref(false)
 const showStocktake = ref(false)
+const showConsistency = ref(false)
 
 const stockTabRef = ref<InstanceType<typeof CurrentStockTab> | null>(null)
 const lotsTabRef = ref<InstanceType<typeof LotsTab> | null>(null)
@@ -70,6 +74,11 @@ watch(() => route.query.action, (action) => {
     openTransfer()
   } else if (action === 'stocktake') {
     openStocktake()
+  } else if (action === 'consistency') {
+    openConsistency()
+  }
+  if (action) {
+    router.replace({ query: { ...route.query, action: undefined } })
   }
 }, { immediate: true })
 
@@ -91,6 +100,10 @@ function openTransfer() {
 
 function openStocktake() {
   showStocktake.value = true
+}
+
+function openConsistency() {
+  showConsistency.value = true
 }
 
 function onOperationDone() {
