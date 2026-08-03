@@ -38,7 +38,7 @@
         <el-table-column label="账面数量" min-width="90" prop="expected" />
         <el-table-column label="实际数量" min-width="90" prop="actual" />
       </el-table>
-      <el-result v-else-if="!loading" icon="success" title="库存数据一致" sub-title="未发现不一致" />
+      <el-result v-else-if="!loading && !errorMessage" icon="success" title="库存数据一致" sub-title="未发现不一致" />
     </div>
     <template #footer>
       <el-button @click="$emit('update:modelValue', false)">关闭</el-button>
@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchConsistencyReport, fetchLots } from '../../api/inventory'
 import { fetchLocationTree } from '../../api/location'
@@ -112,12 +112,4 @@ function lotName(lotId: string): string {
 function locationName(locationId: string): string {
   return locationNameMap.value.get(locationId) ?? locationId.substring(0, 8)
 }
-
-watch(
-  () => props.modelValue,
-  (visible) => {
-    if (visible) onOpen()
-  },
-  { immediate: true },
-)
 </script>

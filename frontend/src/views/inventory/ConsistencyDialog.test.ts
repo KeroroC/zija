@@ -71,9 +71,10 @@ describe("ConsistencyDialog", () => {
 
   async function mountDialog() {
     wrapper = mount(ConsistencyDialog, {
-      props: { modelValue: true },
+      props: { modelValue: false },
       global: { plugins: [ElementPlus] },
     })
+    await wrapper.setProps({ modelValue: true })
     await flushPromises()
   }
 
@@ -115,5 +116,6 @@ describe("ConsistencyDialog", () => {
     await mountDialog()
 
     expect(wrapper!.text()).toContain("一致性检查失败")
+    expect(wrapper!.text()).not.toContain("库存数据一致")
   })
 })
