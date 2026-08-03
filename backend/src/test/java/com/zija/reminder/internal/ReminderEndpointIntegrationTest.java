@@ -23,6 +23,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -75,6 +77,7 @@ class ReminderEndpointIntegrationTest {
     private UUID lotId;
     private UUID lotId2;
     private UUID locationId;
+    private UUID unitId;
 
     private ZijaPrincipal ownerPrincipal;
     private ZijaPrincipal memberPrincipal;
@@ -98,6 +101,7 @@ class ReminderEndpointIntegrationTest {
         seedMember(householdId, memberAccountId, "MEMBER");
 
         UUID unitId = seedUnit(householdId);
+        this.unitId = unitId;
         itemId = seedItem(householdId, unitId);
         locationId = seedLocation(householdId);
         lotId = seedLot(householdId, itemId, locationId);
@@ -357,6 +361,213 @@ class ReminderEndpointIntegrationTest {
                 .andExpect(jsonPath("$.generatedAt").isNotEmpty());
     }
 
+    @Test
+    void dashboard_expiryTaskTitle_containsItemNameAndDays() throws Exception {
+        UUID namedItemId = seedItemNamed(householdId, unitId, "牛奶");
+        UUID namedLotId = seedLot(householdId, namedItemId, locationId);
+        seedTaskWithSnapshots(householdId, "EXPIRY", namedLotId, namedItemId, "OPEN", "URGENT",
+                "CURRENT_TIMESTAMP + INTERVAL '7 days'", null, null);
+
+        mockMvc.perform(get("/api/v1/reminder/dashboard")
+                        .with(auth(ownerPrincipal))
+                        .param("days", "7")
+                        .param("topN", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.priorityTasks.items[0].title").value("「牛奶」还有 7 天到期"));
+    }
+
+    @Test
+    void dashboard_lowStockTaskTitle_containsItemNameQtyAndThreshold() throws Exception {
+        UUID namedItemId = seedItemNamed(householdId, unitId, "牛奶");
+        seedTaskWithSnapshots(householdId, "LOW_STOCK", null, namedItemId, "OPEN", "WARN",
+                "CURRENT_TIMESTAMP", "2", "{\"threshold\": \"5\"}");
+
+        mockMvc.perform(get("/api/v1/reminder/dashboard")
+                        .with(auth(ownerPrincipal))
+                        .param("days", "7")
+                        .param("topN", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.priorityTasks.items[0].title").value("「牛奶」库存仅剩 2，低于阈值 5"));
+    }
+
+    @Test
+    void dashboard_renamedItem_priorityTaskTitleUsesNewName() throws Exception {
+        UUID namedItemId = seedItemNamed(householdId, unitId, "牛奶");
+        UUID namedLotId = seedLot(householdId, namedItemId, locationId);
+        seedTaskWithSnapshots(householdId, "EXPIRY", namedLotId, namedItemId, "OPEN", "URGENT",
+                "CURRENT_TIMESTAMP + INTERVAL '7 days'", null, null);
+
+        jdbcTemplate.update("UPDATE catalog_item SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                "鲜奶", namedItemId);
+
+        mockMvc.perform(get("/api/v1/reminder/dashboard")
+                        .with(auth(ownerPrincipal))
+                        .param("days", "7")
+                        .param("topN", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.priorityTasks.items[0].title").value("「鲜奶」还有 7 天到期"));
+    }
+
+    @Test
+    void dashboard_archivedItem_priorityTaskTitleStillUsesName() throws Exception {
+        UUID namedItemId = seedItemNamed(householdId, unitId, "牛奶");
+        UUID namedLotId = seedLot(householdId, namedItemId, locationId);
+        seedTaskWithSnapshots(householdId, "EXPIRY", namedLotId, namedItemId, "OPEN", "URGENT",
+                "CURRENT_TIMESTAMP + INTERVAL '7 days'", null, null);
+
+        jdbcTemplate.update("""
+                UPDATE catalog_item
+                SET status = 'ARCHIVED', archived_at = CURRENT_TIMESTAMP, archived_by = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, ownerAccountId, namedItemId);
+
+        mockMvc.perform(get("/api/v1/reminder/dashboard")
+                        .with(auth(ownerPrincipal))
+                        .param("days", "7")
+                        .param("topN", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.priorityTasks.items[0].title").value("「牛奶」还有 7 天到期"));
+    }
+
+    @Test
+    void putRules_raiseLowStockThreshold_triggersImmediateReconcile() throws Exception {
+        // Default household threshold 1, stock totals 20 → no LOW_STOCK task. Raising to 30 must trigger immediately.
+        mockMvc.perform(get("/api/v1/reminder/rules").with(auth(ownerPrincipal)))
+                .andExpect(status().isOk());
+
+        String body = """
+                {
+                    "expiryDisabled": true,
+                    "expiryReminderDays": [30],
+                    "lowStockDisabled": false,
+                    "lowStockThreshold": 30,
+                    "version": 0
+                }
+                """;
+
+        mockMvc.perform(put("/api/v1/reminder/rules")
+                        .with(auth(ownerPrincipal)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        // Threshold now 30 > stock 20 → LOW_STOCK task must appear immediately, no daily scan needed.
+        mockMvc.perform(get("/api/v1/reminder/dashboard")
+                        .with(auth(ownerPrincipal))
+                        .param("days", "7")
+                        .param("topN", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lowStockItems.count").value(1))
+                .andExpect(jsonPath("$.lowStockItems.items[0].kind").value("LOW_STOCK"));
+    }
+
+    @Test
+    void putRules_lowerLowStockThreshold_doesNotCreateSpuriousTask() throws Exception {
+        // Default stock totals 20; raise threshold to 30 then lower back to 1.
+        mockMvc.perform(get("/api/v1/reminder/rules").with(auth(ownerPrincipal)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/reminder/rules")
+                        .with(auth(ownerPrincipal)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "expiryDisabled": true,
+                                    "expiryReminderDays": [30],
+                                    "lowStockDisabled": false,
+                                    "lowStockThreshold": 30,
+                                    "version": 0
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/reminder/rules")
+                        .with(auth(ownerPrincipal)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "expiryDisabled": true,
+                                    "expiryReminderDays": [30],
+                                    "lowStockDisabled": false,
+                                    "lowStockThreshold": 1,
+                                    "version": 1
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/reminder/dashboard")
+                        .with(auth(ownerPrincipal))
+                        .param("days", "7")
+                        .param("topN", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lowStockItems.count").value(0));
+    }
+
+    @Test
+    void putRules_narrowExpiryWindow_closesOutOfWindowExpiryTask() throws Exception {
+        // Lot expires in 20 days; default window [30,7,1] keeps an OPEN task for it.
+        UUID namedItemId = seedItemNamed(householdId, unitId, "牛奶");
+        UUID namedLotId = seedLotWithExpiry(householdId, namedItemId, locationId,
+                java.time.LocalDate.now().plusDays(20).toString());
+        seedTaskWithSnapshots(householdId, "EXPIRY", namedLotId, namedItemId, "OPEN", "INFO",
+                "CURRENT_TIMESTAMP + INTERVAL '20 days'", null, null);
+
+        mockMvc.perform(get("/api/v1/reminder/rules").with(auth(ownerPrincipal)))
+                .andExpect(status().isOk());
+
+        // Narrow window to [7,1]: lot now out of window → task must be closed by the triggered reconcile.
+        mockMvc.perform(put("/api/v1/reminder/rules")
+                        .with(auth(ownerPrincipal)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "expiryDisabled": false,
+                                    "expiryReminderDays": [7, 1],
+                                    "lowStockDisabled": true,
+                                    "lowStockThreshold": 1,
+                                    "version": 0
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/reminder/dashboard")
+                        .with(auth(ownerPrincipal))
+                        .param("days", "7")
+                        .param("topN", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.expiryWithin7Days.count").value(0))
+                .andExpect(jsonPath("$.priorityTasks.items").isArray());
+    }
+
+    @Test
+    void dashboard_lowStockTaskWithoutSnapshots_fallsBackToQuestionMarks() throws Exception {
+        UUID namedItemId = seedItemNamed(householdId, unitId, "牛奶");
+        seedTaskWithSnapshots(householdId, "LOW_STOCK", null, namedItemId, "OPEN", "WARN",
+                "CURRENT_TIMESTAMP", null, null);
+
+        mockMvc.perform(get("/api/v1/reminder/dashboard")
+                        .with(auth(ownerPrincipal))
+                        .param("days", "7")
+                        .param("topN", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.priorityTasks.items[0].title").value("「牛奶」库存仅剩 ?，低于阈值 ?"));
+    }
+
+    @Test
+    void dashboard_overdueExpiryTask_showsExpiredWording() throws Exception {
+        UUID namedItemId = seedItemNamed(householdId, unitId, "牛奶");
+        UUID namedLotId = seedLot(householdId, namedItemId, locationId);
+        seedTaskWithSnapshots(householdId, "EXPIRY", namedLotId, namedItemId, "OPEN", "URGENT",
+                "CURRENT_TIMESTAMP - INTERVAL '3 days'", null, null);
+
+        mockMvc.perform(get("/api/v1/reminder/dashboard")
+                        .with(auth(ownerPrincipal))
+                        .param("days", "7")
+                        .param("topN", "8"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.priorityTasks.items[0].title").value("「牛奶」已过期 3 天"));
+    }
+
     // ==================== 7. Notifications ====================
 
     @Test
@@ -532,6 +743,15 @@ class ReminderEndpointIntegrationTest {
         return id;
     }
 
+    private UUID seedItemNamed(UUID householdId, UUID unitId, String name) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO catalog_item (id, household_id, name, management_type, unit_id, status)
+                VALUES (?, ?, ?, 'DURABLE', ?, 'ACTIVE')
+                """, id, householdId, name, unitId);
+        return id;
+    }
+
     private UUID seedLocation(UUID householdId) {
         UUID id = UUID.randomUUID();
         String name = "位置" + id.toString().substring(0, 6);
@@ -557,6 +777,20 @@ class ReminderEndpointIntegrationTest {
         return lotId;
     }
 
+    private UUID seedLotWithExpiry(UUID householdId, UUID itemId, UUID locationId, String expiryDate) {
+        UUID lotId = UUID.randomUUID();
+        String lotNumber = "LOT-" + lotId.toString().substring(0, 8);
+        jdbcTemplate.update("""
+                INSERT INTO inventory_lot (id, household_id, item_id, lot_number, expiry_date)
+                VALUES (?, ?, ?, ?, ?::date)
+                """, lotId, householdId, itemId, lotNumber, expiryDate);
+        jdbcTemplate.update("""
+                INSERT INTO inventory_stock_position (id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, 10, 1)
+                """, UUID.randomUUID(), householdId, lotId, locationId);
+        return lotId;
+    }
+
     private UUID seedTask(UUID householdId, String kind, UUID lotId, UUID itemId,
                           String status, String severity) {
         UUID taskId = UUID.randomUUID();
@@ -574,6 +808,31 @@ class ReminderEndpointIntegrationTest {
                 INSERT INTO reminder_task (id, household_id, kind, lot_id, item_id, status, due_at, severity)
                 VALUES (?, ?, ?, NULL, ?, ?, CURRENT_TIMESTAMP + INTERVAL '7 days', ?)
                 """, taskId, householdId, kind, itemId, status, severity);
+        return taskId;
+    }
+
+    private UUID seedTaskWithSnapshots(UUID householdId, String kind, UUID lotId, UUID itemId,
+                                       String status, String severity, String dueAtExpr,
+                                       String qtySnapshot, String thresholdSnapshotJson) {
+        UUID taskId = UUID.randomUUID();
+        String sql = """
+                INSERT INTO reminder_task
+                    (id, household_id, kind, lot_id, item_id, status, due_at, severity, qty_snapshot, threshold_snapshot)
+                VALUES (?, ?, ?, ?, ?, ?, %s, ?, %s, %s::jsonb)
+                """.formatted(dueAtExpr,
+                qtySnapshot == null ? "NULL" : "?::numeric",
+                thresholdSnapshotJson == null ? "NULL" : "?");
+        List<Object> params = new ArrayList<>();
+        params.add(taskId);
+        params.add(householdId);
+        params.add(kind);
+        params.add(lotId);
+        params.add(itemId);
+        params.add(status);
+        params.add(severity);
+        if (qtySnapshot != null) params.add(qtySnapshot);
+        if (thresholdSnapshotJson != null) params.add(thresholdSnapshotJson);
+        jdbcTemplate.update(sql, params.toArray());
         return taskId;
     }
 

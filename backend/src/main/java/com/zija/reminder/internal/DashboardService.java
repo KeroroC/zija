@@ -1,23 +1,31 @@
 package com.zija.reminder.internal;
 
+import com.zija.catalog.CatalogApi;
 import com.zija.reminder.internal.persistence.TaskEntity;
 import com.zija.reminder.internal.persistence.TaskMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 class DashboardService {
 
     private final TaskMapper taskMapper;
+    private final CatalogApi catalogApi;
     private final Clock clock;
 
-    DashboardService(TaskMapper taskMapper, Clock clock) {
+    DashboardService(TaskMapper taskMapper, CatalogApi catalogApi, Clock clock) {
         this.taskMapper = taskMapper;
+        this.catalogApi = catalogApi;
         this.clock = clock;
     }
 
@@ -30,18 +38,27 @@ class DashboardService {
         var lowStock = taskMapper.lowStockOpenTasks(householdId, topN);
         var priority = taskMapper.priorityTasks(householdId, topN);
 
+        Map<UUID, String> names = loadItemNames(householdId, expiry, lowStock, priority);
+
         return new DashboardView(
                 new DashboardGroup(
                         countAllExpiryWithinDays(householdId, from, to),
-                        expiry.stream().map(this::toExpiryItem).toList()),
+                        expiry.stream().map(t -> toItem(t, names)).toList()),
                 new DashboardGroup(
                         countAllLowStock(householdId),
-                        lowStock.stream().map(this::toLowStockItem).toList()),
+                        lowStock.stream().map(t -> toItem(t, names)).toList()),
                 new DashboardGroup(
                         countAllPriority(householdId),
-                        priority.stream().map(this::toPriorityItem).toList()),
+                        priority.stream().map(t -> toItem(t, names)).toList()),
                 now
         );
+    }
+
+    private Map<UUID, String> loadItemNames(UUID hh, List<TaskEntity>... groups) {
+        return catalogApi.itemNames(hh, Arrays.stream(groups)
+                .flatMap(List::stream)
+                .map(TaskEntity::getItemId)
+                .collect(Collectors.toSet()));
     }
 
     private long countAllExpiryWithinDays(UUID hh, OffsetDateTime from, OffsetDateTime to) {
@@ -56,19 +73,34 @@ class DashboardService {
         return taskMapper.priorityTasks(hh, Integer.MAX_VALUE).size();
     }
 
-    private DashboardItem toExpiryItem(TaskEntity t) {
+    private DashboardItem toItem(TaskEntity t, Map<UUID, String> names) {
+        String itemName = names.getOrDefault(t.getItemId(), t.getItemId().toString());
+        String title = switch (t.getKind()) {
+            case "EXPIRY" -> expiryTitle(itemName, t.getDueAt());
+            case "LOW_STOCK" -> lowStockTitle(itemName, t);
+            default -> itemName;
+        };
         return new DashboardItem(t.getId(), t.getKind(), t.getSeverity(),
-                "临期任务", t.getDueAt(), t.getItemId(), t.getLotId());
+                title, t.getDueAt(), t.getItemId(), t.getLotId());
     }
 
-    private DashboardItem toLowStockItem(TaskEntity t) {
-        return new DashboardItem(t.getId(), t.getKind(), t.getSeverity(),
-                "低库存任务", t.getDueAt(), t.getItemId(), null);
+    private String expiryTitle(String itemName, OffsetDateTime dueAt) {
+        // dueAt 由 reconcile 存为到期日 UTC 零点，故 toLocalDate() 即到期日，与 reconcile 的 LocalDate 计算一致
+        long daysLeft = ChronoUnit.DAYS.between(LocalDate.now(clock), dueAt.toLocalDate());
+        if (daysLeft < 0) {
+            return "「" + itemName + "」已过期 " + (-daysLeft) + " 天";
+        }
+        if (daysLeft == 0) {
+            return "「" + itemName + "」今天到期";
+        }
+        return "「" + itemName + "」还有 " + daysLeft + " 天到期";
     }
 
-    private DashboardItem toPriorityItem(TaskEntity t) {
-        return new DashboardItem(t.getId(), t.getKind(), t.getSeverity(),
-                "优先任务", t.getDueAt(), t.getItemId(), t.getLotId());
+    private String lowStockTitle(String itemName, TaskEntity t) {
+        Object threshold = t.getThresholdSnapshot() == null ? null : t.getThresholdSnapshot().get("threshold");
+        String thresholdText = threshold == null ? "?" : threshold.toString();
+        String qtyText = t.getQtySnapshot() == null ? "?" : t.getQtySnapshot().stripTrailingZeros().toPlainString();
+        return "「" + itemName + "」库存仅剩 " + qtyText + "，低于阈值 " + thresholdText;
     }
 
     record DashboardView(DashboardGroup expiryWithin7Days, DashboardGroup lowStockItems,

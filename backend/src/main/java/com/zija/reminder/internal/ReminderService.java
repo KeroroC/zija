@@ -12,6 +12,7 @@ import com.zija.reminder.internal.persistence.NotificationMapper;
 import com.zija.reminder.internal.persistence.TaskEntity;
 import com.zija.reminder.internal.persistence.TaskMapper;
 import com.zija.system.SystemApi;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -28,13 +30,16 @@ class ReminderService {
     private final NotificationMapper notificationMapper;
     private final TaskMapper taskMapper;
     private final SystemApi systemApi;
+    private final ApplicationEventPublisher eventPublisher;
 
     ReminderService(HouseholdRuleMapper ruleMapper, NotificationMapper notificationMapper,
-                    TaskMapper taskMapper, SystemApi systemApi) {
+                    TaskMapper taskMapper, SystemApi systemApi,
+                    ApplicationEventPublisher eventPublisher) {
         this.ruleMapper = ruleMapper;
         this.notificationMapper = notificationMapper;
         this.taskMapper = taskMapper;
         this.systemApi = systemApi;
+        this.eventPublisher = eventPublisher;
     }
 
     record RuleView(UUID id, UUID householdId, boolean expiryDisabled, List<Short> expiryReminderDays,
@@ -82,6 +87,10 @@ class ReminderService {
         if (current.getVersion() != update.version()) {
             throw new ReminderRuleVersionConflictException();
         }
+        boolean changed = !Boolean.TRUE.equals(current.getExpiryDisabled())
+                || !Objects.equals(current.getExpiryReminderDays(), update.expiryReminderDays())
+                || !Boolean.TRUE.equals(current.getLowStockDisabled())
+                || !Objects.equals(current.getLowStockThreshold(), update.lowStockThreshold());
         current.setExpiryDisabled(update.expiryDisabled());
         current.setExpiryReminderDays(update.expiryReminderDays());
         current.setLowStockDisabled(update.lowStockDisabled());
@@ -93,6 +102,9 @@ class ReminderService {
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 "REMINDER_RULE_UPDATE", "SUCCESS", householdId, null, null, null, null,
                 Map.of("version", String.valueOf(update.version()))));
+        if (changed) {
+            eventPublisher.publishEvent(new ReminderRuleChangedEvent(householdId));
+        }
         return toView(current);
     }
 
