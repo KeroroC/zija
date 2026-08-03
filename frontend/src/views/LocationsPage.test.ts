@@ -176,16 +176,17 @@ describe("LocationsPage", () => {
     wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
     await flushPromises();
 
-    // Click the move button on the root node (first in DOM order)
+    // Click the move button on the child node (second one) — the root is moving-protected
+    // only when it is itself the moving node, so move the child and target the root.
     const moveButtons = wrapper.findAll('[data-testid="loc-move"]');
-    await moveButtons[0].trigger("click");
+    await moveButtons[1].trigger("click");
     await flushPromises();
 
     // The move dialog should be visible; click on a node in the dialog tree to select target
     const dialogTrees = wrapper.findAll(".el-dialog .el-tree");
     expect(dialogTrees.length).toBeGreaterThan(0);
     const dialogTreeNodes = dialogTrees[0].findAll(".el-tree-node__content");
-    // The first node is the root "家" — select it as the target
+    // The first node is the root "家" — it is enabled because the child is the moving node.
     await dialogTreeNodes[0].trigger("click");
     await flushPromises();
 
@@ -196,10 +197,10 @@ describe("LocationsPage", () => {
     await confirmBtns[0].trigger("click");
     await flushPromises();
 
-    expect(moveMock).toHaveBeenCalledWith("loc-root", {
+    expect(moveMock).toHaveBeenCalledWith("loc-child", {
       parentId: "loc-root",
       sortOrder: 0,
-      version: 2,
+      version: 1,
     });
     expect(fetchTreeMock).toHaveBeenCalledTimes(2);
   });
@@ -208,11 +209,12 @@ describe("LocationsPage", () => {
     wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
     await flushPromises();
 
-    // The root node "家" is everReferenced so has no delete button.
-    // The child node "卧室" (loc-child) has a delete button.
+    // The root node "家" is everReferenced so its delete button is rendered but disabled.
+    // The child node "卧室" (loc-child) has an enabled delete button.
     const deleteButtons = wrapper.findAll('[data-testid="loc-delete"]');
-    expect(deleteButtons).toHaveLength(1);
-    await deleteButtons[0].trigger("click");
+    expect(deleteButtons).toHaveLength(2);
+    // Click the second (enabled) button — the first is disabled on the everReferenced root.
+    await deleteButtons[1].trigger("click");
     await flushPromises();
 
     // Confirm the ElMessageBox
@@ -302,8 +304,9 @@ describe("LocationsPage", () => {
     // Inventory summary should be visible (not the old placeholder)
     expect(wrapper.text()).toContain("库存记录");
     expect(wrapper.text()).toContain("1 条");
-    expect(wrapper.text()).toContain("库存总量");
-    expect(wrapper.text()).toContain("5");
+    // 笼统的「库存总量」已移除 — 跨单位相加没有语义，已交给库存页做按单位汇总
+    expect(wrapper.text()).not.toContain("库存总量");
+    expect(wrapper.text()).toContain("前往库存页查看按单位汇总");
     expect(wrapper.text()).not.toContain("库存将在阶段四启用");
 
     // Buttons should exist

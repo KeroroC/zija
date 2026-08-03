@@ -19,47 +19,73 @@
         >
           <template #default="{ node, data }">
             <div class="tree-node">
-              <span>{{ data.name }}</span>
+              <span class="tree-node-label">{{ data.name }}</span>
               <span class="tree-node-actions">
-                <el-button size="small" text data-testid="loc-add" @click.stop="openCreate(data.id)">
-                  <el-icon><Plus /></el-icon>
-                </el-button>
-                <el-button size="small" text data-testid="loc-rename" @click.stop="openRename(data)">
-                  <el-icon><Edit /></el-icon>
-                </el-button>
-                <el-button size="small" text data-testid="loc-move" @click.stop="openMove(data)">
-                  <el-icon><TopRight /></el-icon>
-                </el-button>
-                <el-button v-if="!data.everReferenced" size="small" text type="danger" data-testid="loc-delete" @click.stop="deleteNode(data)">
-                  <el-icon><Close /></el-icon>
-                </el-button>
+                <el-tooltip content="新增子位置" placement="top" :show-after="300">
+                  <el-button size="small" text data-testid="loc-add" @click.stop="openCreate(data.id)">
+                    <el-icon><Plus /></el-icon>
+                  </el-button>
+                </el-tooltip>
+                <el-tooltip content="重命名" placement="top" :show-after="300">
+                  <el-button size="small" text data-testid="loc-rename" @click.stop="openRename(data)">
+                    <el-icon><Edit /></el-icon>
+                  </el-button>
+                </el-tooltip>
+                <el-tooltip content="移动到其他位置" placement="top" :show-after="300">
+                  <el-button size="small" text data-testid="loc-move" @click.stop="openMove(data)">
+                    <el-icon><Position /></el-icon>
+                  </el-button>
+                </el-tooltip>
+                <el-tooltip :content="deleteTooltip(data)" placement="top" :show-after="300">
+                  <el-button
+                    size="small"
+                    text
+                    type="danger"
+                    data-testid="loc-delete"
+                    :disabled="!canDelete(data)"
+                    @click.stop="deleteNode(data)"
+                  >
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </el-tooltip>
               </span>
             </div>
           </template>
         </el-tree>
       </div>
 
-      <div class="card location-detail-panel" v-if="selectedLocation">
-        <h3 class="detail-name">{{ selectedLocation.name }}</h3>
-        <p class="detail-path"><strong>路径：</strong>{{ ancestorPath }}</p>
-        <p class="detail-meta">ID: <span class="zj-mono">{{ selectedLocation.id }}</span></p>
-        <p class="detail-meta">版本: <span class="zj-mono">{{ selectedLocation.version }}</span></p>
-        <p class="detail-meta">已引用: {{ selectedLocation.everReferenced ? '是' : '否' }}</p>
-        <template v-if="selectedLocation.children?.length">
-          <el-divider />
-          <p class="detail-meta"><strong>子位置：</strong></p>
-          <ul class="child-list">
-            <li v-for="child in selectedLocation.children" :key="child.id">{{ child.name }}</li>
-          </ul>
-        </template>
-        <el-divider />
-        <div class="inventory-summary">
-          <p class="detail-meta">库存记录：{{ locationStockCount }} 条</p>
-          <p class="detail-meta">库存总量：{{ locationStockTotal }}</p>
+      <div class="card location-detail-panel">
+        <template v-if="selectedLocation">
+          <h3 class="detail-name">{{ selectedLocation.name }}</h3>
+          <p class="detail-path">{{ ancestorPath }}</p>
+
+          <dl class="detail-grid">
+            <dt>子位置</dt>
+            <dd>
+              {{ selectedLocation.children?.length ? `${selectedLocation.children.length} 个` : '无' }}
+            </dd>
+
+            <dt>库存记录</dt>
+            <dd>
+              <template v-if="locationStockLoading">
+                <span class="detail-loading">加载中…</span>
+              </template>
+              <template v-else>
+                <span class="zj-num">{{ locationStockCount }}</span> 条
+                <span class="detail-hint">前往库存页查看按单位汇总</span>
+              </template>
+            </dd>
+          </dl>
+
           <div class="inventory-actions">
             <el-button size="small" type="primary" @click="goToLocationInventory">查看库存</el-button>
             <el-button size="small" @click="goToStocktake">发起盘点</el-button>
           </div>
+        </template>
+
+        <div v-else class="detail-empty">
+          <span class="zj-dot zj-dot-off"></span>
+          <p>从左侧选择一个位置以查看详情</p>
         </div>
       </div>
     </div>
@@ -80,9 +106,9 @@
     <!-- Move Dialog -->
     <el-dialog v-model="moveDialogVisible" title="移动位置" width="500px">
       <div v-if="movingNode">
-        <p>移动 <strong>{{ movingNode.name }}</strong> 到：</p>
+        <p class="move-dialog-intro">将 <strong>{{ movingNode.name }}</strong> 移动到：</p>
         <el-tree
-          :data="treeData"
+          :data="moveTargetTreeData"
           node-key="id"
           default-expand-all
           :expand-on-click-node="false"
@@ -90,7 +116,10 @@
           @current-change="onTargetChange"
         >
           <template #default="{ data }">
-            <span>{{ data.name }}</span>
+            <span :class="{ 'is-disabled-target': data.disabled }">
+              {{ data.name }}
+              <span v-if="data.disabled" class="disabled-tag">不可选</span>
+            </span>
           </template>
         </el-tree>
         <el-form label-width="100px" style="margin-top: 16px">
@@ -111,17 +140,22 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, TopRight, Close } from '@element-plus/icons-vue'
+import { Plus, Edit, Position, Delete } from '@element-plus/icons-vue'
 import { fetchLocationTree, createLocation, renameLocation, deleteLocation, moveLocation } from '../api/location'
 import { fetchStockPositions } from '../api/inventory'
 import type { LocationNode } from '../types/location'
 
 const router = useRouter()
 
+// 移动对话框的目标树节点：原节点上附加 disabled 字段，标记是否可选
+interface TargetNode extends LocationNode {
+  disabled?: boolean
+}
+
 const treeData = ref<LocationNode[]>([])
 const selectedLocation = ref<LocationNode | null>(null)
 const locationStockCount = ref(0)
-const locationStockTotal = ref(0)
+const locationStockLoading = ref(false)
 const moveDialogVisible = ref(false)
 const movingNode = ref<LocationNode | null>(null)
 const targetParentId = ref<string | null>(null)
@@ -129,7 +163,12 @@ const targetSortOrder = ref(0)
 
 const nameDialogVisible = ref(false)
 const nameDialogTitle = ref('')
-const nameForm = reactive({ name: '', parentId: null as string | null, editingId: null as string | null, version: 0 })
+const nameForm = reactive({
+  name: '',
+  parentId: null as string | null,
+  editingId: null as string | null,
+  version: 0,
+})
 
 // Build a flat map for ancestor path lookup
 function buildNodeMap(nodes: LocationNode[], parentPath: string[] = []): Map<string, string[]> {
@@ -153,6 +192,48 @@ const ancestorPath = computed(() => {
   return path ? path.join(' / ') : selectedLocation.value.name
 })
 
+// 为移动对话框构造一棵克隆树：把移动节点自身及其全部子孙标记为 disabled，
+// 避免把位置移进自己的子树（成环）。原 treeData 不被改动。
+const moveTargetTreeData = computed<TargetNode[]>(() => {
+  if (!movingNode.value) return []
+  const movingId = movingNode.value.id
+  const descendants = collectDescendantIds(movingNode.value)
+  return treeData.value.map((root) => markSubtreeDisabled(root, movingId, descendants))
+})
+
+function collectDescendantIds(node: LocationNode): Set<string> {
+  const ids = new Set<string>()
+  const walk = (n: LocationNode) => {
+    ids.add(n.id)
+    n.children?.forEach(walk)
+  }
+  walk(node)
+  return ids
+}
+
+function markSubtreeDisabled(
+  node: LocationNode,
+  movingId: string,
+  descendants: Set<string>,
+): TargetNode {
+  const disabled = node.id === movingId || descendants.has(node.id)
+  return {
+    ...node,
+    disabled,
+    children: node.children?.map((c) => markSubtreeDisabled(c, movingId, descendants)) ?? [],
+  }
+}
+
+function canDelete(node: LocationNode): boolean {
+  // 已引用的位置不能删除，否则会留下孤儿库存引用
+  return !node.everReferenced
+}
+
+function deleteTooltip(node: LocationNode): string {
+  if (node.everReferenced) return '已存在库存引用，无法删除'
+  return '删除位置'
+}
+
 async function loadTree() {
   const res = await fetchLocationTree()
   treeData.value = res.roots
@@ -161,13 +242,16 @@ async function loadTree() {
 async function selectNode(data: LocationNode) {
   selectedLocation.value = data
   locationStockCount.value = 0
-  locationStockTotal.value = 0
+  locationStockLoading.value = true
   try {
-    const pos = await fetchStockPositions({ locationId: data.id, pageSize: 10000 })
+    // 只取少量用于核对服务端 total，避免拉整张库存表
+    const pos = await fetchStockPositions({ locationId: data.id, pageSize: 200 })
     locationStockCount.value = pos.total
-    locationStockTotal.value = pos.items.reduce((sum, p) => sum + Number(p.quantity), 0)
-  } catch {
-    // silently ignore
+  } catch (e: any) {
+    ElMessage.error(e?.message || '库存加载失败')
+    locationStockCount.value = 0
+  } finally {
+    locationStockLoading.value = false
   }
 }
 
@@ -224,7 +308,11 @@ function openMove(node: LocationNode) {
   moveDialogVisible.value = true
 }
 
-function onTargetChange(data: LocationNode) {
+function onTargetChange(data: TargetNode) {
+  if (data.disabled) {
+    targetParentId.value = null
+    return
+  }
   targetParentId.value = data.id
 }
 
@@ -245,11 +333,16 @@ async function submitMove() {
 }
 
 async function deleteNode(node: LocationNode) {
+  if (!canDelete(node)) return
   if (node.children?.length) {
     ElMessage.warning(`该位置下有 ${node.children.length} 个子位置，请先删除子位置`)
     return
   }
-  await ElMessageBox.confirm(`确定删除位置"${node.name}"？`, '确认')
+  try {
+    await ElMessageBox.confirm(`确定删除位置"${node.name}"？`, '确认')
+  } catch {
+    return
+  }
   try {
     await deleteLocation(node.id, node.version)
     await loadTree()
@@ -268,15 +361,21 @@ onMounted(loadTree)
   gap: 20px;
   align-items: flex-start;
 }
+
+/* 两面板内边距统一到同一令牌 */
+.location-tree-panel,
+.location-detail-panel {
+  padding: 20px 22px;
+}
 .location-tree-panel {
   flex: 1;
   min-width: 300px;
-  padding: 12px 8px;
 }
 .location-detail-panel {
   width: 320px;
-  padding: 22px 22px 26px;
+  min-height: 220px;
 }
+
 .detail-name {
   margin: 0 0 6px;
   font-family: var(--zj-serif);
@@ -284,22 +383,76 @@ onMounted(loadTree)
   font-weight: 600;
 }
 .detail-path {
+  margin: 0 0 18px;
+  font-size: 13px;
+  color: var(--zj-ink-600);
+}
+
+/* 键值对网格：label 一列、value 一列，提升扫读性 */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  row-gap: 10px;
+  column-gap: 16px;
+  margin: 0 0 20px;
+}
+.detail-grid dt {
+  font-size: 12px;
+  color: var(--zj-ink-400);
+  letter-spacing: 0.04em;
+}
+.detail-grid dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--zj-ink-900);
+}
+.detail-loading {
+  font-size: 13px;
+  color: var(--zj-ink-400);
+}
+.detail-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--zj-ink-400);
+}
+
+.inventory-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 空状态：未选中节点时引导用户 */
+.detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  color: var(--zj-ink-400);
+  font-size: 13px;
+}
+.detail-empty .zj-dot {
+  margin: 0 0 12px;
+}
+.detail-empty p {
+  margin: 0;
+}
+
+.move-dialog-intro {
   margin: 0 0 12px;
   font-size: 13px;
   color: var(--zj-ink-600);
 }
-.detail-meta {
-  margin: 0 0 8px;
-  font-size: 13px;
+.is-disabled-target {
+  color: var(--zj-ink-300);
 }
-.inventory-summary {
-  margin-top: 8px;
+.disabled-tag {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--zj-ink-300);
 }
-.inventory-actions {
-  margin-top: 12px;
-  display: flex;
-  gap: 8px;
-}
+
 .tree-node {
   display: flex;
   justify-content: space-between;
@@ -307,24 +460,25 @@ onMounted(loadTree)
   width: 100%;
   padding-right: 4px;
 }
+.tree-node-label {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 操作按钮：默认以低透明度常驻（兼顾鼠标可发现性 + 键盘/触屏可达），
+   hover / focus-within 时提亮，避免 hover-only 隐藏导致可达性问题。 */
 .tree-node-actions {
   display: inline-flex;
   gap: 0;
   margin-left: 8px;
-  opacity: 0;
+  opacity: 0.35;
   transition: opacity var(--zj-dur-fast) var(--zj-ease-out);
 }
-.tree-node:hover .tree-node-actions {
+.tree-node:hover .tree-node-actions,
+.tree-node:focus-within .tree-node-actions {
   opacity: 1;
 }
 .tree-node-actions .el-button + .el-button {
   margin-left: 2px;
-}
-.child-list {
-  margin: 0;
-  padding-left: 20px;
-}
-.child-list li {
-  line-height: 1.8;
 }
 </style>
