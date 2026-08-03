@@ -133,7 +133,9 @@ test("报表完整链路：入库→投影→搜索→库存分布→导出→�
   const reportRow = page.locator("tbody tr", { hasText: itemName });
   await expect(reportRow).toBeVisible({ timeout: 10_000 });
   await expect(reportRow.getByText(locName)).toBeVisible();
-  await expect(reportRow.getByText("10")).toBeVisible();
+  // exact: true —— 名称里嵌了 Date.now()，其数字串可能包含 "10" 子串，
+  // 子串匹配会命中位置/物品/单位单元格，触发 strict mode violation。
+  await expect(reportRow.getByText("10", { exact: true })).toBeVisible();
 
   // ─── 7. Search for the item ───
   await page.goto("/reports/search");
@@ -194,5 +196,5 @@ test("报表完整链路：入库→投影→搜索→库存分布→导出→�
 
   const rebuiltRow = page.locator("tbody tr", { hasText: itemName });
   await expect(rebuiltRow).toBeVisible({ timeout: 15_000 });
-  await expect(rebuiltRow.getByText("10")).toBeVisible();
+  await expect(rebuiltRow.getByText("10", { exact: true })).toBeVisible();
 });
