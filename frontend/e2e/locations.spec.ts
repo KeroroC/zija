@@ -63,21 +63,26 @@ test("location management lifecycle", async ({ page }) => {
   await moveDialog.getByRole("button", { name: "确定" }).click();
   await expect(page.getByText("已移动")).toBeVisible();
 
-  // --- Step 7: Verify circular reference is rejected ---
+  // --- Step 7: Verify circular moves are prevented at selection time ---
   // Current tree: root > {child, grandchild}
-  // Try moving root under child → circular (child is a descendant of root)
+  // Opening the move dialog for root marks its whole subtree as 「不可选」.
+  // The exhaustive cases (deep descendants, untouched siblings, the
+  // onTargetChange guard) live in LocationsPage.test.ts; the server-side rule
+  // lives in LocationServiceTest. Here we only smoke-test that the marking
+  // survives real backend data in a real browser.
   const rootNodeForMove = page.locator(".tree-node", { hasText: renamedRoot }).first();
   await rootNodeForMove.locator('[data-testid="loc-move"]').click();
   const circDialog = page.locator(".el-dialog", { hasText: "移动位置" });
   await expect(circDialog).toBeVisible();
-  await circDialog
-    .locator(".el-tree-node__content", { hasText: childName })
-    .click();
-  await circDialog.getByRole("button", { name: "确定" }).click();
-  // Expect an error about circular reference or descendant
-  await expect(page.getByText(/循环|子位置/)).toBeVisible();
+  const descendantTarget = circDialog
+    .locator(".el-tree-node__content", { hasText: grandchildName })
+    .first();
+  await expect(descendantTarget.locator(".disabled-tag")).toBeVisible();
+  await descendantTarget.click();
+  await expect(circDialog.getByRole("button", { name: "确定" })).toBeDisabled();
   // Cancel the move dialog
   await circDialog.getByRole("button", { name: "取消" }).click();
+  await expect(circDialog).toBeHidden();
 
   // --- Step 8: Delete an empty leaf node ---
   // child has no children (grandchild was moved out) → can be deleted

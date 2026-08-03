@@ -70,6 +70,50 @@ const rootNode: LocationNode = {
 
 const treeResponse = { roots: [rootNode] };
 
+// 三层树 + 一个兄弟根，用于验证移动对话框的「不可选」标记能覆盖到深层子孙，
+// 且不会误伤子树之外的节点。
+const deepGrandchild: LocationNode = {
+  id: "loc-gc",
+  parentId: "loc-child",
+  name: "衣柜",
+  sortOrder: 0,
+  everReferenced: false,
+  version: 1,
+  children: [],
+};
+
+const deepChild: LocationNode = {
+  id: "loc-child",
+  parentId: "loc-root",
+  name: "卧室",
+  sortOrder: 1,
+  everReferenced: false,
+  version: 1,
+  children: [deepGrandchild],
+};
+
+const deepRoot: LocationNode = {
+  id: "loc-root",
+  parentId: null,
+  name: "家",
+  sortOrder: 0,
+  everReferenced: true,
+  version: 2,
+  children: [deepChild],
+};
+
+const siblingRoot: LocationNode = {
+  id: "loc-garage",
+  parentId: null,
+  name: "车库",
+  sortOrder: 1,
+  everReferenced: false,
+  version: 1,
+  children: [],
+};
+
+const deepTreeResponse = { roots: [deepRoot, siblingRoot] };
+
 describe("LocationsPage", () => {
   let wrapper: VueWrapper | null = null;
 
@@ -203,6 +247,82 @@ describe("LocationsPage", () => {
       version: 1,
     });
     expect(fetchTreeMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("marks the moving node and all its descendants as non-selectable targets", async () => {
+    fetchTreeMock.mockResolvedValue(deepTreeResponse);
+    wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    // 移动根节点「家」——它自己和整棵子树都不能作为目标，否则成环
+    const moveButtons = wrapper.findAll('[data-testid="loc-move"]');
+    await moveButtons[0].trigger("click");
+    await flushPromises();
+
+    const contents = wrapper.findAll(".el-dialog .el-tree .el-tree-node__content");
+    const marks = contents.map((c) => ({
+      text: c.text(),
+      disabled: c.find(".disabled-tag").exists(),
+    }));
+    const byName = (name: string) => marks.find((m) => m.text.includes(name));
+
+    // 自身、直接子节点、第三层子孙都必须不可选
+    expect(byName("家")?.disabled).toBe(true);
+    expect(byName("卧室")?.disabled).toBe(true);
+    expect(byName("衣柜")?.disabled).toBe(true);
+    // 兄弟根不在被移动的子树内，必须仍然可选
+    expect(byName("车库")?.disabled).toBe(false);
+  });
+
+  it("keeps the confirm button disabled when a non-selectable target is clicked", async () => {
+    fetchTreeMock.mockResolvedValue(deepTreeResponse);
+    wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    await wrapper.findAll('[data-testid="loc-move"]')[0].trigger("click");
+    await flushPromises();
+
+    const contents = wrapper.findAll(".el-dialog .el-tree .el-tree-node__content");
+    const descendant = contents.find((c) => c.text().includes("衣柜"));
+    expect(descendant).toBeTruthy();
+    await descendant!.trigger("click");
+    await flushPromises();
+
+    const confirmBtn = wrapper
+      .findAll(".el-dialog .el-dialog__footer button")
+      .find((b) => b.text() === "确定");
+    expect(confirmBtn!.attributes("disabled")).toBeDefined();
+
+    // 即使强行点击，也不能发出移动请求
+    await confirmBtn!.trigger("click");
+    await flushPromises();
+    expect(moveMock).not.toHaveBeenCalled();
+  });
+
+  it("shows an error message when the server rejects the move", async () => {
+    moveMock.mockRejectedValue({ message: "移动会导致循环" });
+
+    wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    // 移动「卧室」到「家」——前端认为合法，由服务端拒绝
+    await wrapper.findAll('[data-testid="loc-move"]')[1].trigger("click");
+    await flushPromises();
+
+    const dialogTreeNodes = wrapper.findAll(".el-dialog .el-tree .el-tree-node__content");
+    await dialogTreeNodes[0].trigger("click");
+    await flushPromises();
+
+    const confirmBtns = wrapper
+      .findAll(".el-dialog .el-dialog__footer button")
+      .filter((b) => b.text() === "确定");
+    await confirmBtns[0].trigger("click");
+    await flushPromises();
+
+    expect(moveMock).toHaveBeenCalled();
+    // 断言具体文案，避免被其他用例遗留的 message 元素误判为通过
+    const errors = Array.from(document.querySelectorAll(".el-message--error"));
+    expect(errors.some((el) => el.textContent?.includes("移动会导致循环"))).toBe(true);
   });
 
   it("deletes a location with confirmation", async () => {
