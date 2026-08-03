@@ -100,7 +100,11 @@ public class ReminderReconciler {
         long daysLeft = ChronoUnit.DAYS.between(today, lot.expiryDate());
         short maxDay = eff.days().stream().max(Short::compare).orElse((short) 0);
         String severity = SeverityClassifier.expiry(maxDay, daysLeft);
-        if (severity == null) return; // not in window
+        if (severity == null) {
+            // 不在提醒窗口（如规则窗口收窄后批次落出窗口）：关闭既有 OPEN 任务，避免残留过期任务
+            closeExistingExpiry(householdId, lotId, now, "OUT_OF_WINDOW");
+            return;
+        }
 
         var existing = taskMapper.lockOpenByKindAndTarget(householdId, "EXPIRY", lotId);
         if (existing != null) {

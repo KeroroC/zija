@@ -34,7 +34,7 @@ beforeEach(() => {
           taskId: "t1",
           kind: "EXPIRY",
           severity: "URGENT",
-          title: "牛奶将到期",
+          title: "「牛奶」还有 3 天到期",
           dueAt: "2026-07-28T00:00:00Z",
           itemId: "i1",
           lotId: "l1",
@@ -98,7 +98,7 @@ describe("HomeView", () => {
   it("renders priority task row", async () => {
     const w = mountHome();
     await flushPromises();
-    expect(w.text()).toContain("牛奶将到期");
+    expect(w.text()).toContain("「牛奶」还有 3 天到期");
   });
 
   it("renders recent movements", async () => {

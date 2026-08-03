@@ -2,7 +2,9 @@ package com.zija.catalog;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -18,6 +20,12 @@ public interface CatalogApi {
 
     /** 获取指定家庭下的计量单位信息，不存在则抛出异常。 */
     UnitInfo requireUnit(UUID householdId, UUID unitId);
+
+    /**
+     * 批量获取指定家庭下物品的名称。已归档但存在的物品返回名字；不属于该家庭的 id 不出现在结果中；
+     * 返回 map 缺 key 表示找不到，由调用侧兜底。
+     */
+    Map<UUID, String> itemNames(UUID householdId, Collection<UUID> itemIds);
 
     /** 列出指定家庭下所有活跃物品（每日扫描等场景使用）。 */
     List<ItemInfo> listActiveItems(UUID householdId);
