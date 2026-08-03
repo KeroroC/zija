@@ -77,7 +77,16 @@ public class ExpiryScanScheduler {
         }
         UUID hhId = household.get().id();
 
-        // 3. 收集所有活跃物品的批次 ID（发现新进入窗口的批次）
+        // 3-4. 收集活跃物品/批次并全量重算
+        reconcileAllForHousehold(hhId);
+    }
+
+    /**
+     * 对指定家庭全量重算：收集所有活跃物品的批次 ID（发现新进入窗口的批次），
+     * 调用 reconciler 重算。不刷新 snoozed 到期。供每日扫描与规则变更监听复用。
+     */
+    @Transactional
+    public void reconcileAllForHousehold(UUID hhId) {
         List<UUID> allLotIds = new ArrayList<>();
         List<UUID> allItemIds = new ArrayList<>();
         for (var item : catalogApi.listActiveItems(hhId)) {

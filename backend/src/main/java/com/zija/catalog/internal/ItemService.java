@@ -111,6 +111,20 @@ class ItemService implements CatalogApi {
 
     @Override
     @Transactional(readOnly = true)
+    public Map<UUID, String> itemNames(UUID householdId, Collection<UUID> itemIds) {
+        if (itemIds == null || itemIds.isEmpty()) return Map.of();
+        var wrapper = new LambdaQueryWrapper<ItemEntity>()
+                .eq(ItemEntity::getHouseholdId, householdId)
+                .in(ItemEntity::getId, itemIds);
+        Map<UUID, String> result = new HashMap<>();
+        for (var entity : itemMapper.selectList(wrapper)) {
+            result.put(entity.getId(), entity.getName());
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public ItemDumpPage dumpItems(UUID householdId, OffsetDateTime cursor, int limit) {
         var items = itemDumpMapper.dumpItems(householdId, cursor, limit);
         OffsetDateTime nextCursor = items.isEmpty() ? cursor : items.get(items.size() - 1).updatedAt();
