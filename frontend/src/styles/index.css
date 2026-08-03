@@ -269,6 +269,15 @@ body::after {
   cursor: pointer;
 }
 
+/* 通用卡片容器：白底 + 发丝边框 + 小阴影 + 中等圆角。
+   设计系统要求的「实色暖白卡」基类，所有主从双栏布局的主/侧面板均应使用。 */
+.card {
+  background: var(--zj-surface);
+  border: 1px solid var(--zj-line);
+  border-radius: var(--zj-radius-md);
+  box-shadow: var(--zj-shadow-sm);
+}
+
 /* ============ 入口页（登录/初始化/邀请/恢复）共享壳 ============ */
 .auth-stage {
   position: relative;
