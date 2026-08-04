@@ -71,12 +71,14 @@ class CatalogDictionaryController {
      */
     @RequireMember
     @GetMapping("/categories/tree")
-    List<CategoryEntity> getCategoryTree(
+    List<CategoryResponse> getCategoryTree(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @RequestParam(defaultValue = "false") boolean includeArchived
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        return dictionaryService.findCategoryTree(member.householdId(), includeArchived);
+        return dictionaryService.findCategoryTree(member.householdId(), includeArchived).stream()
+                .map(CategoryResponse::from)
+                .toList();
     }
 
     /**
@@ -84,12 +86,13 @@ class CatalogDictionaryController {
      */
     @RequireAdmin
     @PostMapping("/categories")
-    CategoryEntity createCategory(
+    CategoryResponse createCategory(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody CreateCategoryRequest request
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        return dictionaryService.createCategory(member.householdId(), request.name(), request.parentId(), request.sortOrder());
+        return CategoryResponse.from(
+                dictionaryService.createCategory(member.householdId(), request.name(), request.parentId(), request.sortOrder()));
     }
 
     /**
@@ -155,12 +158,14 @@ class CatalogDictionaryController {
      */
     @RequireMember
     @GetMapping("/brands")
-    List<BrandEntity> getBrands(
+    List<BrandResponse> getBrands(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @RequestParam(defaultValue = "false") boolean includeArchived
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        return dictionaryService.findBrands(member.householdId(), includeArchived);
+        return dictionaryService.findBrands(member.householdId(), includeArchived).stream()
+                .map(BrandResponse::from)
+                .toList();
     }
 
     /**
@@ -168,12 +173,12 @@ class CatalogDictionaryController {
      */
     @RequireMember
     @PostMapping("/brands")
-    BrandEntity createBrand(
+    BrandResponse createBrand(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody CreateNameRequest request
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        return dictionaryService.createBrand(member.householdId(), request.name());
+        return BrandResponse.from(dictionaryService.createBrand(member.householdId(), request.name()));
     }
 
     /**
@@ -225,12 +230,14 @@ class CatalogDictionaryController {
      */
     @RequireMember
     @GetMapping("/units")
-    List<UnitEntity> getUnits(
+    List<UnitResponse> getUnits(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @RequestParam(defaultValue = "false") boolean includeArchived
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        return dictionaryService.findUnits(member.householdId(), includeArchived);
+        return dictionaryService.findUnits(member.householdId(), includeArchived).stream()
+                .map(UnitResponse::from)
+                .toList();
     }
 
     /**
@@ -238,12 +245,13 @@ class CatalogDictionaryController {
      */
     @RequireAdmin
     @PostMapping("/units")
-    UnitEntity createUnit(
+    UnitResponse createUnit(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody CreateUnitRequest request
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        return dictionaryService.createUnit(member.householdId(), request.name(), request.decimalScale());
+        return UnitResponse.from(
+                dictionaryService.createUnit(member.householdId(), request.name(), request.decimalScale()));
     }
 
     /**
@@ -313,12 +321,14 @@ class CatalogDictionaryController {
      */
     @RequireMember
     @GetMapping("/tags")
-    List<TagEntity> getTags(
+    List<TagResponse> getTags(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @RequestParam(defaultValue = "false") boolean includeArchived
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        return dictionaryService.findTags(member.householdId(), includeArchived);
+        return dictionaryService.findTags(member.householdId(), includeArchived).stream()
+                .map(TagResponse::from)
+                .toList();
     }
 
     /**
@@ -326,12 +336,12 @@ class CatalogDictionaryController {
      */
     @RequireMember
     @PostMapping("/tags")
-    TagEntity createTag(
+    TagResponse createTag(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody CreateNameRequest request
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        return dictionaryService.createTag(member.householdId(), request.name());
+        return TagResponse.from(dictionaryService.createTag(member.householdId(), request.name()));
     }
 
     /**
@@ -385,4 +395,94 @@ class CatalogDictionaryController {
     record UpdateNameRequest(@NotBlank String name, Integer version) {}
     record MoveCategoryRequest(UUID parentId, int sortOrder, Integer version) {}
     record UpdateDecimalScaleRequest(int decimalScale, Integer version, boolean confirmed) {}
+
+    /**
+     * 分类响应 DTO，仅暴露前端所需的字段，隐藏实体内部字段（nameNormalized、createdAt、updatedAt）。
+     */
+    public record CategoryResponse(
+            UUID id,
+            UUID householdId,
+            UUID parentId,
+            String name,
+            String status,
+            Integer sortOrder,
+            Integer version
+    ) {
+        static CategoryResponse from(CategoryEntity entity) {
+            return new CategoryResponse(
+                    entity.getId(),
+                    entity.getHouseholdId(),
+                    entity.getParentId(),
+                    entity.getName(),
+                    entity.getStatus(),
+                    entity.getSortOrder(),
+                    entity.getVersion()
+            );
+        }
+    }
+
+    /**
+     * 品牌响应 DTO，仅暴露前端所需的字段。
+     */
+    public record BrandResponse(
+            UUID id,
+            UUID householdId,
+            String name,
+            String status,
+            Integer version
+    ) {
+        static BrandResponse from(BrandEntity entity) {
+            return new BrandResponse(
+                    entity.getId(),
+                    entity.getHouseholdId(),
+                    entity.getName(),
+                    entity.getStatus(),
+                    entity.getVersion()
+            );
+        }
+    }
+
+    /**
+     * 计量单位响应 DTO，仅暴露前端所需的字段。
+     */
+    public record UnitResponse(
+            UUID id,
+            UUID householdId,
+            String name,
+            Short decimalScale,
+            String status,
+            Integer version
+    ) {
+        static UnitResponse from(UnitEntity entity) {
+            return new UnitResponse(
+                    entity.getId(),
+                    entity.getHouseholdId(),
+                    entity.getName(),
+                    entity.getDecimalScale(),
+                    entity.getStatus(),
+                    entity.getVersion()
+            );
+        }
+    }
+
+    /**
+     * 标签响应 DTO，仅暴露前端所需的字段。
+     */
+    public record TagResponse(
+            UUID id,
+            UUID householdId,
+            String name,
+            String status,
+            Integer version
+    ) {
+        static TagResponse from(TagEntity entity) {
+            return new TagResponse(
+                    entity.getId(),
+                    entity.getHouseholdId(),
+                    entity.getName(),
+                    entity.getStatus(),
+                    entity.getVersion()
+            );
+        }
+    }
 }
