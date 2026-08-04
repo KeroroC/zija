@@ -104,7 +104,7 @@ class InventoryController {
         var result = stockPositionMapper.findPage(pageObj, member.householdId(), itemId, locationId, "sp.updated_at DESC");
 
         var response = new LinkedHashMap<String, Object>();
-        response.put("items", result.getRecords());
+        response.put("items", result.getRecords().stream().map(this::toStockPositionResponse).toList());
         response.put("total", result.getTotal());
         response.put("page", page);
         response.put("pageSize", pageSize);
@@ -131,7 +131,7 @@ class InventoryController {
         var result = lotMapper.findPage(pageObj, member.householdId(), itemId);
 
         var response = new LinkedHashMap<String, Object>();
-        response.put("items", result.getRecords());
+        response.put("items", result.getRecords().stream().map(this::toLotSummaryResponse).toList());
         response.put("total", result.getTotal());
         response.put("page", page);
         response.put("pageSize", pageSize);
@@ -194,24 +194,7 @@ class InventoryController {
         var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, (UUID) null, fromDt, toDt, "created_at DESC");
 
         var response = new LinkedHashMap<String, Object>();
-        response.put("items", result.getRecords().stream().map(m -> {
-            var map = new LinkedHashMap<String, Object>();
-            map.put("id", m.getId());
-            map.put("lotId", m.getLotId());
-            map.put("itemId", m.getItemId());
-            map.put("type", m.getType());
-            map.put("quantity", m.getQuantity());
-            map.put("fromLocationId", m.getFromLocationId());
-            map.put("toLocationId", m.getToLocationId());
-            map.put("reason", m.getReason());
-            map.put("memo", m.getMemo());
-            map.put("operatorAccountId", m.getOperatorAccountId());
-            map.put("businessTime", m.getBusinessTime());
-            map.put("createdAt", m.getCreatedAt());
-            map.put("idempotencyKey", m.getIdempotencyKey());
-            map.put("reversalOf", m.getReversalOf());
-            return map;
-        }).toList());
+        response.put("items", result.getRecords().stream().map(this::toMovementEntityResponse).toList());
         response.put("total", result.getTotal());
         response.put("page", page);
         response.put("pageSize", pageSize);
@@ -549,6 +532,70 @@ class InventoryController {
         map.put("version", lot.getVersion());
         map.put("createdAt", lot.getCreatedAt());
         map.put("updatedAt", lot.getUpdatedAt());
+        return map;
+    }
+
+    /**
+     * 库存位列表 DTO：SQL join 结果（{@link StockPositionWithDetails}）→ HTTP 响应。
+     * 与 {@link #toLotResponse} 不同，本映射用于列表端点，避免直接序列化持久层 join 记录。
+     */
+    private Map<String, Object> toStockPositionResponse(StockPositionWithDetails sp) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("lotId", sp.lotId());
+        map.put("locationId", sp.locationId());
+        map.put("quantity", sp.quantity());
+        map.put("revision", sp.revision());
+        map.put("updatedAt", sp.updatedAt());
+        map.put("itemName", sp.itemName());
+        map.put("itemManagementType", sp.itemManagementType());
+        map.put("unitName", sp.unitName());
+        map.put("lotNumber", sp.lotNumber());
+        map.put("serialNumber", sp.serialNumber());
+        map.put("expiryDate", sp.expiryDate());
+        return map;
+    }
+
+    /**
+     * 批次列表 DTO：SQL join 结果（{@link LotWithDetails}）→ HTTP 响应。
+     */
+    private Map<String, Object> toLotSummaryResponse(LotWithDetails lot) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("lotId", lot.lotId());
+        map.put("itemId", lot.itemId());
+        map.put("itemName", lot.itemName());
+        map.put("unitName", lot.unitName());
+        map.put("totalQuantity", lot.totalQuantity());
+        map.put("purchaseDate", lot.purchaseDate());
+        map.put("productionDate", lot.productionDate());
+        map.put("expiryDate", lot.expiryDate());
+        map.put("lotNumber", lot.lotNumber());
+        map.put("serialNumber", lot.serialNumber());
+        map.put("memo", lot.memo());
+        map.put("version", lot.version());
+        map.put("createdAt", lot.createdAt());
+        map.put("updatedAt", lot.updatedAt());
+        return map;
+    }
+
+    /**
+     * 流水列表 DTO：{@link MovementEntity} → HTTP 响应。剥离 householdId 等实体内部字段。
+     */
+    private Map<String, Object> toMovementEntityResponse(MovementEntity m) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("id", m.getId());
+        map.put("lotId", m.getLotId());
+        map.put("itemId", m.getItemId());
+        map.put("type", m.getType());
+        map.put("quantity", m.getQuantity());
+        map.put("fromLocationId", m.getFromLocationId());
+        map.put("toLocationId", m.getToLocationId());
+        map.put("reason", m.getReason());
+        map.put("memo", m.getMemo());
+        map.put("operatorAccountId", m.getOperatorAccountId());
+        map.put("businessTime", m.getBusinessTime());
+        map.put("createdAt", m.getCreatedAt());
+        map.put("idempotencyKey", m.getIdempotencyKey());
+        map.put("reversalOf", m.getReversalOf());
         return map;
     }
 
