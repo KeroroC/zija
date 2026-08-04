@@ -39,9 +39,10 @@ export function buildExportUrl(
   return `${BASE}/exports/${reportKey}?${qs}`
 }
 
-/** 触发投影重建 */
-export async function rebuildProjection(
-  householdId: string,
-): Promise<void> {
-  await postJson<void>(`${BASE}/projection/rebuild?householdId=${householdId}`)
+/**
+ * 触发投影重建。
+ * 家庭范围由后端从登录主体的成员身份推断，禁止客户端传入 householdId（避免 IDOR）。
+ */
+export async function rebuildProjection(): Promise<void> {
+  await postJson<void>(`${BASE}/projection/rebuild`)
 }
