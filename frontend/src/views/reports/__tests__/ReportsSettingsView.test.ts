@@ -147,7 +147,8 @@ describe("ReportsSettingsView", () => {
 
     await clickRebuildAndConfirm(wrapper);
 
-    expect(mockRebuildProjection).toHaveBeenCalledWith("h1");
+    // 后端从 principal 推断 householdId，客户端不应再传入。
+    expect(mockRebuildProjection).toHaveBeenCalledWith();
   });
 
   it("shows success result after rebuild", async () => {
