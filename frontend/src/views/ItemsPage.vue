@@ -264,7 +264,7 @@ async function fetchItems() {
     items.value = res.items
     pagination.total = res.total
   } catch (e: any) {
-    ElMessage.error(e.title || '加载失败')
+    ElMessage.error(e.message || '加载失败')
   } finally {
     loading.value = false
   }

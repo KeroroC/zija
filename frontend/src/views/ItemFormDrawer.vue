@@ -335,7 +335,7 @@ async function handleCreateBrand(name: string) {
     form.brandId = brand.id
     ElMessage.success('品牌已创建')
   } catch (e: any) {
-    ElMessage.error(e.title || '创建品牌失败')
+    ElMessage.error(e.message || '创建品牌失败')
   }
 }
 
@@ -346,7 +346,7 @@ async function handleCreateTag(name: string) {
     form.tagIds.push(tag.id)
     ElMessage.success('标签已创建')
   } catch (e: any) {
-    ElMessage.error(e.title || '创建标签失败')
+    ElMessage.error(e.message || '创建标签失败')
   }
 }
 
@@ -389,7 +389,7 @@ async function handleSubmit() {
     emit('saved')
     close()
   } catch (e: any) {
-    ElMessage.error(e.title || '操作失败')
+    ElMessage.error(e.message || '操作失败')
   } finally {
     submitting.value = false
   }
