@@ -199,7 +199,7 @@ async function handleRemove() {
     emit('removed')
     ElMessage.success('封面已移除')
   } catch (e: any) {
-    errorMsg.value = e.title || '移除失败，请重试'
+    errorMsg.value = e.message || '移除失败，请重试'
   }
 }
 </script>
