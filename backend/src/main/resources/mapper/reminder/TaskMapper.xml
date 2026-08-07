@@ -29,8 +29,8 @@
                created_at, updated_at, version
         FROM reminder_task
         WHERE household_id = #{householdId} AND kind = #{kind}
-          AND ((kind = 'EXPIRY'   AND lot_id = #{lotId})
-            OR (kind = 'LOW_STOCK' AND lot_id IS NULL))
+          AND ((kind = 'EXPIRY'    AND lot_id = #{lotId})
+            OR (kind = 'LOW_STOCK' AND item_id = #{itemId}))
           AND status IN ('OPEN','SNOOZED')
         FOR UPDATE
     </select>

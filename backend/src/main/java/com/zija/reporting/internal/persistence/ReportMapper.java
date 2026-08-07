@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -21,10 +22,11 @@ public interface ReportMapper {
             @Param("locationId") UUID locationId,
             @Param("brandId") UUID brandId);
 
-    /** 临期批次。 */
+    /** 临期批次。「今天」由调用方按家庭时区计算后显式传入，避免依赖 DB 会话时区（CURRENT_DATE）。 */
     IPage<Map<String, Object>> expiringLots(
             Page<?> page,
             @Param("householdId") UUID householdId,
+            @Param("today") LocalDate today,
             @Param("withinDays") int withinDays,
             @Param("itemId") UUID itemId,
             @Param("locationId") UUID locationId);

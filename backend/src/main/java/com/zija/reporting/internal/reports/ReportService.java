@@ -3,9 +3,12 @@ package com.zija.reporting.internal.reports;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.reporting.internal.persistence.ReportMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -14,9 +17,11 @@ import java.util.UUID;
 public class ReportService {
 
     private final ReportMapper reportMapper;
+    private final Clock clock;
 
-    public ReportService(ReportMapper reportMapper) {
+    public ReportService(ReportMapper reportMapper, @Qualifier("reportingClock") Clock clock) {
         this.reportMapper = reportMapper;
+        this.clock = clock;
     }
 
     @Transactional(readOnly = true)
@@ -27,11 +32,12 @@ public class ReportService {
                 householdId, itemId, categoryId, locationId, brandId);
     }
 
-    @Transactional(readOnly = true)
+@Transactional(readOnly = true)
     public IPage<Map<String, Object>> expiringLots(UUID householdId, int page, int pageSize,
-                                                      int withinDays, UUID itemId, UUID locationId) {
+                                                       int withinDays, UUID itemId, UUID locationId) {
+        LocalDate today = LocalDate.now(clock);
         return reportMapper.expiringLots(new Page<>(page, pageSize),
-                householdId, withinDays, itemId, locationId);
+                householdId, today, withinDays, itemId, locationId);
     }
 
     @Transactional(readOnly = true)

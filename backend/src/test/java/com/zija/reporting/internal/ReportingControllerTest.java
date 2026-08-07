@@ -139,12 +139,36 @@ class ReportingControllerTest extends AbstractWebMvcSliceTest {
         doNothing().when(projectionRebuilder).rebuild(HOUSEHOLD_ID);
 
         mockMvc.perform(post("/api/v1/reporting/projection/rebuild")
-                        .param("householdId", HOUSEHOLD_ID.toString())
                         .with(SecurityMockMvcRequestPostProcessors.user(principal))
                         .with(SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ok"))
                 .andExpect(jsonPath("$.householdId").value(HOUSEHOLD_ID.toString()));
+
+        // Household scope must be derived from the principal's membership,
+        // never from a request-supplied parameter (IDOR).
+        verify(projectionRebuilder).rebuild(HOUSEHOLD_ID);
+    }
+
+    /**
+     * IDOR regression: a malicious caller passes a householdId for a household
+     * they do not belong to. The controller MUST ignore the client value and
+     * still rebuild ONLY the principal's household.
+     */
+    @Test
+    void rebuildProjectionIgnoresClientSuppliedHouseholdId() throws Exception {
+        UUID attackerHouseholdId = UUID.randomUUID();
+        doNothing().when(projectionRebuilder).rebuild(HOUSEHOLD_ID);
+
+        mockMvc.perform(post("/api/v1/reporting/projection/rebuild")
+                        .param("householdId", attackerHouseholdId.toString())
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.householdId").value(HOUSEHOLD_ID.toString()));
+
+        verify(projectionRebuilder).rebuild(HOUSEHOLD_ID);
+        verify(projectionRebuilder, never()).rebuild(attackerHouseholdId);
     }
 
     // --- Non-ADMIN calling /exports returns 403 ---

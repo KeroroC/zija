@@ -2,6 +2,7 @@ package com.zija.inventory.internal;
 
 import com.zija.inventory.StockChangedEvent;
 import com.zija.inventory.internal.event.InventoryEventPublisher;
+import com.zija.inventory.internal.exception.InventoryInsufficientStockException;
 import com.zija.inventory.internal.exception.InventoryLotNotFoundException;
 import com.zija.inventory.internal.exception.InventoryLotVersionConflictException;
 import com.zija.inventory.internal.exception.StocktakeNotDraftException;
@@ -276,6 +277,9 @@ class StocktakeService {
      * @throws StocktakeNotDraftException              盘点单不是草稿状态
      * @throws InventoryLotVersionConflictException     盘点单版本冲突
      * @throws StocktakeStaleException                  盘点范围内库存已变化
+     * @throws InventoryInsufficientStockException      盘亏扣减会使库存位为负（防御性校验，
+     *                                                  当前 DB 约束下不可达，但与 StockCommandService、
+     *                                                  ReversalService 的扣减校验模式保持一致）
      * @throws IllegalArgumentException                 差异行项缺少原因
      */
     @Transactional
@@ -350,8 +354,15 @@ class StocktakeService {
                 }
                 stockPositionMapper.addQuantity(householdId, lotId, locId, delta);
             } else {
-                stockPositionMapper.subtractIfSufficient(
+                // 盘亏：subtractIfSufficient 是 WHERE quantity - ? >= 0 的条件式 UPDATE，不满足时影响 0 行且不报错。
+                // 与 StockCommandService(355/471/617)、ReversalService 一致：必须校验返回值，
+                // 否则 ADJUSTMENT 流水照插、库存位不动 → 账实永久不一致。
+                int updated = stockPositionMapper.subtractIfSufficient(
                         householdId, lotId, locId, delta.abs());
+                if (updated == 0) {
+                    throw new InventoryInsufficientStockException(
+                            "盘亏扣减将使库存位为负：lot=" + lotId + " location=" + locId);
+                }
             }
 
             // 查询批次获取 itemId

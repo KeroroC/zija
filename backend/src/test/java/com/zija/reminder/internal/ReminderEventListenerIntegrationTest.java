@@ -122,4 +122,71 @@ class ReminderEventListenerIntegrationTest {
         var audits = jdbc.queryForList("SELECT action FROM audit_log");
         assertThat(audits).anyMatch(r -> "REMINDER_EVENT_POISON".equals(r.get("action")));
     }
+
+    /**
+     * 失败重试时死信应被原样保留、failureCount 递增、lastError 设置；
+     * 不能被 retry 静默删除（修复前 deleteById 永远执行 → 死信轮换、failureCount 永远=1）。
+     */
+    @Test
+    void retryWhileStillFailing_keepsDeadLetterAndIncrementsFailureCount() {
+        UUID householdId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        var e = evt(UUID.randomUUID(), householdId, UUID.randomUUID(), itemId);
+        listener.onStockChanged(e); // 首次失败 → 写死信
+        var initialDl = deadLetterMapper.selectList(null).get(0);
+        UUID originalId = initialDl.getId();
+        OffsetDateTime originalNextRetryAt = initialDl.getNextRetryAt();
+        assertThat(initialDl.getFailureCount()).isEqualTo(1);
+
+        // 第一次重试：仍无 household/item，reconcile 仍失败
+        retryService.retryOnceNow(originalId);
+        var dlAfterFirst = deadLetterMapper.selectById(originalId);
+        assertThat(dlAfterFirst).as("死信 id 不应轮换").isNotNull();
+        assertThat(dlAfterFirst.getId()).isEqualTo(originalId);
+        assertThat(dlAfterFirst.getFailureCount()).isEqualTo(2);
+        assertThat(dlAfterFirst.getLastError()).isNotBlank();
+        assertThat(dlAfterFirst.getNextRetryAt())
+                .as("nextRetryAt 应按指数退避后移")
+                .isAfter(originalNextRetryAt);
+        assertThat(processedEventMapper.selectById(e.eventId()))
+                .as("dedup 行应被删除，允许下次重试重新处理")
+                .isNull();
+
+        // 第二次重试：仍失败，failureCount → 3
+        retryService.retryOnceNow(originalId);
+        assertThat(deadLetterMapper.selectById(originalId).getFailureCount()).isEqualTo(3);
+    }
+
+    /**
+     * 走真实 retryOne 循环 9 次（首次失败 + 9 次重试），
+     * 第 9 次（failureCount 由 9 升 10）触发 markAbandoned 并写 REMINDER_EVENT_POISON 审计。
+     * 对照 {@link #overThresholdRetries_marksAbandonedAndAuditsPoison}：
+     * 那个测试用 forceFailAndRetryUntilAbandoned 绕过 retryOne，本测试走真实路径。
+     *
+     * 注意 markAbandoned 不再 bump failureCount（仅设 abandoned=true），
+     * 所以循环结束时 db.failureCount 是 9（最后一次 increment 的结果），不是 10。
+     */
+    @Test
+    void retryUntilAbandoned_marksAbandonedAndAuditsPoison_viaRealRetryLoop() {
+        UUID householdId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        var e = evt(UUID.randomUUID(), householdId, UUID.randomUUID(), itemId);
+        listener.onStockChanged(e); // 首次失败 → failureCount = 1
+        var dl = deadLetterMapper.selectList(null).get(0);
+
+        // 再重试 9 次（每次都失败），第 9 次时 newCount=10 触发 markAbandoned
+        for (int i = 0; i < 9; i++) {
+            retryService.retryOnceNow(dl.getId());
+        }
+
+        var finalDl = deadLetterMapper.selectById(dl.getId());
+        assertThat(finalDl).isNotNull();
+        assertThat(finalDl.getAbandoned()).isTrue();
+        assertThat(finalDl.getFailureCount())
+                .as("累计 9 次 increment 后 failureCount=9；markAbandoned 不再 bump")
+                .isEqualTo(9);
+        var audits = jdbc.queryForList("SELECT action, outcome FROM audit_log");
+        assertThat(audits).anyMatch(r -> "REMINDER_EVENT_POISON".equals(r.get("action"))
+                && "FAILURE".equals(r.get("outcome")));
+    }
 }

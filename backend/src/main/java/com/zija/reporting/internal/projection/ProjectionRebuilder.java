@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -109,12 +110,13 @@ public class ProjectionRebuilder {
     }
 
     private void rebuildStockFlat(UUID householdId) {
+        Map<UUID, InventoryApi.LotFlat> lotCache = new HashMap<>();
         OffsetDateTime cursor = OffsetDateTime.MIN;
         boolean hasMore = true;
         while (hasMore) {
             var page = inventoryApi.dumpStockPositions(householdId, cursor, BATCH_SIZE);
             for (var pos : page.items()) {
-                stockFlatMapper.upsert(buildStockFlat(householdId, pos));
+                stockFlatMapper.upsert(buildStockFlat(householdId, pos, lotCache));
             }
             hasMore = page.hasMore();
             cursor = page.nextCursor();
@@ -161,13 +163,21 @@ public class ProjectionRebuilder {
         return e;
     }
 
-    private StockFlatEntity buildStockFlat(UUID householdId, InventoryApi.StockPositionDump pos) {
+    private StockFlatEntity buildStockFlat(UUID householdId, InventoryApi.StockPositionDump pos,
+                                            Map<UUID, InventoryApi.LotFlat> lotCache) {
         var e = new StockFlatEntity();
         e.setHouseholdId(householdId);
         e.setLotId(pos.lotId());
         e.setItemId(pos.itemId());
         e.setItemName(resolveItemName(householdId, pos.itemId()));
         e.setUnitName(resolveUnitName(householdId, pos.itemId()));
+        var lot = lotCache.computeIfAbsent(pos.lotId(),
+                l -> inventoryApi.findLot(householdId, l).orElse(null));
+        if (lot != null) {
+            e.setLotNumber(lot.lotNumber());
+            e.setSerialNumber(lot.serialNumber());
+            e.setExpiryDate(lot.expiryDate());
+        }
         e.setLocationId(pos.locationId());
         e.setLocationPath(resolveLocationPath(householdId, pos.locationId()));
         e.setQuantity(pos.quantity());

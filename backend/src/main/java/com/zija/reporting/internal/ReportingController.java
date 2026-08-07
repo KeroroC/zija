@@ -161,9 +161,9 @@ class ReportingController {
     @RequireAdmin
     @PostMapping("/projection/rebuild")
     Map<String, Object> rebuildProjection(
-            @AuthenticationPrincipal ZijaPrincipal principal,
-            @RequestParam UUID householdId) {
-        householdApi.requireActiveMember(principal.getAccountId());
+            @AuthenticationPrincipal ZijaPrincipal principal) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        UUID householdId = member.householdId();
         projectionRebuilder.rebuild(householdId);
         return Map.of("status", "ok", "householdId", householdId);
     }

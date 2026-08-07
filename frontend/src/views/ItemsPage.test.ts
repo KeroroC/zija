@@ -1,4 +1,4 @@
-import ElementPlus from "element-plus";
+import ElementPlus, { ElMessage } from "element-plus";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -13,6 +13,7 @@ import {
 import { fetchStockPositions, fetchLots } from "../api/inventory";
 import { useSessionStore } from "../stores/session";
 import ItemsPage from "./ItemsPage.vue";
+import { ApiError } from "../api/http";
 import type { CatalogItem, Category, Brand, Unit, Tag } from "../types/catalog";
 
 vi.mock("../api/catalog", () => ({
@@ -183,6 +184,18 @@ describe("ItemsPage", () => {
     expect(rows[0].text()).toContain("耳机");
     expect(rows[1].text()).toContain("旧手机");
     expect(rows[2].text()).toContain("电池");
+  });
+
+  it("shows the backend error message when loading items fails", async () => {
+    const errorMessage = vi.spyOn(ElMessage, "error");
+    fetchItemsMock.mockRejectedValueOnce(
+      new ApiError("物品目录暂时不可用", "CATALOG_UNAVAILABLE", 503),
+    );
+
+    wrapper = mount(ItemsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    expect(errorMessage).toHaveBeenCalledWith("物品目录暂时不可用");
   });
 
   it("loads dictionary data on mount", async () => {

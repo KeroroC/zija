@@ -351,7 +351,7 @@ async function loadCategories() {
   try {
     categories.value = await fetchCategories(includeArchived.categories)
   } catch (e: any) {
-    ElMessage.error(e.title || '加载分类失败')
+    ElMessage.error(e.message || '加载分类失败')
   } finally {
     loading.categories = false
   }
@@ -362,7 +362,7 @@ async function loadBrands() {
   try {
     brands.value = await fetchBrands(includeArchived.brands)
   } catch (e: any) {
-    ElMessage.error(e.title || '加载品牌失败')
+    ElMessage.error(e.message || '加载品牌失败')
   } finally {
     loading.brands = false
   }
@@ -373,7 +373,7 @@ async function loadUnits() {
   try {
     units.value = await fetchUnits(includeArchived.units)
   } catch (e: any) {
-    ElMessage.error(e.title || '加载单位失败')
+    ElMessage.error(e.message || '加载单位失败')
   } finally {
     loading.units = false
   }
@@ -384,7 +384,7 @@ async function loadTags() {
   try {
     tags.value = await fetchTags(includeArchived.tags)
   } catch (e: any) {
-    ElMessage.error(e.title || '加载标签失败')
+    ElMessage.error(e.message || '加载标签失败')
   } finally {
     loading.tags = false
   }
@@ -415,7 +415,7 @@ async function handleCreateCategory() {
     await loadCategories()
     ElMessage.success('已创建')
   } catch (e: any) {
-    ElMessage.error(e.title || '创建失败')
+    ElMessage.error(e.message || '创建失败')
   }
 }
 
@@ -426,7 +426,7 @@ async function handleArchiveCategory(cat: CategoryTreeNode) {
     await loadCategories()
     ElMessage.success('已归档')
   } catch (e: any) {
-    ElMessage.error(e.title || '归档失败')
+    ElMessage.error(e.message || '归档失败')
   }
 }
 
@@ -436,7 +436,7 @@ async function handleRestoreCategory(cat: CategoryTreeNode) {
     await loadCategories()
     ElMessage.success('已恢复')
   } catch (e: any) {
-    ElMessage.error(e.title || '恢复失败')
+    ElMessage.error(e.message || '恢复失败')
   }
 }
 
@@ -463,7 +463,7 @@ async function submitMoveCategory() {
     await loadCategories()
     ElMessage.success('已移动')
   } catch (e: any) {
-    ElMessage.error(e.title || '移动失败')
+    ElMessage.error(e.message || '移动失败')
   }
 }
 
@@ -480,7 +480,7 @@ async function handleCreateBrand() {
     await loadBrands()
     ElMessage.success('已创建')
   } catch (e: any) {
-    ElMessage.error(e.title || '创建失败')
+    ElMessage.error(e.message || '创建失败')
   }
 }
 
@@ -491,7 +491,7 @@ async function handleArchiveBrand(brand: any) {
     await loadBrands()
     ElMessage.success('已归档')
   } catch (e: any) {
-    ElMessage.error(e.title || '归档失败')
+    ElMessage.error(e.message || '归档失败')
   }
 }
 
@@ -501,7 +501,7 @@ async function handleRestoreBrand(brand: any) {
     await loadBrands()
     ElMessage.success('已恢复')
   } catch (e: any) {
-    ElMessage.error(e.title || '恢复失败')
+    ElMessage.error(e.message || '恢复失败')
   }
 }
 
@@ -519,7 +519,7 @@ async function handleCreateUnit() {
     await loadUnits()
     ElMessage.success('已创建')
   } catch (e: any) {
-    ElMessage.error(e.title || '创建失败')
+    ElMessage.error(e.message || '创建失败')
   }
 }
 
@@ -530,7 +530,7 @@ async function handleArchiveUnit(unit: any) {
     await loadUnits()
     ElMessage.success('已归档')
   } catch (e: any) {
-    ElMessage.error(e.title || '归档失败')
+    ElMessage.error(e.message || '归档失败')
   }
 }
 
@@ -540,7 +540,7 @@ async function handleRestoreUnit(unit: any) {
     await loadUnits()
     ElMessage.success('已恢复')
   } catch (e: any) {
-    ElMessage.error(e.title || '恢复失败')
+    ElMessage.error(e.message || '恢复失败')
   }
 }
 
@@ -576,7 +576,7 @@ async function submitDecimalScaleChange() {
       ElMessage.success('已修改小数位')
     }
   } catch (e: any) {
-    ElMessage.error(e.title || '修改失败')
+    ElMessage.error(e.message || '修改失败')
   }
 }
 
@@ -593,7 +593,7 @@ async function confirmTruncate() {
     await loadUnits()
     ElMessage.success(`已修改小数位，${result.affectedItems} 个物品的数据已截断`)
   } catch (e: any) {
-    ElMessage.error(e.title || '修改失败')
+    ElMessage.error(e.message || '修改失败')
   }
 }
 
@@ -610,7 +610,7 @@ async function handleCreateTag() {
     await loadTags()
     ElMessage.success('已创建')
   } catch (e: any) {
-    ElMessage.error(e.title || '创建失败')
+    ElMessage.error(e.message || '创建失败')
   }
 }
 
@@ -621,7 +621,7 @@ async function handleArchiveTag(tag: any) {
     await loadTags()
     ElMessage.success('已归档')
   } catch (e: any) {
-    ElMessage.error(e.title || '归档失败')
+    ElMessage.error(e.message || '归档失败')
   }
 }
 
@@ -631,7 +631,7 @@ async function handleRestoreTag(tag: any) {
     await loadTags()
     ElMessage.success('已恢复')
   } catch (e: any) {
-    ElMessage.error(e.title || '恢复失败')
+    ElMessage.error(e.message || '恢复失败')
   }
 }
 
@@ -674,7 +674,7 @@ async function submitRename() {
     renameDialogVisible.value = false
     ElMessage.success('已重命名')
   } catch (e: any) {
-    ElMessage.error(e.title || '重命名失败')
+    ElMessage.error(e.message || '重命名失败')
   }
 }
 

@@ -211,10 +211,10 @@ npm --prefix frontend test -- --reporter=verbose     # 前端测试（详细输�
 
 ## 方案与计划
 
-- **设计规范：** [`docs/design/redesign-visual-spec.md`](docs/design/redesign-visual-spec.md)（松间账册 / Pine Ledger 视觉规范）
+- **系统设计文档：** [`docs/design/system-design.md`](docs/design/system-design.md)（知家整体设计方案：领域模型、模块架构、API 约定、安全与质量策略）
+- **视觉规范：** [`docs/design/redesign-visual-spec.md`](docs/design/redesign-visual-spec.md)（松间账册 / Pine Ledger 视觉规范）
 - **领域词汇表：** [`CONTEXT.md`](CONTEXT.md)
-- **架构决策记录（ADR）：** [`docs/adr/`](docs/adr/)（9 份）
-- **历史 spec 与 plan：** [`docs/superpowers/specs/`](docs/superpowers/specs/) 与 [`docs/superpowers/plans/`](docs/superpowers/plans/)（覆盖阶段一至阶段七）
+- **架构决策记录（ADR）：** [`docs/adr/`](docs/adr/)（15 份，覆盖模块边界、安全模型、库存数据模型与并发、提醒可靠性、报表导出、备份恢复等核心架构决策）
 - **AI 协作约定：** [`CLAUDE.md`](CLAUDE.md)（架构、命令、风格、Agent 技能）
 
 ## 代码风格

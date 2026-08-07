@@ -72,17 +72,28 @@ public class ProjectionListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onStockChanged(StockChangedEvent evt) {
         try {
-            requiresNewTx.executeWithoutResult(status -> {
-                int rows = processedEventMapper.insertOnConflictDoNothing(
-                        evt.eventId(), "StockChangedEvent");
-                if (rows == 0) return;
-                handleStockChanged(evt);
-            });
+            processStockChangedEvent(evt);
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "StockChangedEvent", toMap(evt), ex);
             log.warn("StockChangedEvent projection failed, wrote dead-letter: eventId={}",
                     evt.eventId(), ex);
         }
+    }
+
+    /**
+     * 实际处理 StockChangedEvent 投影：去重 + 重建 movement_flat / stock_flat。
+     * 失败时向上抛异常，由调用方决定写 dead-letter 或走重投逻辑。
+     * 供 {@link ReportingEventRetryService} 重投时调用——必须用此方法而非
+     * {@link #onStockChanged}，否则监听器的 catch 会吞掉异常，重投服务无法触发
+     * incrementFailure / markAbandoned。
+     */
+    public void processStockChangedEvent(StockChangedEvent evt) {
+        requiresNewTx.executeWithoutResult(status -> {
+            int rows = processedEventMapper.insertOnConflictDoNothing(
+                    evt.eventId(), "StockChangedEvent");
+            if (rows == 0) return;
+            handleStockChanged(evt);
+        });
     }
 
     private void handleStockChanged(StockChangedEvent evt) {
@@ -120,6 +131,7 @@ public class ProjectionListener {
     private void rebuildStockFlatForLot(UUID householdId, UUID itemId, UUID lotId) {
         stockFlatMapper.deleteByLot(householdId, lotId);
         var item = resolveItemInfo(householdId, itemId);
+        var lot = inventoryApi.findLot(householdId, lotId).orElse(null);
         var positions = inventoryApi.stockPositionsOfItem(householdId, itemId);
         for (var pos : positions) {
             if (!pos.lotId().equals(lotId)) continue;
@@ -130,6 +142,11 @@ public class ProjectionListener {
             e.setItemName(item != null ? item.name() : itemId.toString());
             e.setUnitName(item != null && item.unitId() != null
                     ? resolveUnitName(householdId, item.unitId()) : null);
+            if (lot != null) {
+                e.setLotNumber(lot.lotNumber());
+                e.setSerialNumber(lot.serialNumber());
+                e.setExpiryDate(lot.expiryDate());
+            }
             e.setLocationId(pos.locationId());
             e.setLocationPath(resolveLocationPath(householdId, pos.locationId()));
             e.setQuantity(pos.quantity());
@@ -143,16 +160,21 @@ public class ProjectionListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onItemChanged(ItemChangedEvent evt) {
         try {
-            requiresNewTx.executeWithoutResult(status -> {
-                int rows = processedEventMapper.insertOnConflictDoNothing(
-                        evt.eventId(), "ItemChangedEvent");
-                if (rows == 0) return;
-                handleItemChanged(evt);
-            });
+            processItemChangedEvent(evt);
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "ItemChangedEvent", toMap(evt), ex);
             log.warn("ItemChangedEvent projection failed: eventId={}", evt.eventId(), ex);
         }
+    }
+
+    /** 实际处理 ItemChangedEvent 投影：重建 search_index。失败抛。 */
+    public void processItemChangedEvent(ItemChangedEvent evt) {
+        requiresNewTx.executeWithoutResult(status -> {
+            int rows = processedEventMapper.insertOnConflictDoNothing(
+                    evt.eventId(), "ItemChangedEvent");
+            if (rows == 0) return;
+            handleItemChanged(evt);
+        });
     }
 
     private void handleItemChanged(ItemChangedEvent evt) {
@@ -179,108 +201,128 @@ public class ProjectionListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCategoryChanged(CategoryChangedEvent evt) {
         try {
-            requiresNewTx.executeWithoutResult(status -> {
-                int rows = processedEventMapper.insertOnConflictDoNothing(
-                        evt.eventId(), "CategoryChangedEvent");
-                if (rows == 0) return;
-                // 分类变更 → 重建受影响物品的 search_index 行
-                OffsetDateTime cursor = OffsetDateTime.MIN;
-                boolean hasMore = true;
-                while (hasMore) {
-                    var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
-                    for (var item : page.items()) {
-                        if (evt.categoryId().equals(item.categoryId())) {
-                            searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
-                        }
-                    }
-                    cursor = page.nextCursor();
-                    hasMore = page.hasMore();
-                }
-            });
+            processCategoryChangedEvent(evt);
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "CategoryChangedEvent", toMap(evt), ex);
             log.warn("CategoryChangedEvent projection failed: eventId={}", evt.eventId(), ex);
         }
     }
 
+    /** 实际处理 CategoryChangedEvent 投影。失败抛。 */
+    public void processCategoryChangedEvent(CategoryChangedEvent evt) {
+        requiresNewTx.executeWithoutResult(status -> {
+            int rows = processedEventMapper.insertOnConflictDoNothing(
+                    evt.eventId(), "CategoryChangedEvent");
+            if (rows == 0) return;
+            // 分类变更 → 重建受影响物品的 search_index 行
+            OffsetDateTime cursor = OffsetDateTime.MIN;
+            boolean hasMore = true;
+            while (hasMore) {
+                var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
+                for (var item : page.items()) {
+                    if (evt.categoryId().equals(item.categoryId())) {
+                        searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                    }
+                }
+                cursor = page.nextCursor();
+                hasMore = page.hasMore();
+            }
+        });
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onBrandChanged(BrandChangedEvent evt) {
         try {
-            requiresNewTx.executeWithoutResult(status -> {
-                int rows = processedEventMapper.insertOnConflictDoNothing(
-                        evt.eventId(), "BrandChangedEvent");
-                if (rows == 0) return;
-                // 品牌变更 → 重建受影响物品的 search_index 行
-                OffsetDateTime cursor = OffsetDateTime.MIN;
-                boolean hasMore = true;
-                while (hasMore) {
-                    var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
-                    for (var item : page.items()) {
-                        if (evt.brandId().equals(item.brandId())) {
-                            searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
-                        }
-                    }
-                    cursor = page.nextCursor();
-                    hasMore = page.hasMore();
-                }
-            });
+            processBrandChangedEvent(evt);
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "BrandChangedEvent", toMap(evt), ex);
             log.warn("BrandChangedEvent projection failed: eventId={}", evt.eventId(), ex);
         }
     }
 
+    /** 实际处理 BrandChangedEvent 投影。失败抛。 */
+    public void processBrandChangedEvent(BrandChangedEvent evt) {
+        requiresNewTx.executeWithoutResult(status -> {
+            int rows = processedEventMapper.insertOnConflictDoNothing(
+                    evt.eventId(), "BrandChangedEvent");
+            if (rows == 0) return;
+            // 品牌变更 → 重建受影响物品的 search_index 行
+            OffsetDateTime cursor = OffsetDateTime.MIN;
+            boolean hasMore = true;
+            while (hasMore) {
+                var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
+                for (var item : page.items()) {
+                    if (evt.brandId().equals(item.brandId())) {
+                        searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                    }
+                }
+                cursor = page.nextCursor();
+                hasMore = page.hasMore();
+            }
+        });
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onUnitChanged(UnitChangedEvent evt) {
         try {
-            requiresNewTx.executeWithoutResult(status -> {
-                int rows = processedEventMapper.insertOnConflictDoNothing(
-                        evt.eventId(), "UnitChangedEvent");
-                if (rows == 0) return;
-                // 单位变更 → 重建受影响物品的 search_index 行
-                OffsetDateTime cursor = OffsetDateTime.MIN;
-                boolean hasMore = true;
-                while (hasMore) {
-                    var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
-                    for (var item : page.items()) {
-                        if (evt.unitId().equals(item.unitId())) {
-                            searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
-                        }
-                    }
-                    cursor = page.nextCursor();
-                    hasMore = page.hasMore();
-                }
-            });
+            processUnitChangedEvent(evt);
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "UnitChangedEvent", toMap(evt), ex);
             log.warn("UnitChangedEvent projection failed: eventId={}", evt.eventId(), ex);
         }
     }
 
+    /** 实际处理 UnitChangedEvent 投影。失败抛。 */
+    public void processUnitChangedEvent(UnitChangedEvent evt) {
+        requiresNewTx.executeWithoutResult(status -> {
+            int rows = processedEventMapper.insertOnConflictDoNothing(
+                    evt.eventId(), "UnitChangedEvent");
+            if (rows == 0) return;
+            // 单位变更 → 重建受影响物品的 search_index 行
+            OffsetDateTime cursor = OffsetDateTime.MIN;
+            boolean hasMore = true;
+            while (hasMore) {
+                var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
+                for (var item : page.items()) {
+                    if (evt.unitId().equals(item.unitId())) {
+                        searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                    }
+                }
+                cursor = page.nextCursor();
+                hasMore = page.hasMore();
+            }
+        });
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onTagChanged(TagChangedEvent evt) {
         try {
-            requiresNewTx.executeWithoutResult(status -> {
-                int rows = processedEventMapper.insertOnConflictDoNothing(
-                        evt.eventId(), "TagChangedEvent");
-                if (rows == 0) return;
-                // 标签变更 → 重建受影响物品的 search_index 行（tag_names 字段）
-                // 由于 TagChangedEvent 不含物品列表，重建该家庭所有物品的搜索索引
-                OffsetDateTime cursor = OffsetDateTime.MIN;
-                boolean hasMore = true;
-                while (hasMore) {
-                    var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
-                    for (var item : page.items()) {
-                        searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
-                    }
-                    cursor = page.nextCursor();
-                    hasMore = page.hasMore();
-                }
-            });
+            processTagChangedEvent(evt);
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "TagChangedEvent", toMap(evt), ex);
             log.warn("TagChangedEvent projection failed: eventId={}", evt.eventId(), ex);
         }
+    }
+
+    /** 实际处理 TagChangedEvent 投影。失败抛。 */
+    public void processTagChangedEvent(TagChangedEvent evt) {
+        requiresNewTx.executeWithoutResult(status -> {
+            int rows = processedEventMapper.insertOnConflictDoNothing(
+                    evt.eventId(), "TagChangedEvent");
+            if (rows == 0) return;
+            // 标签变更 → 重建受影响物品的 search_index 行（tag_names 字段）
+            // 由于 TagChangedEvent 不含物品列表，重建该家庭所有物品的搜索索引
+            OffsetDateTime cursor = OffsetDateTime.MIN;
+            boolean hasMore = true;
+            while (hasMore) {
+                var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
+                for (var item : page.items()) {
+                    searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                }
+                cursor = page.nextCursor();
+                hasMore = page.hasMore();
+            }
+        });
     }
 
     // ===== Location 事件 =====
@@ -288,16 +330,21 @@ public class ProjectionListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLocationChanged(LocationChangedEvent evt) {
         try {
-            requiresNewTx.executeWithoutResult(status -> {
-                int rows = processedEventMapper.insertOnConflictDoNothing(
-                        evt.eventId(), "LocationChangedEvent");
-                if (rows == 0) return;
-                handleLocationChanged(evt);
-            });
+            processLocationChangedEvent(evt);
         } catch (RuntimeException ex) {
             saveDeadLetterInNewTx(evt.eventId(), "LocationChangedEvent", toMap(evt), ex);
             log.warn("LocationChangedEvent projection failed: eventId={}", evt.eventId(), ex);
         }
+    }
+
+    /** 实际处理 LocationChangedEvent 投影：重建 search_index。失败抛。 */
+    public void processLocationChangedEvent(LocationChangedEvent evt) {
+        requiresNewTx.executeWithoutResult(status -> {
+            int rows = processedEventMapper.insertOnConflictDoNothing(
+                    evt.eventId(), "LocationChangedEvent");
+            if (rows == 0) return;
+            handleLocationChanged(evt);
+        });
     }
 
     private void handleLocationChanged(LocationChangedEvent evt) {

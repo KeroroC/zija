@@ -48,7 +48,7 @@ public class ReminderReconciler {
                                NotificationMapper notificationMapper,
                                MailService mailService, MailSettingService mailSettingService,
                                MailTemplateRenderer templateRenderer, SystemApi systemApi,
-                               JdbcTemplate jdbcTemplate, Clock clock) {
+                               JdbcTemplate jdbcTemplate, @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
         this.reminderService = reminderService; this.catalogApi = catalogApi;
         this.inventoryApi = inventoryApi; this.taskMapper = taskMapper;
         this.notificationMapper = notificationMapper;
@@ -106,7 +106,7 @@ public class ReminderReconciler {
             return;
         }
 
-        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "EXPIRY", lotId);
+        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "EXPIRY", lotId, null);
         if (existing != null) {
             existing.setDueAt(lot.expiryDate().atStartOfDay().atOffset(ZoneOffset.UTC));
             existing.setSeverity(severity);
@@ -134,7 +134,7 @@ public class ReminderReconciler {
     }
 
     private void closeExistingExpiry(UUID householdId, UUID lotId, OffsetDateTime now, String reason) {
-        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "EXPIRY", lotId);
+        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "EXPIRY", lotId, null);
         if (existing == null) return;
         existing.setStatus("DONE");
         var snap = existing.getThresholdSnapshot() == null ? new HashMap<String, Object>() : new HashMap<>(existing.getThresholdSnapshot());
@@ -158,9 +158,8 @@ public class ReminderReconciler {
         BigDecimal threshold = eff.threshold();
         boolean belowThreshold = qty.compareTo(threshold) < 0;
 
-        // For LOW_STOCK: lockOpenByKindAndTarget ignores lotId (SQL uses lot_id IS NULL).
-        // There's at most one OPEN/SNOOZED LOW_STOCK task per household.
-        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "LOW_STOCK", itemId);
+        // LOW_STOCK：每户每个 item 一条未完成任务（唯一索引 uq_reminder_task_lowstock_open）。
+        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "LOW_STOCK", null, itemId);
         if (belowThreshold) {
             String severity = SeverityClassifier.lowStock(qty, threshold);
             if (existing != null) {
@@ -192,7 +191,7 @@ public class ReminderReconciler {
     }
 
     private void closeExistingLowStock(UUID householdId, UUID itemId, OffsetDateTime now, String reason) {
-        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "LOW_STOCK", itemId);
+        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "LOW_STOCK", null, itemId);
         if (existing == null) return;
         existing.setStatus("DONE");
         var snap = existing.getThresholdSnapshot() == null ? new HashMap<String, Object>() : new HashMap<>(existing.getThresholdSnapshot());

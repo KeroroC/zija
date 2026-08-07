@@ -47,6 +47,15 @@ public class ReportingEventRetryService {
         }
     }
 
+    /**
+     * 测试 / 运维辅助：手动重投一条指定死信。
+     * 与 {@link EventRetryService#retryOnceNow} 对称。
+     */
+    public void retryOnceNow(UUID dlId) {
+        var dl = deadLetterMapper.selectById(dlId);
+        if (dl != null) retryOne(dl);
+    }
+
     private void retryOne(DeadLetterEntity dl) {
         try {
             dispatchToListener(dl);
@@ -72,19 +81,21 @@ public class ReportingEventRetryService {
 
     /**
      * 按 eventType 分派到 ProjectionListener 对应的事件处理方法。
+     * 调 processXxxEvent 而非 onXxx：监听器的 try/catch 会吞掉异常，
+     * 导致 retryOne 的 catch 永远进不去、deleteById 总是执行、死信被静默删除。
      */
     private void dispatchToListener(DeadLetterEntity dl) {
         Map<String, Object> payload = dl.getPayload();
         String eventType = dl.getEventType();
 
         switch (eventType) {
-            case "StockChangedEvent" -> listener.onStockChanged(fromStockChangedMap(payload));
-            case "ItemChangedEvent" -> listener.onItemChanged(fromItemChangedMap(payload));
-            case "CategoryChangedEvent" -> listener.onCategoryChanged(fromCategoryChangedMap(payload));
-            case "BrandChangedEvent" -> listener.onBrandChanged(fromBrandChangedMap(payload));
-            case "UnitChangedEvent" -> listener.onUnitChanged(fromUnitChangedMap(payload));
-            case "TagChangedEvent" -> listener.onTagChanged(fromTagChangedMap(payload));
-            case "LocationChangedEvent" -> listener.onLocationChanged(fromLocationChangedMap(payload));
+            case "StockChangedEvent" -> listener.processStockChangedEvent(fromStockChangedMap(payload));
+            case "ItemChangedEvent" -> listener.processItemChangedEvent(fromItemChangedMap(payload));
+            case "CategoryChangedEvent" -> listener.processCategoryChangedEvent(fromCategoryChangedMap(payload));
+            case "BrandChangedEvent" -> listener.processBrandChangedEvent(fromBrandChangedMap(payload));
+            case "UnitChangedEvent" -> listener.processUnitChangedEvent(fromUnitChangedMap(payload));
+            case "TagChangedEvent" -> listener.processTagChangedEvent(fromTagChangedMap(payload));
+            case "LocationChangedEvent" -> listener.processLocationChangedEvent(fromLocationChangedMap(payload));
             default -> log.warn("Unknown event type in dead-letter: {}", eventType);
         }
     }

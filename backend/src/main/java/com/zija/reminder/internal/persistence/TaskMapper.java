@@ -16,7 +16,8 @@ public interface TaskMapper extends BaseMapper<TaskEntity> {
     /** 锁定未完任务（OPEN/SNOOZED）行，FOR UPDATE；不存在返回 null。 */
     TaskEntity lockOpenByKindAndTarget(@Param("householdId") UUID householdId,
                                        @Param("kind") String kind,
-                                       @Param("lotId") UUID lotId);
+                                       @Param("lotId") UUID lotId,
+                                       @Param("itemId") UUID itemId);
 
     /** 后台扫描用：列出家庭所有未完 OPEN/SNOOZED 任务 FOR UPDATE。 */
     List<TaskEntity> lockOpenTasksForScan(@Param("householdId") UUID householdId);

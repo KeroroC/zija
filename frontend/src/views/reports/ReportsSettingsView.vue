@@ -56,9 +56,6 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { rebuildProjection } from '../../api/reporting'
 import { getJson } from '../../api/http'
-import { useSessionStore } from '../../stores/session'
-
-const sessionStore = useSessionStore()
 
 const rebuilding = ref(false)
 const rebuildResult = ref('')
@@ -66,14 +63,9 @@ const auditLoading = ref(false)
 const auditLogs = ref<any[]>([])
 
 async function doRebuild() {
-  const householdId = sessionStore.currentMember?.householdId
-  if (!householdId) {
-    ElMessage.error('无法获取当前家庭信息')
-    return
-  }
   rebuilding.value = true
   try {
-    await rebuildProjection(householdId)
+    await rebuildProjection()
     rebuildResult.value = '重建完成'
     ElMessage.success('报表读模型重建完成')
   } catch {
