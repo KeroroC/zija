@@ -49,18 +49,40 @@ public class ReminderEventListener {
      * 读不到刚写入的库存位（qty=0），从而误判低库存。阶段六迁移到 {@code spring-modulith-starter-jdbc}
      * 后，发布侧仍是同步 ApplicationEventPublisher，所以必须显式 AFTER_COMMIT 才能让
      * reconciler 看到正确的提交后库存。
+     *
+     * 失败时写 dead-letter（独立事务提交），不向上抛异常。
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onStockChanged(StockChangedEvent evt) {
+        try {
+            processStockChangedEvent(evt);
+        } catch (RuntimeException ex) {
+            // 用独立事务写 dead-letter，确保主事务回滚后仍保留
+            saveDeadLetterInNewTx(evt, ex);
+            log.warn("StockChangedEvent reconcile failed, wrote dead-letter: eventId={}", evt.eventId(), ex);
+        }
+    }
+
+    /**
+     * 实际的库存变更处理：插入去重行 + 调用 reconciler。
+     * 失败时向上抛异常，由调用方决定写 dead-letter 或走重投逻辑。
+     * 供 {@link EventRetryService} 重投时调用——必须用此方法而非 {@link #onStockChanged}，
+     * 否则监听器的 catch 会吞掉异常，重投服务无法触发 incrementFailure / markAbandoned。
+     *
+     * 失败时清理 dedup 行：dedup insert 在本方法内、不在 REQUIRES_NEW 内提交，
+     * 若不在失败时清理，下次重试 insertOnConflictDoNothing 会返回 0 跳过工作，
+     * 重投服务误判为成功而 deleteById 死信，导致事件丢失。
+     */
+    public void processStockChangedEvent(StockChangedEvent evt) {
         int rows = processedEventMapper.insertOnConflictDoNothing(evt.eventId());
         if (rows == 0) return; // 已处理，跳过
         try {
             // 在独立事务中调用 reconciler，避免失败标记外层事务为 rollback-only
             reconcilerInNewTx(evt);
         } catch (RuntimeException ex) {
-            // 用独立事务写 dead-letter，确保主事务回滚后仍保留
-            saveDeadLetterInNewTx(evt, ex);
-            log.warn("StockChangedEvent reconcile failed, wrote dead-letter: eventId={}", evt.eventId(), ex);
+            // 清理 dedup 行，允许下次重试重新处理
+            processedEventMapper.deleteById(evt.eventId());
+            throw ex;
         }
     }
 

@@ -75,7 +75,9 @@ public class EventRetryService {
     private void retryOne(DeadLetterEntity dl) {
         try {
             var evt = fromMap(dl.getPayload());
-            listener.onStockChanged(evt);
+            // 用 processStockChangedEvent 而非 onStockChanged：监听器的 try/catch 会吞掉异常，
+            // 导致这里的 catch 永远进不去、deleteById 总是执行、死信被静默删除。
+            listener.processStockChangedEvent(evt);
             // 成功：删除 dead-letter
             deadLetterMapper.deleteById(dl.getId());
         } catch (RuntimeException ex) {
