@@ -127,6 +127,17 @@ class InventoryService implements InventoryApi {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<LotFlat> findLot(UUID householdId, UUID lotId) {
+        var wrapper = new LambdaQueryWrapper<LotEntity>()
+                .eq(LotEntity::getHouseholdId, householdId)
+                .eq(LotEntity::getId, lotId);
+        return Optional.ofNullable(lotMapper.selectOne(wrapper))
+                .map(l -> new LotFlat(l.getId(), l.getItemId(),
+                        l.getLotNumber(), l.getSerialNumber(), l.getExpiryDate()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<LotInfo> lotsOfItem(UUID householdId, UUID itemId) {
         return itemStockAggregateMapper.lotsOfItem(householdId, itemId).stream()
                 .map(r -> new LotInfo(r.getLotId(), r.getItemId(), r.getExpiryDate(), r.getTotalQuantity()))
