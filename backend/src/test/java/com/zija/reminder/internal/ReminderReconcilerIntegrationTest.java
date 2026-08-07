@@ -270,4 +270,55 @@ class ReminderReconcilerIntegrationTest {
         tx.executeWithoutResult(s -> reconciler.reconcile(householdId, List.of(lotId), List.of(itemId), false));
         assertThat(taskMapper.selectById(taskId).getStatus()).isEqualTo("IGNORED");
     }
+
+    @Test
+    void reconcile_threeLowStockItems_createsThreeIndependentTasks() {
+        // 三个独立物品，全部低于阈值。CUSTOM low-stock threshold = 5。
+        // 每个物品 inbound 1 unit (< 5)，应各自产生一条 LOW_STOCK OPEN 任务。
+        reminderService.getOrCreateRule(householdId);
+        var tx = new TransactionTemplate(txManager);
+
+        String[] names = {"牛奶", "鸡蛋", "面粉"};
+        BigDecimal threshold = new BigDecimal("5");
+        java.util.List<UUID> itemIds = new java.util.ArrayList<>();
+        java.util.List<UUID> lotIds = new java.util.ArrayList<>();
+        for (String n : names) {
+            var it = new ItemEntity();
+            it.setId(UUID.randomUUID());
+            it.setHouseholdId(householdId);
+            it.setName(n);
+            it.setManagementType("CONSUMABLE");
+            it.setUnitId(unitId);
+            it.setStatus("ACTIVE");
+            it.setExpiryReminderMode("DISABLED");
+            it.setLowStockMode("CUSTOM");
+            it.setLowStockThreshold(threshold);
+            itemMapper.insert(it);
+            UUID iid = it.getId();
+            itemIds.add(iid);
+            UUID lid = inboundLot(iid, BigDecimal.ONE, LocalDate.now().plusDays(300));
+            lotIds.add(lid);
+        }
+
+        // 单次 reconcile，把三个 item 一起传入（与 dailyScan.reconcileAllForHousehold 路径一致）
+        tx.executeWithoutResult(s ->
+                reconciler.reconcile(householdId, lotIds, itemIds, true));
+
+        var lowStockTasks = taskMapper.selectList(null).stream()
+                .filter(t -> "LOW_STOCK".equals(t.getKind()))
+                .toList();
+
+        // 期望：3 条独立 OPEN 任务，item_id 各不相同
+        assertThat(lowStockTasks).hasSize(3);
+        assertThat(lowStockTasks).allMatch(t -> "OPEN".equals(t.getStatus()));
+        assertThat(lowStockTasks).extracting(TaskEntity::getItemId).containsExactlyInAnyOrderElementsOf(itemIds);
+        assertThat(lowStockTasks).allMatch(t -> t.getLotId() == null);
+        assertThat(lowStockTasks).allMatch(t -> t.getQtySnapshot() != null && t.getQtySnapshot().compareTo(BigDecimal.ONE) == 0);
+
+        // 每个 item 都应收到一条 TASK_CREATED 通知
+        var createdNotifs = notificationMapper.selectList(null).stream()
+                .filter(n -> "TASK_CREATED".equals(n.getScope()))
+                .toList();
+        assertThat(createdNotifs).hasSize(3);
+    }
 }
