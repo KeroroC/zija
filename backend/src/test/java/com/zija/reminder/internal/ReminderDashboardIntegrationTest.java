@@ -58,8 +58,6 @@ class ReminderDashboardIntegrationTest {
         lenient().when(clock.getZone()).thenReturn(ZoneOffset.UTC);
 
         jdbc.execute("TRUNCATE TABLE inventory_movement, inventory_stock_position, inventory_lot, reminder_notification, reminder_task, reminder_household_rule, reminder_processed_event, reminder_event_dead_letter, audit_log, catalog_item, catalog_unit, location, household, account RESTART IDENTITY CASCADE");
-        // Drop unique partial index to allow seeding multiple LOW_STOCK OPEN tasks per household in tests
-        jdbc.execute("DROP INDEX IF EXISTS uq_reminder_task_open");
 
         var hh = new HouseholdEntity();
         hh.setId(UUID.randomUUID());
@@ -112,12 +110,18 @@ class ReminderDashboardIntegrationTest {
     }
 
     private void seedLowStockTask(String severity) {
+        // LOW_STOCK partial unique index requires one OPEN/SNOOZED task per (household, item_id).
+        // 每次 seed 创建独立 item 以满足约束，模拟「5 件不同物品低库存」。
+        UUID lowStockItemId = UUID.randomUUID();
+        jdbc.update("INSERT INTO catalog_item (id, household_id, name, management_type, unit_id, status, expiry_reminder_mode, low_stock_mode) VALUES (?, ?, ?, 'CONSUMABLE', ?, 'ACTIVE', 'INHERIT', 'DISABLED')",
+                lowStockItemId, householdId, "低库存-" + lowStockItemId.toString().substring(0, 8), unitId);
+
         var t = new TaskEntity();
         t.setId(UUID.randomUUID());
         t.setHouseholdId(householdId);
         t.setKind("LOW_STOCK");
         t.setLotId(null);
-        t.setItemId(itemId);
+        t.setItemId(lowStockItemId);
         t.setStatus("OPEN");
         t.setDueAt(now);
         t.setSeverity(severity);

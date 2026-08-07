@@ -57,9 +57,18 @@ CREATE TABLE reminder_task (
     CONSTRAINT fk_reminder_task_item FOREIGN KEY (household_id, item_id)
         REFERENCES catalog_item(household_id, id)
 );
-CREATE UNIQUE INDEX uq_reminder_task_open
-    ON reminder_task(household_id, kind, COALESCE(lot_id, '00000000-0000-0000-0000-000000000000'))
-    WHERE status IN ('OPEN','SNOOZED');
+-- 未完成任务按 kind 维度拆开两条 partial unique index：
+--   EXPIRY 仍按 lot 维度（一户一批一条），LOW_STOCK 按 item 维度（一户一物品一条）。
+-- 早期版本用一条 (household_id, kind, COALESCE(lot_id, ZERO)) 统一索引，
+-- 因 LOW_STOCK 任务的 lot_id 恒为 NULL（见 ck_reminder_task_lot_xor），
+-- 全部命中同一 ZERO_UUID，导致同家庭只能有一条 LOW_STOCK 任务，
+-- 多物品对账时互相覆盖、永远无法通知。
+CREATE UNIQUE INDEX uq_reminder_task_expiry_open
+    ON reminder_task(household_id, COALESCE(lot_id, '00000000-0000-0000-0000-000000000000'::uuid))
+    WHERE status IN ('OPEN','SNOOZED') AND kind = 'EXPIRY';
+CREATE UNIQUE INDEX uq_reminder_task_lowstock_open
+    ON reminder_task(household_id, item_id)
+    WHERE status IN ('OPEN','SNOOZED') AND kind = 'LOW_STOCK';
 CREATE INDEX idx_reminder_task_household_status_due
     ON reminder_task(household_id, status, due_at);
 CREATE INDEX idx_reminder_task_item ON reminder_task(household_id, item_id);
