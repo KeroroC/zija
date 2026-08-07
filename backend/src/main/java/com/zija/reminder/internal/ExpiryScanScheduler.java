@@ -41,7 +41,7 @@ public class ExpiryScanScheduler {
     private final InventoryApi inventoryApi;
 
     public ExpiryScanScheduler(TaskMapper taskMapper, ReminderReconciler reconciler,
-                                Clock clock, HouseholdApi householdApi,
+                                @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock, HouseholdApi householdApi,
                                 CatalogApi catalogApi, InventoryApi inventoryApi) {
         this.taskMapper = taskMapper;
         this.reconciler = reconciler;

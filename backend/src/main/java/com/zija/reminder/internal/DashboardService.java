@@ -23,7 +23,7 @@ class DashboardService {
     private final CatalogApi catalogApi;
     private final Clock clock;
 
-    DashboardService(TaskMapper taskMapper, CatalogApi catalogApi, Clock clock) {
+    DashboardService(TaskMapper taskMapper, CatalogApi catalogApi, @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
         this.taskMapper = taskMapper;
         this.catalogApi = catalogApi;
         this.clock = clock;

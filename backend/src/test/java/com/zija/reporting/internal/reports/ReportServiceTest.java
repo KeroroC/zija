@@ -6,7 +6,10 @@ import com.zija.reporting.internal.persistence.ReportMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,11 +22,14 @@ class ReportServiceTest {
     private ReportService reportService;
 
     private final UUID householdId = UUID.randomUUID();
+    private final Clock fixedClock = Clock.fixed(
+            LocalDate.of(2026, 7, 26).atStartOfDay(ZoneId.of("Asia/Shanghai")).toInstant(),
+            ZoneId.of("Asia/Shanghai"));
 
     @BeforeEach
     void setUp() {
         reportMapper = mock(ReportMapper.class);
-        reportService = new ReportService(reportMapper);
+        reportService = new ReportService(reportMapper, fixedClock);
     }
 
     // --- stockByLocation ---
@@ -56,17 +62,18 @@ class ReportServiceTest {
 
     @Test
     void expiringLotsRespectsWithinDays() {
+        var expectedToday = LocalDate.now(fixedClock);
         var page = new Page<Map<String, Object>>(1, 20);
         page.setRecords(List.of());
         page.setTotal(0);
         when(reportMapper.expiringLots(any(Page.class), eq(householdId),
-                eq(7), isNull(), isNull())).thenReturn(page);
+                eq(expectedToday), eq(7), isNull(), isNull())).thenReturn(page);
 
         var result = reportService.expiringLots(householdId, 1, 20, 7, null, null);
 
         assertThat(result.getRecords()).isEmpty();
         verify(reportMapper).expiringLots(any(Page.class), eq(householdId),
-                eq(7), isNull(), isNull());
+                eq(expectedToday), eq(7), isNull(), isNull());
     }
 
     // --- lowStock ---

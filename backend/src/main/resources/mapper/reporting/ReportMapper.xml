@@ -31,11 +31,11 @@
             sf.item_id, sf.item_name, sf.unit_name,
             sf.location_id, sf.location_path,
             sf.quantity, sf.expiry_date,
-            (sf.expiry_date - CURRENT_DATE) AS days_until_expiry
+            (sf.expiry_date - #{today}) AS days_until_expiry
         FROM reporting_stock_flat sf
         WHERE sf.household_id = #{householdId}
           AND sf.expiry_date IS NOT NULL
-          AND sf.expiry_date &lt;= CURRENT_DATE + #{withinDays} * INTERVAL '1 day'
+          AND sf.expiry_date &lt;= #{today} + #{withinDays} * INTERVAL '1 day'
           AND sf.quantity &gt; 0
         <if test="itemId != null">AND sf.item_id = #{itemId}</if>
         <if test="locationId != null">AND sf.location_id = #{locationId}</if>

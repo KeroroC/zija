@@ -22,7 +22,7 @@ class ReminderTaskStateService {
     private final SystemApi systemApi;
     private final Clock clock;
 
-    ReminderTaskStateService(TaskMapper taskMapper, SystemApi systemApi, Clock clock) {
+    ReminderTaskStateService(TaskMapper taskMapper, SystemApi systemApi, @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
         this.taskMapper = taskMapper;
         this.systemApi = systemApi;
         this.clock = clock;

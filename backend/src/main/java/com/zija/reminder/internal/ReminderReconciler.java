@@ -48,7 +48,7 @@ public class ReminderReconciler {
                                NotificationMapper notificationMapper,
                                MailService mailService, MailSettingService mailSettingService,
                                MailTemplateRenderer templateRenderer, SystemApi systemApi,
-                               JdbcTemplate jdbcTemplate, Clock clock) {
+                               JdbcTemplate jdbcTemplate, @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
         this.reminderService = reminderService; this.catalogApi = catalogApi;
         this.inventoryApi = inventoryApi; this.taskMapper = taskMapper;
         this.notificationMapper = notificationMapper;
