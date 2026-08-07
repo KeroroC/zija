@@ -22,6 +22,9 @@ public interface InventoryApi {
     /** 列出某物品所有批次含到期日与当前总库存（聚合各位置）。 */
     List<LotInfo> lotsOfItem(UUID householdId, UUID itemId);
 
+    /** 按家庭范围查找批次元数据（批次号/序列号/到期日）。不存在或家庭不匹配返回 empty。 */
+    Optional<LotFlat> findLot(UUID householdId, UUID lotId);
+
     /** 某物品当前总库存（聚合各位置）。 */
     BigDecimal currentTotalStockOfItem(UUID householdId, UUID itemId);
 
@@ -54,6 +57,15 @@ public interface InventoryApi {
             UUID itemId,
             LocalDate expiryDate,
             BigDecimal totalQuantity
+    ) {}
+
+    /** 批次元数据（仅供 reporting 投影使用批次号/序列号/到期日）。 */
+    record LotFlat(
+            UUID lotId,
+            UUID itemId,
+            String lotNumber,
+            String serialNumber,
+            LocalDate expiryDate
     ) {}
 
     /** 增量拉取家庭库存位（按 updated_at 游标分批）。仅供 reporting 投影重建。 */

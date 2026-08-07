@@ -131,6 +131,7 @@ public class ProjectionListener {
     private void rebuildStockFlatForLot(UUID householdId, UUID itemId, UUID lotId) {
         stockFlatMapper.deleteByLot(householdId, lotId);
         var item = resolveItemInfo(householdId, itemId);
+        var lot = inventoryApi.findLot(householdId, lotId).orElse(null);
         var positions = inventoryApi.stockPositionsOfItem(householdId, itemId);
         for (var pos : positions) {
             if (!pos.lotId().equals(lotId)) continue;
@@ -141,6 +142,11 @@ public class ProjectionListener {
             e.setItemName(item != null ? item.name() : itemId.toString());
             e.setUnitName(item != null && item.unitId() != null
                     ? resolveUnitName(householdId, item.unitId()) : null);
+            if (lot != null) {
+                e.setLotNumber(lot.lotNumber());
+                e.setSerialNumber(lot.serialNumber());
+                e.setExpiryDate(lot.expiryDate());
+            }
             e.setLocationId(pos.locationId());
             e.setLocationPath(resolveLocationPath(householdId, pos.locationId()));
             e.setQuantity(pos.quantity());
