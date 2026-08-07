@@ -38,7 +38,7 @@ public class MailDigestScheduler {
     public MailDigestScheduler(MailSettingMapper mailSettingMapper, MailService mailService,
                                MailTemplateRenderer templateRenderer, HouseholdApi householdApi,
                                TaskMapper taskMapper, SystemApi systemApi,
-                               JdbcTemplate jdbcTemplate, Clock clock) {
+                               JdbcTemplate jdbcTemplate, @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
         this.mailSettingMapper = mailSettingMapper;
         this.mailService = mailService;
         this.templateRenderer = templateRenderer;

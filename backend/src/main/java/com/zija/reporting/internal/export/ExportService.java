@@ -8,10 +8,13 @@ import com.zija.reporting.internal.persistence.SearchMapper;
 import com.zija.system.SystemApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.*;
 
@@ -28,11 +31,14 @@ public class ExportService {
     private final ReportMapper reportMapper;
     private final SearchMapper searchMapper;
     private final SystemApi systemApi;
+    private final Clock clock;
 
-    public ExportService(ReportMapper reportMapper, SearchMapper searchMapper, SystemApi systemApi) {
+    public ExportService(ReportMapper reportMapper, SearchMapper searchMapper, SystemApi systemApi,
+                         @Qualifier("reportingClock") Clock clock) {
         this.reportMapper = reportMapper;
         this.searchMapper = searchMapper;
         this.systemApi = systemApi;
+        this.clock = clock;
     }
 
     /**
@@ -69,6 +75,7 @@ public class ExportService {
                             parseUuid(params, "brandId")));
             case "expiring-lots" -> fetchAllPaged(
                     page -> reportMapper.expiringLots(page, householdId,
+                            LocalDate.now(clock),
                             parseInt(params, "withinDays", 30),
                             parseUuid(params, "itemId"),
                             parseUuid(params, "locationId")));
