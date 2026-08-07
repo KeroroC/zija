@@ -696,6 +696,11 @@ class StocktakeServiceIntegrationTest {
         ).isInstanceOf(StocktakeNotDraftException.class);
     }
 
+    // Note: the deficit branch's subtractIfSufficient-return-zero path is mathematically
+    // unreachable through normal API calls because of DB CHECK constraints
+    // (ck_inventory_stocktake_actual_nonneg, ck_inventory_stock_position_nonneg), so it is
+    // covered by StocktakeServiceDefensiveTest using a mocked mapper rather than an integration test.
+
     // --- Helpers ---
 
     private UUID seedHousehold() {
