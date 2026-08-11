@@ -92,7 +92,7 @@
 
     <!-- Create/Rename Dialog -->
     <el-dialog v-model="nameDialogVisible" :title="nameDialogTitle" width="400px">
-      <el-form :model="nameForm" label-width="80px">
+      <el-form :model="nameForm" label-width="80px" @submit.prevent="submitName">
         <el-form-item label="名称">
           <el-input v-model="nameForm.name" maxlength="100" />
         </el-form-item>

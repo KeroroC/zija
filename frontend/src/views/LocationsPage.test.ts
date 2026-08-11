@@ -191,6 +191,25 @@ describe("LocationsPage", () => {
     expect(fetchTreeMock).toHaveBeenCalledTimes(2);
   });
 
+  it("submits the create dialog when Enter is pressed in the name input, without navigating", async () => {
+    wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    await wrapper.findAll('[data-testid="loc-add"]')[0].trigger("click");
+    await flushPromises();
+
+    const nameInput = wrapper.find(".el-dialog .el-input__inner");
+    await nameInput.setValue("新位置");
+    await wrapper.find(".el-dialog form").trigger("submit");
+
+    expect(createMock).toHaveBeenCalledWith({
+      name: "新位置",
+      parentId: "loc-root",
+      sortOrder: 0,
+    });
+    expect(fetchTreeMock).toHaveBeenCalledTimes(2);
+  });
+
   it("renames a location via dialog submission", async () => {
     wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
     await flushPromises();
