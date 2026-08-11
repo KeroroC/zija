@@ -20,6 +20,9 @@ make frontend-test           # npm --prefix frontend test
 cd backend && ./mvnw test -Dtest=ClassName          # Single backend test class
 cd backend && ./mvnw test -Dtest=ClassName#method    # Single test method
 npm --prefix frontend test -- --reporter=verbose     # Frontend with verbose output
+npm --prefix frontend test -- ItemsPage              # Single frontend test file
+npm --prefix frontend run typecheck                  # vue-tsc only (build runs this first)
+npm --prefix frontend run test:e2e                   # Playwright directly (needs a running stack)
 
 # Build & verify
 make verify                  # Runs layout check, all tests, production builds, git diff --check
@@ -94,10 +97,11 @@ Existing modules: `system` (health check, installation info, audit), `identity` 
 src/
   api/          # HTTP client (http.ts) + domain API modules (auth, catalog, file, household, inventory, invitation, location, member, notification, reminder, reporting, owner-recovery, audit, system)
   components/   # Shared components (AppShell.vue)
-  views/        # Page-level components. Notable subdirectories: inventory/ (stock, lot, movement, stocktake), reports/ (reporting read models, CSV export). Other top-level views: LoginPage, BootstrapPage, ItemsPage, LocationsPage, MembersPage, NotificationsView, RemindersView, ReminderRulesSettingsView, SystemStatusView, AuditLogPage, OwnerRecoveryPage, ProfilePage.
+  views/        # Page-level components. Notable subdirectories: inventory/ (stock, lot, movement, stocktake), reports/ (reporting read models, CSV export). Other top-level views: HomeView, LoginPage, BootstrapPage, ItemsPage, InventoryPage, LocationsPage, CatalogSettingsPage, MembersPage, InvitationRedeemPage, NotificationsView, RemindersView, ReminderRulesSettingsView, SystemStatusView, AuditLogPage, OwnerRecoveryPage, ProfilePage, NotFoundPage.
   stores/       # Pinia stores (session.ts — auth/session state)
   router/       # Vue Router configuration
   types/        # TypeScript interfaces for API responses
+  utils/        # Shared helpers (date.ts, movement.ts)
   styles/       # Global CSS — tokens.css (design tokens + Element Plus variable overrides) and index.css (shell, components)
   test/         # Test setup
 ```
@@ -131,15 +135,22 @@ src/
 
 **Backend:**
 - Unit tests with `@SpringBootTest` + `@MockitoBean` for mocking module APIs.
-- Integration tests with Testcontainers (`@Testcontainers` + `@ServiceConnection` + `PostgreSQLContainer`) for real database testing.
-- `@AutoConfigureMockMvc` for controller-level HTTP testing.
-- Module boundary verification: `ModularityTests` ensures `ApplicationModules.verify()` passes.
-- Dependency alignment: `DependencyAlignmentTests` confirms Testcontainers 2.x is used.
+- Integration tests share ONE JVM-wide Postgres container: wire `SharedPostgres.get()` through `@DynamicPropertySource` (not `@Testcontainers`/`@ServiceConnection`). Never start your own `PostgreSQLContainer`.
+- Isolation between test classes: call `TestDb.cleanAll(jdbcTemplate)` — one fixed-order `TRUNCATE`. New tables must be registered in `TestDb.TABLES`, or `TestDbTableCoverageTest` fails.
+- `@AutoConfigureMockMvc` for controller-level HTTP testing; shared bases `AbstractMockMvcIntegrationTest` / `AbstractWebMvcSliceTest`.
+- Guard tests: `ModularityTests` (module boundaries), `DependencyAlignmentTests` (Testcontainers 2.x), `NoBackgroundSchedulingInTestsTest`, `TestDbTableCoverageTest`, `OpenApiContractTest`, `DocumentationTests`.
 
 **Frontend:**
 - Vitest with jsdom environment.
 - `@vue/test-utils` `mount()` with Element Plus as a global plugin for component tests.
 - API modules mocked via `vi.mock()` at the module level.
+
+**CI:** develop on `dev`, merge to `main` to release. `dev` runs backend `mvnw verify` plus frontend test/build; the deployment smoke job (Compose + Playwright) runs only on `main` pushes or PRs targeting `main`.
+
+## Gotchas
+
+- **Background schedulers must stay disabled in tests.** `backend/src/test/resources/application.properties` sets every `zija.schedule.*` cron to `-`. Background writes race with each test class's `TRUNCATE` and cause random PostgreSQL deadlocks in CI. Cover schedulers by calling their methods directly (`scanAt` / `sendDailyDigests` / `retryOnceNow`). Enforced by `NoBackgroundSchedulingInTestsTest`.
+- **Schedulers are timezone-pinned.** `@Scheduled` uses `zone = "${zija.schedule.zone:Asia/Shanghai}"`, and the reminder `Clock` reads the same property. New scheduled jobs and any date-boundary logic must use that clock, not the JVM default zone — otherwise scan dates drift by a day.
 
 ## Visual Design (松间账册 / Pine Ledger)
 
