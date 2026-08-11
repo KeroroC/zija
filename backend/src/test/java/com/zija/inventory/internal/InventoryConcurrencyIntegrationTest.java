@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.TestDb;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.inventory.internal.exception.InventoryIdempotencyConflictException;
@@ -66,12 +67,7 @@ class InventoryConcurrencyIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.execute("""
-                TRUNCATE TABLE inventory_movement, inventory_stock_position,
-                             inventory_lot, audit_log, catalog_item, catalog_unit,
-                             location, household, account
-                RESTART IDENTITY CASCADE
-                """);
+        TestDb.cleanAll(jdbc);
 
         householdId = seedHousehold();
         unitId = seedUnit(householdId);

@@ -1,5 +1,6 @@
 package com.zija.reminder.internal;
 
+import com.zija.TestDb;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.reminder.internal.exception.ReminderRuleExpiryDaysInvalidException;
@@ -43,7 +44,7 @@ class ReminderHouseholdRuleIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.execute("TRUNCATE TABLE reminder_notification, reminder_task, reminder_household_rule, reminder_processed_event, reminder_event_dead_letter, audit_log, household, account RESTART IDENTITY CASCADE");
+        TestDb.cleanAll(jdbc);
         var hh = new HouseholdEntity(); hh.setSingletonKey((short) 1); hh.setId(UUID.randomUUID()); hh.setName("T"); hh.setTimezone("Asia/Shanghai");
         householdMapper.insertSingleton(hh); householdId = hh.getId();
     }

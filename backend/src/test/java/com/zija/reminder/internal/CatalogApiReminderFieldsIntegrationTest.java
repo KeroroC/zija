@@ -1,5 +1,6 @@
 package com.zija.reminder.internal;
 
+import com.zija.TestDb;
 import com.zija.catalog.CatalogApi;
 import com.zija.catalog.internal.persistence.ItemEntity;
 import com.zija.catalog.internal.persistence.ItemMapper;
@@ -44,7 +45,7 @@ class CatalogApiReminderFieldsIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.execute("TRUNCATE TABLE inventory_movement, inventory_stock_position, inventory_lot, reminder_notification, reminder_task, reminder_household_rule, reminder_processed_event, reminder_event_dead_letter, audit_log, catalog_item, catalog_unit, location, household, account RESTART IDENTITY CASCADE");
+        TestDb.cleanAll(jdbc);
 
         var hh = new HouseholdEntity();
         hh.setSingletonKey((short) 1);

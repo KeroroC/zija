@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.TestDb;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.household.internal.persistence.MemberEntity;
@@ -46,7 +47,7 @@ class MemberMapperIntegrationTest {
 
     @BeforeEach
     void cleanTables() {
-        jdbc.execute("TRUNCATE TABLE member, account, household RESTART IDENTITY CASCADE");
+        TestDb.cleanAll(jdbc);
     }
 
     @Test

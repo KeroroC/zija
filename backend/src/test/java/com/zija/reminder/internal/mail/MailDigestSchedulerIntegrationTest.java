@@ -1,5 +1,6 @@
 package com.zija.reminder.internal.mail;
 
+import com.zija.TestDb;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.household.internal.persistence.MemberEntity;
@@ -72,16 +73,7 @@ class MailDigestSchedulerIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.execute("""
-                TRUNCATE TABLE reminder_household_mail_setting, reminder_notification, reminder_task,
-                             reminder_household_rule,
-                             inventory_movement, inventory_stock_position,
-                             inventory_lot, inventory_idempotency_record,
-                             audit_log, catalog_item_tag, catalog_item, catalog_unit,
-                             catalog_brand, catalog_category, catalog_tag,
-                             location, member, household, account
-                RESTART IDENTITY CASCADE
-                """);
+        TestDb.cleanAll(jdbcTemplate);
         reset(mailSender);
 
         householdId = seedHousehold("测试家");

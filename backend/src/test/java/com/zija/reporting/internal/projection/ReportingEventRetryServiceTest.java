@@ -1,5 +1,6 @@
 package com.zija.reporting.internal.projection;
 
+import com.zija.TestDb;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.reporting.internal.persistence.DeadLetterEntity;
 import com.zija.reporting.internal.persistence.ReportingDeadLetterMapper;
@@ -47,11 +48,7 @@ class ReportingEventRetryServiceTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.execute("TRUNCATE TABLE reporting_movement_flat, reporting_stock_flat, reporting_search_index, "
-                + "reporting_event_dead_letter, reporting_processed_event, "
-                + "audit_log, inventory_movement, inventory_stock_position, inventory_lot, "
-                + "location, catalog_item, catalog_unit, catalog_category, member, household, account "
-                + "RESTART IDENTITY CASCADE");
+        TestDb.cleanAll(jdbc);
     }
 
     private StockChangedEvent stockEvent(UUID householdId, UUID itemId) {

@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.TestDb;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.inventory.internal.exception.InventoryIdempotencyConflictException;
@@ -40,10 +41,7 @@ class IdempotencyServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.execute("""
-                TRUNCATE TABLE inventory_idempotency_record, household
-                RESTART IDENTITY CASCADE
-                """);
+        TestDb.cleanAll(jdbcTemplate);
     }
 
     @Test

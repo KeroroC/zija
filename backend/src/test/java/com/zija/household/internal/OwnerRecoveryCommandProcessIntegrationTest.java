@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.TestDb;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,11 +34,7 @@ class OwnerRecoveryCommandProcessIntegrationTest {
 
     @BeforeEach
     void cleanTables() {
-        jdbcTemplate.execute("""
-                TRUNCATE TABLE audit_log, owner_recovery_token, invitation, member, household, account,
-                    spring_session_attributes, spring_session
-                RESTART IDENTITY CASCADE
-                """);
+        TestDb.cleanAll(jdbcTemplate);
     }
 
     @Test

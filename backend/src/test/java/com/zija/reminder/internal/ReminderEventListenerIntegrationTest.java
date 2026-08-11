@@ -1,5 +1,6 @@
 package com.zija.reminder.internal;
 
+import com.zija.TestDb;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.reminder.internal.persistence.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +40,7 @@ class ReminderEventListenerIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.execute("TRUNCATE TABLE reminder_notification, reminder_task, reminder_household_rule, reminder_processed_event, reminder_event_dead_letter, audit_log, household, account RESTART IDENTITY CASCADE");
+        TestDb.cleanAll(jdbc);
     }
 
     private StockChangedEvent evt(UUID eventId, UUID householdId, UUID lotId, UUID itemId) {
