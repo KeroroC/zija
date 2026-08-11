@@ -21,8 +21,34 @@ body,
   margin: 0;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* 跳转到主要内容：仅键盘焦点可见，避免打扰鼠标用户 */
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 3000;
+  padding: 8px 16px;
+  border-radius: var(--zj-radius-sm);
+  background: var(--zj-surface);
+  box-shadow: var(--zj-shadow-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--zj-pine-600);
+  transform: translateY(-200%);
+  transition: transform var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
 }
 
 /* 细颗粒噪点：消除平面感（3% 不透明度，不拦截交互） */
@@ -46,6 +72,7 @@ body::after {
 /* ============ 应用骨架 ============ */
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .app-sidebar {
@@ -190,6 +217,7 @@ body::after {
   letter-spacing: 0.01em;
   line-height: 1.35;
   margin: 0;
+  text-wrap: balance;
 }
 
 .page-subtitle {
@@ -286,6 +314,7 @@ body::after {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 48px 16px;
   overflow: hidden;
   background: var(--zj-pine-800);

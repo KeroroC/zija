@@ -10,23 +10,32 @@
     <el-row :gutter="24" class="risk-cards">
       <el-col :span="8">
         <div class="page-card risk-card" @click="goReminders('EXPIRY')">
-          <div class="risk-num">{{ expiryCount }}</div>
-          <div class="risk-label">7 天内到期</div>
-          <div class="risk-link">查看清单</div>
+          <el-skeleton v-if="loading" :rows="2" animated />
+          <template v-else>
+            <div class="risk-num">{{ expiryCount }}</div>
+            <div class="risk-label">7 天内到期</div>
+            <div class="risk-link">查看清单</div>
+          </template>
         </div>
       </el-col>
       <el-col :span="8">
         <div class="page-card risk-card" @click="goReminders('LOW_STOCK')">
-          <div class="risk-num">{{ lowStockCount }}</div>
-          <div class="risk-label">低库存物品</div>
-          <div class="risk-link">查看清单</div>
+          <el-skeleton v-if="loading" :rows="2" animated />
+          <template v-else>
+            <div class="risk-num">{{ lowStockCount }}</div>
+            <div class="risk-label">低库存物品</div>
+            <div class="risk-link">查看清单</div>
+          </template>
         </div>
       </el-col>
       <el-col :span="8">
         <div class="page-card risk-card" @click="goStocktakes">
-          <div class="risk-num">{{ stocktakeCount }}</div>
-          <div class="risk-label">待盘点</div>
-          <div class="risk-link">前往盘点</div>
+          <el-skeleton v-if="loading" :rows="2" animated />
+          <template v-else>
+            <div class="risk-num">{{ stocktakeCount }}</div>
+            <div class="risk-label">待盘点</div>
+            <div class="risk-link">前往盘点</div>
+          </template>
         </div>
       </el-col>
     </el-row>
@@ -57,10 +66,10 @@
 
     <section class="page-card quick-actions">
       <div class="section-title">快速操作</div>
-      <el-button @click="$router.push('/inventory')">入库</el-button>
-      <el-button @click="$router.push('/inventory')">领用</el-button>
-      <el-button @click="$router.push('/inventory')">盘点</el-button>
-      <el-button @click="$router.push('/inventory')">移位</el-button>
+      <el-button @click="goInventory('inbound')">入库</el-button>
+      <el-button @click="goInventory('consume')">领用</el-button>
+      <el-button @click="goInventory('stocktake')">盘点</el-button>
+      <el-button @click="goInventory('transfer')">移位</el-button>
     </section>
 
     <section class="page-card recent-section">
@@ -93,6 +102,7 @@ import { ApiError } from "../api/http";
 
 const router = useRouter();
 
+const loading = ref(true);
 const expiryCount = ref(0);
 const lowStockCount = ref(0);
 const stocktakeCount = ref(0);
@@ -113,6 +123,8 @@ onMounted(async () => {
     recentMovements.value = mv.items;
   } catch (e) {
     if (e instanceof ApiError) ElMessage.error(e.message);
+  } finally {
+    loading.value = false;
   }
 });
 
@@ -122,6 +134,10 @@ function goReminders(kind: string) {
 
 function goStocktakes() {
   router.push("/inventory?tab=stocktakes&status=DRAFT");
+}
+
+function goInventory(action: string) {
+  router.push({ name: "inventory", query: { action } });
 }
 
 function dotClass(sev: string) {
