@@ -89,8 +89,8 @@ public class MailDigestScheduler {
 
         OffsetDateTime now = OffsetDateTime.now(clock);
         OffsetDateTime to = now.plusDays(7);
-        var expiryTasks = taskMapper.expiryWithinDays(householdId, now, to, 50);
-        var lowStockTasks = taskMapper.lowStockOpenTasks(householdId, 50);
+        var expiryTasks = taskMapper.expiryWithinDays(householdId, now, to, now, 50);
+        var lowStockTasks = taskMapper.lowStockOpenTasks(householdId, now, 50);
 
         List<Map<String, String>> expiryModels = expiryTasks.stream()
                 .map(t -> Map.of("title", "临期任务", "dueAt",

@@ -34,9 +34,9 @@ class DashboardService {
         OffsetDateTime now = OffsetDateTime.now(clock);
         OffsetDateTime from = now;
         OffsetDateTime to = now.plusDays(days);
-        var expiry = taskMapper.expiryWithinDays(householdId, from, to, topN);
-        var lowStock = taskMapper.lowStockOpenTasks(householdId, topN);
-        var priority = taskMapper.priorityTasks(householdId, topN);
+        var expiry = taskMapper.expiryWithinDays(householdId, from, to, now, topN);
+        var lowStock = taskMapper.lowStockOpenTasks(householdId, now, topN);
+        var priority = taskMapper.priorityTasks(householdId, now, topN);
 
         Map<UUID, String> names = loadItemNames(householdId, expiry, lowStock, priority);
 
@@ -62,15 +62,15 @@ class DashboardService {
     }
 
     private long countAllExpiryWithinDays(UUID hh, OffsetDateTime from, OffsetDateTime to) {
-        return taskMapper.expiryWithinDays(hh, from, to, Integer.MAX_VALUE).size();
+        return taskMapper.expiryWithinDays(hh, from, to, from, Integer.MAX_VALUE).size();
     }
 
     private long countAllLowStock(UUID hh) {
-        return taskMapper.lowStockOpenTasks(hh, Integer.MAX_VALUE).size();
+        return taskMapper.lowStockOpenTasks(hh, OffsetDateTime.now(clock), Integer.MAX_VALUE).size();
     }
 
     private long countAllPriority(UUID hh) {
-        return taskMapper.priorityTasks(hh, Integer.MAX_VALUE).size();
+        return taskMapper.priorityTasks(hh, OffsetDateTime.now(clock), Integer.MAX_VALUE).size();
     }
 
     private DashboardItem toItem(TaskEntity t, Map<UUID, String> names) {
