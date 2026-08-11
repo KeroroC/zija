@@ -1,5 +1,6 @@
 package com.zija.reminder.internal;
 
+import com.zija.TestDb;
 import com.zija.inventory.InventoryApi;
 import com.zija.inventory.internal.StockCommandService;
 import com.zija.household.internal.persistence.HouseholdEntity;
@@ -52,7 +53,7 @@ class InventoryApiLotsOfItemIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.execute("TRUNCATE TABLE inventory_movement, inventory_stock_position, inventory_lot, reminder_notification, reminder_task, reminder_household_rule, reminder_processed_event, reminder_event_dead_letter, audit_log, catalog_item, catalog_unit, location, household, account RESTART IDENTITY CASCADE");
+        TestDb.cleanAll(jdbc);
 
         var hh = new HouseholdEntity();
         hh.setSingletonKey((short) 1);

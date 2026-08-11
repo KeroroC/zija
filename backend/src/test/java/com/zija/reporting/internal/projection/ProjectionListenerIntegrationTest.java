@@ -1,5 +1,6 @@
 package com.zija.reporting.internal.projection;
 
+import com.zija.TestDb;
 import com.zija.SharedPostgres;
 import com.zija.catalog.BrandChangedEvent;
 import com.zija.catalog.CategoryChangedEvent;
@@ -67,15 +68,7 @@ class ProjectionListenerIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.execute("""
-                TRUNCATE TABLE reporting_movement_flat, reporting_stock_flat,
-                             reporting_search_index, reporting_event_dead_letter,
-                             reporting_processed_event, audit_log, event_publication,
-                             inventory_movement, inventory_stock_position, inventory_lot,
-                             catalog_item_tag, catalog_item, catalog_unit, catalog_brand,
-                             catalog_category, location, member, household, account
-                RESTART IDENTITY CASCADE
-                """);
+        TestDb.cleanAll(jdbc);
 
         householdId = UUID.randomUUID();
         accountId = UUID.randomUUID();

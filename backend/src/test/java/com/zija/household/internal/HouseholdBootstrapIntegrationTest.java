@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.TestDb;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.household.internal.exception.HouseholdAlreadyInitializedException;
 import com.zija.household.internal.persistence.HouseholdMapper;
@@ -44,10 +45,7 @@ class HouseholdBootstrapIntegrationTest {
 
     @BeforeEach
     void cleanTables() {
-        jdbcTemplate.execute("""
-                TRUNCATE TABLE audit_log, owner_recovery_token, invitation, member, household, account
-                RESTART IDENTITY CASCADE
-                """);
+        TestDb.cleanAll(jdbcTemplate);
     }
 
     @Test

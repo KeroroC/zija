@@ -1,5 +1,6 @@
 package com.zija.catalog.internal;
 
+import com.zija.TestDb;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.file.FileApi;
@@ -66,11 +67,7 @@ class ItemEndpointIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.execute("""
-                TRUNCATE TABLE catalog_item_tag, catalog_item, catalog_unit, catalog_brand,
-                             catalog_category, catalog_tag, audit_log, member, household, account
-                RESTART IDENTITY CASCADE
-                """);
+        TestDb.cleanAll(jdbcTemplate);
 
         householdId = seedHousehold();
         accountId = UUID.randomUUID();

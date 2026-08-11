@@ -1,5 +1,6 @@
 package com.zija.reporting.internal.projection;
 
+import com.zija.TestDb;
 import com.zija.reporting.internal.persistence.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,7 +45,7 @@ class ProjectionRebuildTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.execute("TRUNCATE TABLE reporting_movement_flat, reporting_stock_flat, reporting_search_index, audit_log, inventory_movement, inventory_stock_position, inventory_lot, location, catalog_item, catalog_unit, catalog_category, member, household, account RESTART IDENTITY CASCADE");
+        TestDb.cleanAll(jdbc);
 
         householdId = UUID.randomUUID();
         accountId = UUID.randomUUID();

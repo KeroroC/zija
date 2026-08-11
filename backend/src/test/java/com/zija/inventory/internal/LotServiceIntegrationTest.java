@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.TestDb;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.inventory.internal.exception.InventoryArchivedItemException;
@@ -48,11 +49,7 @@ class LotServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.execute("""
-                TRUNCATE TABLE inventory_movement, inventory_stock_position,
-                             inventory_lot, catalog_item, catalog_unit, household
-                RESTART IDENTITY CASCADE
-                """);
+        TestDb.cleanAll(jdbc);
 
         householdId = seedHousehold();
         UUID unitId = seedUnit(householdId);

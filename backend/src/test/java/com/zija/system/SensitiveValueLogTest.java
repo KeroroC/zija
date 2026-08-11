@@ -9,6 +9,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import tools.jackson.databind.ObjectMapper;
+import com.zija.TestDb;
 import com.zija.ZijaSessionInvalidator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -68,7 +69,7 @@ class SensitiveValueLogTest {
      */
     @BeforeAll
     static void bootstrapHousehold(@Autowired MockMvc mvc, @Autowired JdbcTemplate jdbc) throws Exception {
-        jdbc.execute("TRUNCATE TABLE member, account, household RESTART IDENTITY CASCADE");
+        TestDb.cleanAll(jdbc);
         mvc.perform(post("/api/v1/household/bootstrap")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)

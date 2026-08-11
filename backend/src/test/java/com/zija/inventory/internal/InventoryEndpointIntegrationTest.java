@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.TestDb;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zija.ZijaPrincipal;
@@ -80,14 +81,7 @@ class InventoryEndpointIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.execute("""
-                TRUNCATE TABLE inventory_movement, inventory_stock_position,
-                             inventory_lot, inventory_idempotency_record,
-                             audit_log, catalog_item_tag, catalog_item, catalog_unit,
-                             catalog_brand, catalog_category, catalog_tag,
-                             location, member, household, account
-                RESTART IDENTITY CASCADE
-                """);
+        TestDb.cleanAll(jdbcTemplate);
 
         // Seed household, accounts, members
         householdId = seedHousehold();
