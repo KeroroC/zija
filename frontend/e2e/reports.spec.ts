@@ -123,8 +123,12 @@ test("报表完整链路：入库→投影→搜索→库存分布→导出→�
   await expect(page.getByText("入库成功")).toBeVisible();
 
   // ─── 6. Wait for projection and verify stock-by-location report ───
-  // Navigate to the report page — the projection should be populated
-  await page.goto("/reports/stock-by-location");
+  // 经 UI 导航进入报表子页（回归：子页此前只能手输 URL 到达）
+  await page.goto("/reports");
+  await expect(
+    page.getByRole("heading", { name: "全局搜索" }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "库存分布" }).click();
   await expect(
     page.getByRole("heading", { name: "库存分布" }),
   ).toBeVisible();
@@ -153,7 +157,8 @@ test("报表完整链路：入库→投影→搜索→库存分布→导出→�
   ).toBeVisible({ timeout: 10_000 });
 
   // ─── 8. Export CSV ───
-  await page.goto("/reports/stock-by-location");
+  // 从全局搜索页经标签页切回库存分布
+  await page.getByRole("tab", { name: "库存分布" }).click();
   await expect(
     page.getByRole("heading", { name: "库存分布" }),
   ).toBeVisible();
@@ -172,7 +177,7 @@ test("报表完整链路：入库→投影→搜索→库存分布→导出→�
   expect(content).toBeTruthy();
 
   // ─── 9. Projection rebuild via settings ───
-  await page.goto("/reports/settings");
+  await page.getByRole("tab", { name: "报表设置" }).click();
   await expect(
     page.getByRole("heading", { name: "报表设置" }),
   ).toBeVisible();
