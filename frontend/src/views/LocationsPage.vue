@@ -138,7 +138,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Position, Delete } from '@element-plus/icons-vue'
 import { fetchLocationTree, createLocation, renameLocation, deleteLocation, moveLocation } from '../api/location'
@@ -146,6 +146,7 @@ import { fetchStockPositions } from '../api/inventory'
 import type { LocationNode } from '../types/location'
 
 const router = useRouter()
+const route = useRoute()
 
 // 移动对话框的目标树节点：原节点上附加 disabled 字段，标记是否可选
 interface TargetNode extends LocationNode {
@@ -237,6 +238,23 @@ function deleteTooltip(node: LocationNode): string {
 async function loadTree() {
   const res = await fetchLocationTree()
   treeData.value = res.roots
+  // 来自全局搜索的 ?highlight=<locationId>：定位并选中该位置
+  const highlight = route.query.highlight as string | undefined
+  if (highlight) {
+    const node = findNodeById(treeData.value, highlight)
+    if (node) await selectNode(node)
+  }
+}
+
+function findNodeById(nodes: LocationNode[], id: string): LocationNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    if (node.children?.length) {
+      const found = findNodeById(node.children, id)
+      if (found) return found
+    }
+  }
+  return null
 }
 
 async function selectNode(data: LocationNode) {

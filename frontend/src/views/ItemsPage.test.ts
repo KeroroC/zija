@@ -39,6 +39,7 @@ const pushMock = vi.fn();
 
 vi.mock("vue-router", () => ({
   useRouter: () => ({ push: pushMock }),
+  useRoute: () => ({ query: {} }),
 }));
 
 const fetchItemsMock = vi.mocked(fetchItems);

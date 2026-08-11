@@ -72,8 +72,8 @@
       </el-table-column>
       <el-table-column label="类型" min-width="80">
         <template #default="{ row }">
-          <el-tag :type="tagType(row.type)" size="small">
-            {{ typeLabel(row.type) }}
+          <el-tag :type="movementTagType(row.type)" size="small">
+            {{ movementTypeLabel(row.type) }}
           </el-tag>
         </template>
       </el-table-column>
@@ -136,7 +136,8 @@ import { fetchMovements } from '../../api/inventory'
 import { fetchItems, fetchUnits } from '../../api/catalog'
 import { fetchLocationTree } from '../../api/location'
 import { memberApi } from '../../api/member'
-import type { Movement, MovementType } from '../../types/inventory'
+import { MOVEMENT_TYPE_OPTIONS, movementTypeLabel, movementTagType } from '../../utils/movement'
+import type { Movement } from '../../types/inventory'
 import type { LocationNode } from '../../types/location'
 import MovementDetailDrawer from './MovementDetailDrawer.vue'
 
@@ -162,40 +163,7 @@ const operatorNameMap = ref<Map<string, string>>(new Map())
 const drawerVisible = ref(false)
 const selectedMovement = ref<Movement | null>(null)
 
-const typeOptions: { value: string; label: string }[] = [
-  { value: 'INBOUND', label: '入库' },
-  { value: 'CONSUME', label: '领用' },
-  { value: 'LOSS', label: '报损' },
-  { value: 'ADJUSTMENT', label: '调整' },
-  { value: 'TRANSFER', label: '移位' },
-  { value: 'REVERSAL', label: '冲销' },
-]
-
-const TYPE_LABELS: Record<MovementType, string> = {
-  INBOUND: '入库',
-  CONSUME: '领用',
-  LOSS: '报损',
-  ADJUSTMENT: '调整',
-  TRANSFER: '移位',
-  REVERSAL: '冲销',
-}
-
-const TYPE_TAG_MAP: Record<MovementType, 'success' | 'warning' | 'danger' | 'info' | 'primary'> = {
-  INBOUND: 'success',
-  CONSUME: 'primary',
-  LOSS: 'danger',
-  ADJUSTMENT: 'warning',
-  TRANSFER: 'info',
-  REVERSAL: 'warning',
-}
-
-function typeLabel(type: MovementType): string {
-  return TYPE_LABELS[type] ?? type
-}
-
-function tagType(type: MovementType): 'success' | 'warning' | 'danger' | 'info' | 'primary' {
-  return TYPE_TAG_MAP[type] ?? 'info'
-}
+const typeOptions = MOVEMENT_TYPE_OPTIONS
 
 function formatTime(iso: string): string {
   if (!iso) return '-'

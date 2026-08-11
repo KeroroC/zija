@@ -26,20 +26,23 @@
     </div>
 
     <!-- 表格 -->
-    <el-table :data="rows" v-loading="loading" class="report-table" style="margin-top: 16px;">
-      <el-table-column prop="item_name" label="物品" min-width="160" />
-      <el-table-column prop="total_quantity" label="当前库存" width="120" align="right">
+    <el-table :data="rows" v-loading="loading" class="report-table">
+      <el-table-column prop="item_name" label="物品" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="total_quantity" label="当前库存" width="100" align="right">
         <template #default="{ row }">
           <span :class="{ 'stock-low': row.total_quantity <= row.low_stock_threshold }">
             {{ row.total_quantity }}
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="low_stock_threshold" label="阈值" width="120" align="right">
+      <el-table-column prop="low_stock_threshold" label="阈值" width="100" align="right">
         <template #default="{ row }">
           <span class="numeric-cell">{{ row.low_stock_threshold }}</span>
         </template>
       </el-table-column>
+      <template #empty>
+        <div class="report-empty">当前条件下暂无低库存物品</div>
+      </template>
     </el-table>
 
     <!-- 分页 -->
@@ -135,6 +138,9 @@ onMounted(async () => {
   background: var(--zj-surface-sunken);
   border-radius: var(--zj-radius-md);
 }
+.filter-bar :deep(.el-select) {
+  width: 200px;
+}
 .report-table {
   margin-top: 16px;
 }
@@ -145,6 +151,12 @@ onMounted(async () => {
   color: var(--zj-danger);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+.report-empty {
+  padding: 28px 0 32px;
+  font-family: var(--zj-serif);
+  font-size: 15px;
+  color: var(--zj-ink-400);
 }
 .report-pagination {
   margin-top: 16px;
