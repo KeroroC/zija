@@ -39,7 +39,13 @@ public class ReportingEventRetryService {
         this.systemApi = systemApi;
     }
 
-    @Scheduled(fixedDelay = 30_000)
+    /**
+     * 每 30 秒扫描到期死信重投。用 cron 而非 fixedDelay，是为了支持通过
+     * {@code zija.schedule.reporting-dead-letter-retry=-} 外部禁用（集成测试必须禁用：
+     * 后台写库会与各测试类的 TRUNCATE 形成锁顺序反转导致 PostgreSQL 死锁）。
+     */
+    @Scheduled(cron = "${zija.schedule.reporting-dead-letter-retry:*/30 * * * * *}",
+               zone = "${zija.schedule.zone:Asia/Shanghai}")
     public void retryPending() {
         var due = deadLetterMapper.findDueForRetry(OffsetDateTime.now(), 50);
         for (var dl : due) {
