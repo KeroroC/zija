@@ -1,4 +1,5 @@
 <template>
+  <a class="skip-link" href="#app-main">跳到主要内容</a>
   <template v-if="!session.authenticated || session.isPublicRoute(route)">
     <router-view />
   </template>
@@ -121,7 +122,7 @@
           </el-dropdown>
         </div>
       </el-header>
-      <el-main class="app-main">
+      <el-main class="app-main" id="app-main" tabindex="-1">
         <router-view />
       </el-main>
     </el-container>

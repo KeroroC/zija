@@ -23,7 +23,7 @@
       <el-checkbox v-model="filter.overdue" @change="reload">仅过期</el-checkbox>
     </div>
 
-    <el-table :data="tasks" class="tasks-table" @row-click="openDrawer">
+    <el-table :data="tasks" class="tasks-table">
       <el-table-column label="类型">
         <template #default="{ row }">{{ kindLabel(row.kind) }}</template>
       </el-table-column>
@@ -146,10 +146,6 @@ async function onAction(cmd: string, row: ReminderTask) {
   } catch (e) {
     if (e instanceof ApiError) ElMessage.error(e.message);
   }
-}
-
-function openDrawer(_row: ReminderTask) {
-  /* 任务 8 可加详情抽屉；本期空实现 */
 }
 
 function kindLabel(k: string) {
