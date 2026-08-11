@@ -35,18 +35,21 @@ public interface TaskMapper extends BaseMapper<TaskEntity> {
     /** 状态机：reopen（IGNORED/DONE → OPEN），清 snoozed_until。 */
     int reopen(@Param("householdId") UUID householdId, @Param("id") UUID id);
 
-    /** 首页聚合：7 天内到期任务（EXPIRY, due_at <= now+days, status OPEN/SNOOZED）。 */
+    /** 首页聚合：7 天内到期任务（EXPIRY, due_at <= now+days, 活跃 OPEN/SNOOZED 未过 snooze 期）。 */
     List<TaskEntity> expiryWithinDays(@Param("householdId") UUID householdId,
                                       @Param("from") OffsetDateTime from,
                                       @Param("to") OffsetDateTime to,
+                                      @Param("now") OffsetDateTime now,
                                       @Param("limit") int limit);
 
-    /** 首页聚合：低库存未完任务（LOW_STOCK, OPEN/SNOOZED），前 limit 条。 */
+    /** 首页聚合：低库存活跃任务（LOW_STOCK, 未过 snooze 期），前 limit 条。 */
     List<TaskEntity> lowStockOpenTasks(@Param("householdId") UUID householdId,
+                                       @Param("now") OffsetDateTime now,
                                        @Param("limit") int limit);
 
-    /** 首页聚合：优先任务（OPEN/SNOOZED），按 severity ASC(URGENT,WARN,INFO)、due_at ASC，前 limit。 */
+    /** 首页聚合：优先任务（活跃 OPEN/SNOOZED 未过 snooze 期），按 severity ASC(URGENT,WARN,INFO)、due_at ASC，前 limit。 */
     List<TaskEntity> priorityTasks(@Param("householdId") UUID householdId,
+                                   @Param("now") OffsetDateTime now,
                                    @Param("limit") int limit);
 
     /** Reconciler 专用：更新任务字段（threshold_snapshot 使用 JSONB typeHandler）。 */

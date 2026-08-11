@@ -74,6 +74,7 @@
         FROM reminder_task
         WHERE household_id = #{householdId} AND kind = 'EXPIRY'
           AND status IN ('OPEN','SNOOZED')
+          AND (snoozed_until IS NULL OR snoozed_until &lt;= #{now})
           AND due_at &gt;= #{from} AND due_at &lt; #{to}
         ORDER BY due_at ASC
         LIMIT #{limit}
@@ -86,6 +87,7 @@
         FROM reminder_task
         WHERE household_id = #{householdId} AND kind = 'LOW_STOCK'
           AND status IN ('OPEN','SNOOZED')
+          AND (snoozed_until IS NULL OR snoozed_until &lt;= #{now})
         ORDER BY severity ASC, due_at ASC
         LIMIT #{limit}
     </select>
@@ -96,6 +98,7 @@
                created_at, updated_at, version
         FROM reminder_task
         WHERE household_id = #{householdId} AND status IN ('OPEN','SNOOZED')
+          AND (snoozed_until IS NULL OR snoozed_until &lt;= #{now})
         ORDER BY
           CASE severity WHEN 'URGENT' THEN 0 WHEN 'WARN' THEN 1 ELSE 2 END,
           due_at ASC

@@ -17,6 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.*;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -157,5 +158,31 @@ class ReminderDashboardIntegrationTest {
         var d = dashboardService.dashboard(householdId, 2, 1);
         assertThat(d.expiryWithin7Days().count()).isEqualTo(2);
         assertThat(d.expiryWithin7Days().items()).hasSize(1);
+    }
+
+    @Test
+    void snoozedTask_hiddenFromDashboardUntilSnoozeExpires() {
+        seedExpiryTask(3, "WARN");
+        var taskId = taskMapper.selectList(null).get(0).getId();
+        new TransactionTemplate(txManager).executeWithoutResult(s ->
+                taskMapper.snooze(householdId, taskId, List.of("OPEN", "SNOOZED"), now.plusHours(1)));
+
+        var d = dashboardService.dashboard(householdId, 7, 8);
+        assertThat(d.priorityTasks().count()).isZero();
+        assertThat(d.priorityTasks().items()).isEmpty();
+        assertThat(d.expiryWithin7Days().count()).isZero();
+    }
+
+    @Test
+    void snoozeExpired_taskStillShown() {
+        seedExpiryTask(3, "WARN");
+        var taskId = taskMapper.selectList(null).get(0).getId();
+        new TransactionTemplate(txManager).executeWithoutResult(s ->
+                taskMapper.snooze(householdId, taskId, List.of("OPEN", "SNOOZED"), now.minusMinutes(5)));
+
+        var d = dashboardService.dashboard(householdId, 7, 8);
+        assertThat(d.priorityTasks().count()).isEqualTo(1);
+        assertThat(d.priorityTasks().items()).hasSize(1);
+        assertThat(d.expiryWithin7Days().count()).isEqualTo(1);
     }
 }
