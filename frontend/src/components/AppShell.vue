@@ -11,7 +11,7 @@
       <el-menu
         router
         class="app-menu"
-        :default-active="$route.path"
+        :default-active="activeMenuPath"
       >
         <el-menu-item index="/">
           <el-icon><House /></el-icon>
@@ -153,6 +153,12 @@ import NotificationBell from "./NotificationBell.vue";
 const router = useRouter();
 const route = useRoute();
 const session = useSessionStore();
+
+// el-menu 激活态按 index 精确匹配；报表子页（/reports/*）共用扁平项 /reports，
+// 需把子路径归一到父级入口，其余路由保持精确匹配。
+const activeMenuPath = computed(() =>
+  route.path.startsWith("/reports/") ? "/reports" : route.path
+);
 // The store already resolves the current member on login and on session
 // restore, so the name is reactive and correct without a separate fetch.
 const householdName = computed(() => session.currentMember?.householdName || "我的家");
