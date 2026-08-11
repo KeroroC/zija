@@ -151,10 +151,11 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   fetchItems as apiFetchItems,
+  fetchItem as apiFetchItem,
   archiveItem as apiArchiveItem,
   restoreItem as apiRestoreItem,
   fetchCategories, fetchBrands, fetchUnits, fetchTags
@@ -164,6 +165,7 @@ import type { CatalogItem, Category, Brand, Unit, Tag } from '../types/catalog'
 import ItemFormDrawer from './ItemFormDrawer.vue'
 
 const router = useRouter()
+const route = useRoute()
 
 const items = ref<CatalogItem[]>([])
 const loading = ref(false)
@@ -342,7 +344,21 @@ function formatDate(iso: string): string {
 onMounted(() => {
   loadDictionaries()
   fetchItems()
+  // 来自全局搜索的 ?highlight=<itemId>：定位并打开物品详情
+  const highlight = route.query.highlight as string | undefined
+  if (highlight) {
+    openHighlightedItem(highlight)
+  }
 })
+
+async function openHighlightedItem(itemId: string) {
+  try {
+    const item = await apiFetchItem(itemId)
+    openDetail(item)
+  } catch {
+    // 物品不存在或已删除时静默忽略，保持列表页正常展示
+  }
+}
 </script>
 
 <style scoped>

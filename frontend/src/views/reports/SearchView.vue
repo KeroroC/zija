@@ -21,12 +21,16 @@
           <el-button @click="doSearch" :loading="loading">搜索</el-button>
         </template>
       </el-input>
+      <p v-if="searched" class="search-summary">共 {{ resultCount }} 条匹配</p>
     </div>
 
     <!-- 搜索结果 -->
     <div v-if="searched" class="search-results">
-      <!-- Items -->
-      <el-collapse v-model="expandedGroups">
+      <div v-if="resultCount === 0" class="search-none">
+        <p class="search-none-title">没有找到相关内容</p>
+        <p class="search-none-hint">换个关键词，或减少限定条件再试。</p>
+      </div>
+      <el-collapse v-else v-model="expandedGroups">
         <el-collapse-item title="物品" name="items">
           <template v-if="results.items.length">
             <div v-for="item in results.items" :key="item.itemId" class="result-card"
@@ -79,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { searchReporting } from '../../api/reporting'
 import type { SearchResult } from '../../types/reporting'
@@ -91,24 +95,34 @@ const searched = ref(false)
 const expandedGroups = ref(['items', 'lots', 'locations'])
 const results = ref<SearchResult>({ items: [], lots: [], locations: [] })
 
+const resultCount = computed(
+  () => results.value.items.length + results.value.lots.length + results.value.locations.length,
+)
+
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
+// 即输即搜：输入防抖 300ms，避免每个按键都打后端
 function onInput() {
   debounceTimer && clearTimeout(debounceTimer)
+  if (!query.value.trim()) {
+    clearResults()
+    return
+  }
+  debounceTimer = setTimeout(doSearch, 300)
 }
 
 function doSearch() {
   if (!query.value.trim()) return
   loading.value = true
   debounceTimer && clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(async () => {
-    try {
-      results.value = await searchReporting(query.value.trim())
+  searchReporting(query.value.trim())
+    .then((r) => {
+      results.value = r
       searched.value = true
-    } finally {
+    })
+    .finally(() => {
       loading.value = false
-    }
-  }, 250)
+    })
 }
 
 function clearResults() {
@@ -130,6 +144,32 @@ function goToLocation(locationId: string) {
 .search-bar {
   max-width: 600px;
   margin-bottom: 24px;
+}
+
+.search-summary {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--zj-ink-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.search-none {
+  padding: 48px 0 56px;
+  text-align: center;
+}
+
+.search-none-title {
+  margin: 0;
+  font-family: var(--zj-serif);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--zj-ink-900);
+}
+
+.search-none-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--zj-ink-400);
 }
 
 .result-card {

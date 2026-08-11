@@ -54,25 +54,28 @@
     </div>
 
     <!-- 表格 -->
-    <el-table :data="rows" v-loading="loading" class="report-table" style="margin-top: 16px;">
-      <el-table-column prop="location_path" label="位置" min-width="160" />
-      <el-table-column prop="item_name" label="物品" min-width="120" />
-      <el-table-column prop="lot_number" label="批次号" min-width="100">
+    <el-table :data="rows" v-loading="loading" class="report-table">
+      <el-table-column prop="location_path" label="位置" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="item_name" label="物品" min-width="160" show-overflow-tooltip />
+      <el-table-column prop="lot_number" label="批次号" min-width="150" show-overflow-tooltip>
         <template #default="{ row }">
           {{ row.lot_number ?? '-' }}
         </template>
       </el-table-column>
       <el-table-column prop="unit_name" label="单位" width="80" />
-      <el-table-column prop="quantity" label="数量" width="100" align="right">
+      <el-table-column prop="quantity" label="数量" width="90" align="right">
         <template #default="{ row }">
           <span class="numeric-cell">{{ row.quantity }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="expiry_date" label="到期日" width="120">
+      <el-table-column prop="expiry_date" label="到期日" min-width="130">
         <template #default="{ row }">
-          {{ row.expiry_date ?? '-' }}
+          <span class="numeric-cell">{{ formatDateOnly(row.expiry_date) }}</span>
         </template>
       </el-table-column>
+      <template #empty>
+        <div class="report-empty">当前条件下暂无库存分布</div>
+      </template>
     </el-table>
 
     <!-- 分页 -->
@@ -95,6 +98,7 @@ import { getReport, buildExportUrl } from '../../api/reporting'
 import { fetchItems, fetchCategories } from '../../api/catalog'
 import { fetchLocationTree } from '../../api/location'
 import { useSessionStore } from '../../stores/session'
+import { formatDateOnly } from '../../utils/date'
 import type { StockByLocationRow } from '../../types/reporting'
 import type { Category } from '../../types/catalog'
 import type { LocationNode } from '../../types/location'
@@ -196,11 +200,20 @@ onMounted(async () => {
   background: var(--zj-surface-sunken);
   border-radius: var(--zj-radius-md);
 }
+.filter-bar :deep(.el-select) {
+  width: 200px;
+}
 .report-table {
   margin-top: 16px;
 }
 .numeric-cell {
   font-variant-numeric: tabular-nums;
+}
+.report-empty {
+  padding: 28px 0 32px;
+  font-family: var(--zj-serif);
+  font-size: 15px;
+  color: var(--zj-ink-400);
 }
 .report-pagination {
   margin-top: 16px;

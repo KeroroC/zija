@@ -63,46 +63,49 @@
     </div>
 
     <!-- 表格 -->
-    <el-table :data="rows" v-loading="loading" class="report-table" style="margin-top: 16px;">
-      <el-table-column prop="created_at" label="时间" width="170">
+    <el-table :data="rows" v-loading="loading" class="report-table">
+      <el-table-column prop="business_time" label="时间" min-width="170">
         <template #default="{ row }">
-          {{ formatTime(row.business_time) }}
+          <span class="numeric-cell">{{ formatDateTime(row.business_time) }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="item_name" label="物品" min-width="120" />
+      <el-table-column prop="item_name" label="物品" min-width="160" show-overflow-tooltip />
       <el-table-column prop="type" label="类型" width="90">
         <template #default="{ row }">
-          <el-tag :type="tagType(row.type)" size="small">
-            {{ typeLabel(row.type) }}
+          <el-tag :type="movementTagType(row.type)" size="small">
+            {{ movementTypeLabel(row.type) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="quantity_delta" label="数量" width="100" align="right">
+      <el-table-column prop="quantity_delta" label="数量" width="90" align="right">
         <template #default="{ row }">
           <span class="numeric-cell">{{ row.quantity_delta > 0 ? '+' : '' }}{{ row.quantity_delta }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="from_location_path" label="来源" min-width="120">
+      <el-table-column prop="from_location_path" label="来源" min-width="180" show-overflow-tooltip>
         <template #default="{ row }">
           {{ row.from_location_path ?? '-' }}
         </template>
       </el-table-column>
-      <el-table-column prop="to_location_path" label="目标" min-width="120">
+      <el-table-column prop="to_location_path" label="目标" min-width="180" show-overflow-tooltip>
         <template #default="{ row }">
           {{ row.to_location_path ?? '-' }}
         </template>
       </el-table-column>
-      <el-table-column prop="operator_display_name" label="操作人" width="100" />
-      <el-table-column prop="reason" label="原因" min-width="120">
+      <el-table-column prop="operator_display_name" label="操作人" width="110" show-overflow-tooltip />
+      <el-table-column prop="reason" label="原因" min-width="200" show-overflow-tooltip>
         <template #default="{ row }">
           {{ row.reason ?? '-' }}
         </template>
       </el-table-column>
-      <el-table-column prop="reversal_of" label="冲销" width="100">
+      <el-table-column prop="reversal_of" label="冲正" width="80">
         <template #default="{ row }">
           {{ row.reversal_of ? '是' : '-' }}
         </template>
       </el-table-column>
+      <template #empty>
+        <div class="report-empty">当前条件下暂无流水记录</div>
+      </template>
     </el-table>
 
     <!-- 分页 -->
@@ -125,6 +128,8 @@ import { getReport, buildExportUrl } from '../../api/reporting'
 import { fetchItems } from '../../api/catalog'
 import { memberApi } from '../../api/member'
 import { useSessionStore } from '../../stores/session'
+import { formatDateTime } from '../../utils/date'
+import { movementTypeLabel, movementTagType } from '../../utils/movement'
 import type { MovementRow } from '../../types/reporting'
 
 const sessionStore = useSessionStore()
@@ -155,39 +160,8 @@ const typeOptions: { value: string; label: string }[] = [
   { value: 'LOSS', label: '报损' },
   { value: 'ADJUSTMENT', label: '调整' },
   { value: 'TRANSFER', label: '移位' },
-  { value: 'REVERSAL', label: '冲销' },
+  { value: 'REVERSAL', label: '冲正' },
 ]
-
-const TYPE_LABELS: Record<string, string> = {
-  INBOUND: '入库',
-  CONSUME: '领用',
-  LOSS: '报损',
-  ADJUSTMENT: '调整',
-  TRANSFER: '移位',
-  REVERSAL: '冲销',
-}
-
-const TYPE_TAG_MAP: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'primary'> = {
-  INBOUND: 'success',
-  CONSUME: 'primary',
-  LOSS: 'danger',
-  ADJUSTMENT: 'warning',
-  TRANSFER: 'info',
-  REVERSAL: 'warning',
-}
-
-function typeLabel(type: string): string {
-  return TYPE_LABELS[type] ?? type
-}
-
-function tagType(type: string): 'success' | 'warning' | 'danger' | 'info' | 'primary' {
-  return TYPE_TAG_MAP[type] ?? 'info'
-}
-
-function formatTime(iso: string): string {
-  if (!iso) return '-'
-  return iso.replace('T', ' ').replace(/\.\d+Z$/, '')
-}
 
 async function loadNameMaps() {
   const [itemsResp, members] = await Promise.all([
@@ -259,11 +233,23 @@ onMounted(async () => {
   background: var(--zj-surface-sunken);
   border-radius: var(--zj-radius-md);
 }
+.filter-bar :deep(.el-date-editor) {
+  width: 300px;
+}
+.filter-bar :deep(.el-select) {
+  width: 200px;
+}
 .report-table {
   margin-top: 16px;
 }
 .numeric-cell {
   font-variant-numeric: tabular-nums;
+}
+.report-empty {
+  padding: 28px 0 32px;
+  font-family: var(--zj-serif);
+  font-size: 15px;
+  color: var(--zj-ink-400);
 }
 .report-pagination {
   margin-top: 16px;
