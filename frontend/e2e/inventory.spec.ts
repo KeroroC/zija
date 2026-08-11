@@ -321,7 +321,7 @@ test("库存主链路：入库→领用→报损→移位→盘点→冲正", as
 
   // ─── 17. Verify: REVERSAL movement ───
   await expect(
-    movementsPane3.locator(".el-tag", { hasText: "冲销" }).first(),
+    movementsPane3.locator(".el-tag", { hasText: "冲正" }).first(),
   ).toBeVisible();
 
   // ─── 18. Create a member for permission check ───
