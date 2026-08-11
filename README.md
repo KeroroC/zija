@@ -138,6 +138,10 @@ make recover-owner
 - `ZIJA_VERSION` - 应用版本号
 - `ZIJA_POSTGRES_PORT` - PostgreSQL 端口
 - `ZIJA_HTTP_PORT` - HTTP 服务端口
+- `ZIJA_PROFILES_ACTIVE` - 运行 Profile；**生产环境须设为 `prod`**，启用 Secure 会话 Cookie 并关闭 Swagger
+- `ZIJA_FILE_STORAGE_PATH` - 上传文件存储目录
+- `ZIJA_BACKUP_DIR` - 备份产物根目录（宿主机路径）
+- `ZIJA_SMTP_*` - SMTP 邮件配置（`HOST` / `PORT` / `USERNAME` / `PASSWORD` / `FROM` / `TLS`）；不配置则邮件提醒静默禁用，站内通知不受影响
 
 ## 验证
 
@@ -167,7 +171,16 @@ make frontend-test           # 运行前端测试
 cd backend && ./mvnw test -Dtest=ClassName          # 单个后端测试类
 cd backend && ./mvnw test -Dtest=ClassName#method    # 单个测试方法
 npm --prefix frontend test -- --reporter=verbose     # 前端测试（详细输出）
+npm --prefix frontend test -- ItemsPage              # 单个前端测试文件
+npm --prefix frontend run typecheck                  # 仅类型检查（生产构建会先跑一遍）
+npm --prefix frontend run test:e2e                   # 直接运行 Playwright（需已有运行中的栈）
 ~~~
+
+后端集成测试共用一个 JVM 级 PostgreSQL 容器（`SharedPostgres`），测试类之间通过 `TestDb.cleanAll` 隔离数据；新增业务表须在 `TestDb.TABLES` 中登记。测试环境下全部后台定时任务处于关闭状态，详见 [`CLAUDE.md`](CLAUDE.md) 的 Gotchas 章节。
+
+## 分支与 CI
+
+开发在 `dev` 分支进行，合并到 `main` 即视为发布。`dev` 上运行后端 `mvnw verify` 与前端测试/构建；部署烟雾测试（Compose + Playwright）仅在 `main` 的 push 或以 `main` 为目标的 PR 上运行。
 
 ## 部署与运维
 

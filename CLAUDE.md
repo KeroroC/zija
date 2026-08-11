@@ -154,7 +154,7 @@ src/
 
 ## Visual Design (松间账册 / Pine Ledger)
 
-Design spec: `docs/design/redesign-visual-spec.md`. Mockups: `docs/design/mockups/`.
+Design spec: `docs/design/redesign-visual-spec.md`.
 
 **Concept:** 高端、精致、宁静 — 一本装帧克制的家庭账册，不是鲜艳的 SaaS 后台。暖白纸面底色、极低饱和度、大量留白、单一深松绿强调色。
 
