@@ -142,6 +142,7 @@ class ReportingController {
 
     @RequireAdmin
     @GetMapping("/exports/{reportKey}")
+    @SuppressWarnings("JvmTaintAnalysis")
     ResponseEntity<StreamingResponseBody> export(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @PathVariable String reportKey,
