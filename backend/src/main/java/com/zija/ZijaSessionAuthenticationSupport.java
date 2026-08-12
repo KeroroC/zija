@@ -62,14 +62,13 @@ public class ZijaSessionAuthenticationSupport {
     ) {
         var token = new UsernamePasswordAuthenticationToken(username, password);
         var authentication = authenticationManager.authenticate(token);
-
         sessionAuthenticationStrategy.onAuthentication(authentication, request, response);
 
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
-        var principal = (ZijaPrincipal) authentication.getPrincipal();
+        var principal = requirePrincipal(authentication);
         request.getSession().setAttribute(
                 FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME,
                 principal.getAccountId().toString());
@@ -89,6 +88,19 @@ public class ZijaSessionAuthenticationSupport {
     ) {
         csrfTokenRepository.saveToken(null, request, response);
         csrfTokenRepository.loadDeferredToken(request, response).get();
+    }
+
+    /**
+     * 从认证结果中提取 {@link ZijaPrincipal}。
+     * <p>
+     * 认证成功后 principal 必为 {@link ZijaPrincipal}，但防御性地进行类型校验，
+     * 避免对 {@code null} 或意外类型直接强转导致 {@link NullPointerException}。
+     */
+    public static ZijaPrincipal requirePrincipal(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof ZijaPrincipal principal)) {
+            throw new IllegalStateException("Authentication principal is not a ZijaPrincipal");
+        }
+        return principal;
     }
 
     /**

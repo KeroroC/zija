@@ -3,6 +3,7 @@ package com.zija;
 import com.zija.ZijaRequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -35,16 +36,16 @@ public class ZijaProblemHandlers implements AuthenticationEntryPoint, AccessDeni
 
     /** 未认证请求访问受保护资源时返回 401 Problem Details 响应。 */
     @Override
-    public void commence(HttpServletRequest request, HttpServletResponse response,
-                         AuthenticationException ex) throws IOException {
+    public void commence(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
+                         @NonNull AuthenticationException ex) throws IOException {
         writeProblem(request, response, HttpStatus.UNAUTHORIZED,
                 "需要认证", "AUTHENTICATION_REQUIRED");
     }
 
     /** 已认证但权限不足时返回 403 Problem Details 响应，CSRF 失败会使用专用错误码。 */
     @Override
-    public void handle(HttpServletRequest request, HttpServletResponse response,
-                       AccessDeniedException ex) throws IOException {
+    public void handle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
+                       @NonNull AccessDeniedException ex) throws IOException {
         var errorCode = ex instanceof CsrfException ? "CSRF_TOKEN_INVALID" : "ACCESS_DENIED";
         var title = ex instanceof CsrfException ? "CSRF Token 无效" : "权限不足";
         writeProblem(request, response, HttpStatus.FORBIDDEN, title, errorCode);

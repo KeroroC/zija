@@ -17,7 +17,7 @@ class InventoryExceptionHandler {
 
     @ExceptionHandler(InventoryQuantityPrecisionInvalidException.class)
     ProblemDetail handleQuantityPrecisionInvalid(HttpServletRequest request) {
-        return problem(request, HttpStatus.UNPROCESSABLE_ENTITY, "数量精度超过单位允许范围", "INVENTORY_QUANTITY_PRECISION_INVALID");
+        return problem(request, HttpStatus.UNPROCESSABLE_CONTENT, "数量精度超过单位允许范围", "INVENTORY_QUANTITY_PRECISION_INVALID");
     }
 
     @ExceptionHandler(InventoryIdempotencyConflictException.class)

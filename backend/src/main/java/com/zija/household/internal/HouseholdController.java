@@ -13,11 +13,10 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -39,21 +38,15 @@ class HouseholdController {
     private final HouseholdService householdService;
     private final MemberService memberService;
     private final ZijaSessionAuthenticationSupport sessionAuth;
-    private final com.zija.identity.IdentityApi identityApi;
-    private final com.zija.system.SystemApi systemApi;
 
     HouseholdController(
             HouseholdService householdService,
             MemberService memberService,
-            ZijaSessionAuthenticationSupport sessionAuth,
-            com.zija.identity.IdentityApi identityApi,
-            com.zija.system.SystemApi systemApi
+            ZijaSessionAuthenticationSupport sessionAuth
     ) {
         this.householdService = householdService;
         this.memberService = memberService;
         this.sessionAuth = sessionAuth;
-        this.identityApi = identityApi;
-        this.systemApi = systemApi;
     }
 
     public record BootstrapRequest(
@@ -110,7 +103,7 @@ class HouseholdController {
         var authentication = sessionAuth.authenticate(
                 request.username().trim().toLowerCase(),
                 request.password(), httpRequest, httpResponse);
-        var principal = (ZijaPrincipal) authentication.getPrincipal();
+        var principal = ZijaSessionAuthenticationSupport.requirePrincipal(authentication);
 
         return new SessionInfo(true, principal.getAccountId(),
                 principal.getUsername(), principal.getDisplayName());
@@ -122,9 +115,7 @@ class HouseholdController {
      * @return 当前成员信息
      */
     @GetMapping("/me")
-    CurrentMemberResponse me() {
-        var principal = (ZijaPrincipal) SecurityContextHolder
-                .getContext().getAuthentication().getPrincipal();
+    CurrentMemberResponse me(@AuthenticationPrincipal ZijaPrincipal principal) {
         var member = householdService.requireActiveMember(principal.getAccountId());
         String householdName = householdService.findHousehold()
                 .map(com.zija.household.HouseholdApi.HouseholdInfo::name)
@@ -142,9 +133,8 @@ class HouseholdController {
      */
     @PostMapping("/transfer-ownership")
     @RequireOwner
-    void transferOwnership(@Valid @RequestBody TransferOwnershipRequest request) {
-        var principal = (ZijaPrincipal) SecurityContextHolder
-                .getContext().getAuthentication().getPrincipal();
+    void transferOwnership(@AuthenticationPrincipal ZijaPrincipal principal,
+                           @Valid @RequestBody TransferOwnershipRequest request) {
         memberService.transferOwnership(principal.getAccountId(), request.targetMemberId());
     }
 }

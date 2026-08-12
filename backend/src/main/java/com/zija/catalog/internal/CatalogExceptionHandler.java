@@ -32,7 +32,7 @@ class CatalogExceptionHandler {
 
     @ExceptionHandler(CatalogUnitPrecisionInvalidException.class)
     ProblemDetail handlePrecisionInvalid(HttpServletRequest request) {
-        return problem(request, HttpStatus.UNPROCESSABLE_ENTITY, "阈值精度超过单位允许范围", "CATALOG_UNIT_PRECISION_INVALID");
+        return problem(request, HttpStatus.UNPROCESSABLE_CONTENT, "阈值精度超过单位允许范围", "CATALOG_UNIT_PRECISION_INVALID");
     }
 
     @ExceptionHandler(CatalogArchivedDictionaryException.class)

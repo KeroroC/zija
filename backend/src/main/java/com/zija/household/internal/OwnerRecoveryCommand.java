@@ -2,11 +2,10 @@ package com.zija.household.internal;
 
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.household.internal.persistence.MemberMapper;
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
-
-import java.util.UUID;
 
 /**
  * 家庭所有者密码恢复命令行工具。
@@ -36,7 +35,7 @@ class OwnerRecoveryCommand implements org.springframework.boot.CommandLineRunner
      * @param args 命令行参数（未使用）
      */
     @Override
-    public void run(String... args) {
+    public void run(@NonNull String... args) {
         var household = householdMapper.selectById((short) 1);
         if (household == null) {
             System.err.println("household not initialized");

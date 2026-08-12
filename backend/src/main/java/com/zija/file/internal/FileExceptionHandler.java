@@ -14,7 +14,7 @@ class FileExceptionHandler {
 
     @ExceptionHandler(FileTooLargeException.class)
     ProblemDetail handleTooLarge(HttpServletRequest request, FileTooLargeException ex) {
-        return problem(request, HttpStatus.PAYLOAD_TOO_LARGE, "文件过大", "FILE_TOO_LARGE");
+        return problem(request, HttpStatus.CONTENT_TOO_LARGE, "文件过大", "FILE_TOO_LARGE");
     }
 
     @ExceptionHandler(FileMediaTypeUnsupportedException.class)
@@ -24,7 +24,7 @@ class FileExceptionHandler {
 
     @ExceptionHandler(FileSignatureMismatchException.class)
     ProblemDetail handleMismatch(HttpServletRequest request, FileSignatureMismatchException ex) {
-        return problem(request, HttpStatus.UNPROCESSABLE_ENTITY, "文件签名不匹配", "FILE_SIGNATURE_MISMATCH");
+        return problem(request, HttpStatus.UNPROCESSABLE_CONTENT, "文件签名不匹配", "FILE_SIGNATURE_MISMATCH");
     }
 
     private ProblemDetail problem(HttpServletRequest request, HttpStatus status, String title, String errorCode) {

@@ -7,7 +7,6 @@ import com.zija.identity.internal.exception.InvalidCredentialsException;
 import com.zija.identity.internal.exception.UsernameAlreadyExistsException;
 import com.zija.identity.internal.persistence.AccountEntity;
 import com.zija.identity.internal.persistence.AccountMapper;
-import com.zija.system.SystemApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,7 +22,6 @@ class IdentityServiceTest {
 
     private AccountMapper accountMapper;
     private PasswordEncoder passwordEncoder;
-    private SystemApi systemApi;
     private ZijaSessionInvalidator sessionInvalidator;
     private IdentityService service;
 
@@ -31,9 +29,8 @@ class IdentityServiceTest {
     void setUp() {
         accountMapper = mock(AccountMapper.class);
         passwordEncoder = mock(PasswordEncoder.class);
-        systemApi = mock(SystemApi.class);
         sessionInvalidator = mock(ZijaSessionInvalidator.class);
-        service = new IdentityService(accountMapper, passwordEncoder, systemApi, sessionInvalidator);
+        service = new IdentityService(accountMapper, passwordEncoder, sessionInvalidator);
     }
 
     @Test

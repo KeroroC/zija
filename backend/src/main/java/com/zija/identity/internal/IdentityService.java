@@ -7,7 +7,6 @@ import com.zija.identity.internal.exception.InvalidCredentialsException;
 import com.zija.identity.internal.exception.UsernameAlreadyExistsException;
 import com.zija.identity.internal.persistence.AccountEntity;
 import com.zija.identity.internal.persistence.AccountMapper;
-import com.zija.system.SystemApi;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,18 +30,15 @@ class IdentityService implements IdentityApi {
 
     private final AccountMapper accountMapper;
     private final PasswordEncoder passwordEncoder;
-    private final SystemApi systemApi;
     private final ZijaSessionInvalidator sessionInvalidator;
 
     IdentityService(
             AccountMapper accountMapper,
             PasswordEncoder passwordEncoder,
-            SystemApi systemApi,
             ZijaSessionInvalidator sessionInvalidator
     ) {
         this.accountMapper = accountMapper;
         this.passwordEncoder = passwordEncoder;
-        this.systemApi = systemApi;
         this.sessionInvalidator = sessionInvalidator;
     }
 
@@ -144,7 +140,7 @@ class IdentityService implements IdentityApi {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        var entities = accountMapper.selectBatchIds(ids);
+        var entities = accountMapper.selectByIds(ids);
         return entities.stream()
                 .collect(Collectors.toMap(AccountEntity::getId, this::toInfo));
     }

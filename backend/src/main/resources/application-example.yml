@@ -27,8 +27,9 @@ spring:
   # ---------- Spring Modulith ----------
   modulith:
     events:
-      jdbc-schema-initialization:
-        enabled: false
+      jdbc:
+        schema-initialization:
+          enabled: false
 
   # ---------- 异常响应 (RFC 7807 Problem Details) ----------
   mvc:
@@ -60,10 +61,7 @@ spring:
       mail.smtp.starttls.enable: ${ZIJA_SMTP_TLS:true}
 
   # ---------- 会话 (Session) ----------
-  session:
-    jdbc:
-      initialize-schema: never   # 表结构由 Flyway 管理
-    timeout: 24h
+  # 会话超时由 server.servlet.session.timeout 控制（Spring Session 由 @EnableJdbcHttpSession 配置）
 
 # ---------- 服务器 ----------
 server:

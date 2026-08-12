@@ -2,6 +2,7 @@ package com.zija.identity.internal;
 
 import com.zija.ZijaPrincipal;
 import com.zija.identity.internal.persistence.AccountMapper;
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -32,7 +33,7 @@ class ZijaUserDetailsService implements UserDetailsService {
      * @throws UsernameNotFoundException 如果用户不存在或非活跃状态
      */
     @Override
-    public UserDetails loadUserByUsername(String username) {
+    public @NonNull UserDetails loadUserByUsername(@NonNull String username) {
         var normalized = username.trim().toLowerCase(Locale.ROOT);
         var account = accountMapper.selectByNormalizedUsername(normalized)
                 .orElseThrow(() -> new UsernameNotFoundException("not found"));

@@ -10,7 +10,7 @@ import com.zija.identity.IdentityApi;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
@@ -65,9 +65,7 @@ class MemberController {
      */
     @GetMapping
     @RequireMember
-    List<MemberResponse> list() {
-        var principal = (ZijaPrincipal) SecurityContextHolder
-                .getContext().getAuthentication().getPrincipal();
+    List<MemberResponse> list(@AuthenticationPrincipal ZijaPrincipal principal) {
         var member = householdService.requireActiveMember(principal.getAccountId());
         var members = memberMapper.selectByHousehold(member.householdId());
         if (members.isEmpty()) {
@@ -97,9 +95,8 @@ class MemberController {
      */
     @PutMapping("/{id}/role")
     @RequireOwner
-    void updateRole(@PathVariable UUID id, @Valid @RequestBody UpdateRoleRequest request) {
-        var principal = (ZijaPrincipal) SecurityContextHolder
-                .getContext().getAuthentication().getPrincipal();
+    void updateRole(@AuthenticationPrincipal ZijaPrincipal principal,
+                    @PathVariable UUID id, @Valid @RequestBody UpdateRoleRequest request) {
         memberService.updateRole(principal.getAccountId(), id, request.role());
     }
 
@@ -111,9 +108,8 @@ class MemberController {
      */
     @PutMapping("/{id}/status")
     @RequireAdmin
-    void updateStatus(@PathVariable UUID id, @Valid @RequestBody UpdateStatusRequest request) {
-        var principal = (ZijaPrincipal) SecurityContextHolder
-                .getContext().getAuthentication().getPrincipal();
+    void updateStatus(@AuthenticationPrincipal ZijaPrincipal principal,
+                      @PathVariable UUID id, @Valid @RequestBody UpdateStatusRequest request) {
         memberService.updateStatus(principal.getAccountId(), id, request.status());
     }
 }

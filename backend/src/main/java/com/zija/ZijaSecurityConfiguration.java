@@ -99,9 +99,12 @@ public class ZijaSecurityConfiguration {
     PasswordEncoder passwordEncoder() {
         Map<String, PasswordEncoder> encoders = new HashMap<>();
         encoders.put("bcrypt", new BCryptPasswordEncoder());
-        encoders.put("sha256", new StandardPasswordEncoder());
-        var delegating = new DelegatingPasswordEncoder("bcrypt", encoders);
-        return delegating;
+        // StandardPasswordEncoder 已弃用，但保留用于验证历史 {sha256} 格式哈希；
+        // 新密码一律使用 bcrypt（DelegatingPasswordEncoder 默认前缀）。
+        @SuppressWarnings("deprecation")
+        var legacySha256 = new StandardPasswordEncoder();
+        encoders.put("sha256", legacySha256);
+        return new DelegatingPasswordEncoder("bcrypt", encoders);
     }
 
     @Bean

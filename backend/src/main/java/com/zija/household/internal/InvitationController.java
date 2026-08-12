@@ -5,7 +5,6 @@ import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.Utf8ByteLength;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireAdmin;
-import com.zija.household.internal.persistence.InvitationEntity;
 import com.zija.identity.IdentityApi;
 import com.zija.identity.SessionInfo;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,7 +15,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -91,9 +90,8 @@ class InvitationController {
      */
     @PostMapping
     @RequireAdmin
-    InvitationInfoResponse create(@Valid @RequestBody CreateInvitationRequest request) {
-        var principal = (ZijaPrincipal) SecurityContextHolder
-                .getContext().getAuthentication().getPrincipal();
+    InvitationInfoResponse create(@AuthenticationPrincipal ZijaPrincipal principal,
+                                  @Valid @RequestBody CreateInvitationRequest request) {
         var member = householdService.requireActiveMember(principal.getAccountId());
         var role = HouseholdApi.MemberRole.valueOf(request.role());
 
@@ -141,7 +139,7 @@ class InvitationController {
                 identityApi, memberService);
         var authentication = sessionAuth.authenticate(request.username().trim().toLowerCase(),
                 request.password(), httpRequest, httpResponse);
-        var principal = (ZijaPrincipal) authentication.getPrincipal();
+        var principal = ZijaSessionAuthenticationSupport.requirePrincipal(authentication);
         return new SessionInfo(true, principal.getAccountId(),
                 principal.getUsername(), principal.getDisplayName());
     }

@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -83,7 +84,7 @@ class IdentityController {
             var authentication = sessionAuth.authenticate(
                     normalized, request.password(), httpRequest, httpResponse);
             rateLimiter.recordSuccess(normalized);
-            var principal = (ZijaPrincipal) authentication.getPrincipal();
+            var principal = ZijaSessionAuthenticationSupport.requirePrincipal(authentication);
             systemApi.recordAudit(new SystemApi.AuditEvent(
                     "LOGIN_SUCCESS", "SUCCESS", null,
                     principal.getAccountId(), null,
@@ -173,11 +174,10 @@ class IdentityController {
      */
     @PutMapping("/password")
     void changePassword(
+            @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody ChangePasswordRequest request,
             HttpServletRequest httpRequest
     ) {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        var principal = (ZijaPrincipal) authentication.getPrincipal();
         identityService.changePassword(principal.getAccountId(),
                 new IdentityApi.ChangePasswordCommand(
                         request.currentPassword(), request.newPassword()));
@@ -199,12 +199,11 @@ class IdentityController {
      */
     @PutMapping("/display-name")
     void changeDisplayName(
+            @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody UpdateDisplayNameRequest request,
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse
     ) {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        var principal = (ZijaPrincipal) authentication.getPrincipal();
         var updated = identityService.updateDisplayName(
                 principal.getAccountId(), request.displayName());
         var refreshed = new ZijaPrincipal(

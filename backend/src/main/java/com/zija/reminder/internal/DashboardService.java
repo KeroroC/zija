@@ -32,9 +32,8 @@ class DashboardService {
     @Transactional(readOnly = true)
     public DashboardView dashboard(UUID householdId, int days, int topN) {
         OffsetDateTime now = OffsetDateTime.now(clock);
-        OffsetDateTime from = now;
         OffsetDateTime to = now.plusDays(days);
-        var expiry = taskMapper.expiryWithinDays(householdId, from, to, now, topN);
+        var expiry = taskMapper.expiryWithinDays(householdId, now, to, now, topN);
         var lowStock = taskMapper.lowStockOpenTasks(householdId, now, topN);
         var priority = taskMapper.priorityTasks(householdId, now, topN);
 
@@ -42,7 +41,7 @@ class DashboardService {
 
         return new DashboardView(
                 new DashboardGroup(
-                        countAllExpiryWithinDays(householdId, from, to),
+                        countAllExpiryWithinDays(householdId, now, to),
                         expiry.stream().map(t -> toItem(t, names)).toList()),
                 new DashboardGroup(
                         countAllLowStock(householdId),
@@ -54,6 +53,7 @@ class DashboardService {
         );
     }
 
+    @SafeVarargs
     private Map<UUID, String> loadItemNames(UUID hh, List<TaskEntity>... groups) {
         return catalogApi.itemNames(hh, Arrays.stream(groups)
                 .flatMap(List::stream)

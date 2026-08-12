@@ -9,9 +9,7 @@ import com.zija.inventory.internal.persistence.LotMapper;
 import com.zija.inventory.internal.persistence.MovementMapper;
 import com.zija.inventory.internal.persistence.StockPositionEntity;
 import com.zija.inventory.internal.persistence.StockPositionMapper;
-import com.zija.inventory.internal.persistence.StocktakeEntity;
 import com.zija.inventory.internal.persistence.StocktakeItemEntity;
-import com.zija.system.SystemApi;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,12 +36,10 @@ import java.util.UUID;
 class InventoryService implements InventoryApi {
 
     private final HouseholdApi householdApi;
-    private final SystemApi systemApi;
     private final LotService lotService;
     private final StockCommandService stockCommandService;
     private final ReversalService reversalService;
     private final ConsistencyCheckService consistencyCheckService;
-    private final IdempotencyService idempotencyService;
     private final StocktakeService stocktakeService;
     private final LotMapper lotMapper;
     private final MovementMapper movementMapper;
@@ -51,24 +47,20 @@ class InventoryService implements InventoryApi {
     private final ItemStockAggregateMapper itemStockAggregateMapper;
 
     InventoryService(HouseholdApi householdApi,
-                     SystemApi systemApi,
                      LotService lotService,
                      StockCommandService stockCommandService,
                      ReversalService reversalService,
                      ConsistencyCheckService consistencyCheckService,
-                     IdempotencyService idempotencyService,
                      StocktakeService stocktakeService,
                      LotMapper lotMapper,
                      MovementMapper movementMapper,
                      StockPositionMapper stockPositionMapper,
                      ItemStockAggregateMapper itemStockAggregateMapper) {
         this.householdApi = householdApi;
-        this.systemApi = systemApi;
         this.lotService = lotService;
         this.stockCommandService = stockCommandService;
         this.reversalService = reversalService;
         this.consistencyCheckService = consistencyCheckService;
-        this.idempotencyService = idempotencyService;
         this.stocktakeService = stocktakeService;
         this.lotMapper = lotMapper;
         this.movementMapper = movementMapper;
