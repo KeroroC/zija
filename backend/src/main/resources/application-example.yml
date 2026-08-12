@@ -35,6 +35,15 @@ spring:
     problemdetails:
       enabled: true
 
+  # ---------- 字符编码 (Servlet) ----------
+  # force=true 让所有响应（包括直接使用 HttpServletResponse.getWriter() 的
+  # Security 异常处理器）都以 UTF-8 输出。Servlet 规范默认 ISO-8859-1，
+  # 会把中文错误文案退化成 "????"。
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
   # ---------- 优雅停机 ----------
   lifecycle:
     timeout-per-shutdown-phase: 20s
@@ -69,12 +78,6 @@ server:
       # 生产环境如有固定 Nginx/Gateway IP，可替换为更精确的表达式。
       internal-proxies: 10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.1[6-9]\.\d{1,3}\.\d{1,3}|172\.2[0-9]\.\d{1,3}\.\d{1,3}|172\.3[0-1]\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0:0:0:0:0:0:0:1
   servlet:
-    encoding:
-      charset: UTF-8
-      # force=true 让所有响应（包括直接使用 HttpServletResponse.getWriter() 的
-      # Security 异常处理器）都以 UTF-8 输出。Servlet 规范默认 ISO-8859-1，
-      # 会把中文错误文案退化成 "????"。
-      force: true
     session:
       timeout: 24h
       cookie:
