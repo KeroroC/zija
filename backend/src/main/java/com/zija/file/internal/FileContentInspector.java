@@ -23,7 +23,7 @@ class FileContentInspector {
     private static final Set<String> ALLOWED_TYPES = Set.of(
             "image/jpeg", "image/png", "image/webp"
     );
-    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\p{Cntrl}]");
+    private static final Pattern CONTROL_CHARS = Pattern.compile("\\p{Cntrl}");
     private static final Pattern PATH_SEPARATOR = Pattern.compile("[/\\\\]");
 
     /**
