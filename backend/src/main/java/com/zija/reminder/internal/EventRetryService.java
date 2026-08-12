@@ -22,7 +22,7 @@ import java.util.UUID;
  * 超过最大失败次数（10）后标记为 abandoned 并写 poison 审计。
  */
 @Service
-public class EventRetryService {
+class EventRetryService {
 
     private static final Logger log = LoggerFactory.getLogger(EventRetryService.class);
     private static final int MAX_FAILURES = 10;
@@ -31,9 +31,9 @@ public class EventRetryService {
     private final ReminderEventListener listener;
     private final SystemApi systemApi;
 
-    public EventRetryService(DeadLetterMapper deadLetterMapper,
-                              ReminderEventListener listener,
-                              SystemApi systemApi) {
+    EventRetryService(DeadLetterMapper deadLetterMapper,
+                      ReminderEventListener listener,
+                      SystemApi systemApi) {
         this.deadLetterMapper = deadLetterMapper;
         this.listener = listener;
         this.systemApi = systemApi;
