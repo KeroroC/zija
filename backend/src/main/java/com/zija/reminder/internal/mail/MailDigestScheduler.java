@@ -2,18 +2,17 @@ package com.zija.reminder.internal.mail;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zija.household.HouseholdApi;
+import com.zija.reminder.internal.MemberEmails;
 import com.zija.reminder.internal.persistence.TaskMapper;
 import com.zija.system.SystemApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 每日提醒摘要邮件调度器。
@@ -32,20 +31,21 @@ class MailDigestScheduler {
     private final HouseholdApi householdApi;
     private final TaskMapper taskMapper;
     private final SystemApi systemApi;
-    private final JdbcTemplate jdbcTemplate;
+    private final MemberEmails memberEmails;
     private final Clock clock;
 
     public MailDigestScheduler(MailSettingMapper mailSettingMapper, MailService mailService,
                                MailTemplateRenderer templateRenderer, HouseholdApi householdApi,
                                TaskMapper taskMapper, SystemApi systemApi,
-                               JdbcTemplate jdbcTemplate, @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
+                               MemberEmails memberEmails,
+                               @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
         this.mailSettingMapper = mailSettingMapper;
         this.mailService = mailService;
         this.templateRenderer = templateRenderer;
         this.householdApi = householdApi;
         this.taskMapper = taskMapper;
         this.systemApi = systemApi;
-        this.jdbcTemplate = jdbcTemplate;
+        this.memberEmails = memberEmails;
         this.clock = clock;
     }
 
@@ -81,7 +81,7 @@ class MailDigestScheduler {
         var householdInfo = householdApi.findHousehold();
         String householdName = householdInfo.map(h -> h.name()).orElse("知家");
 
-        List<String> emails = findMemberEmails(householdId, setting.getRecipientRoles());
+        List<String> emails = memberEmails.findByRoles(householdId, setting.getRecipientRoles());
         if (emails.isEmpty()) {
             log.debug("No recipient emails for household {}, skipping", householdId);
             return;
@@ -124,28 +124,5 @@ class MailDigestScheduler {
                 Map.of("recipients", String.valueOf(emails.size()))));
 
         log.info("Digest sent for household {} to {} recipients", householdId, emails.size());
-    }
-
-    /**
-     * 通过 JdbcTemplate 查询符合角色条件的家庭成员邮箱。
-     * <p>
-     * reminder 模块不允许依赖 identity 模块，因此直接查询 account 表。
-     */
-    List<String> findMemberEmails(UUID householdId, List<String> roles) {
-        if (roles == null || roles.isEmpty()) return List.of();
-
-        String placeholders = roles.stream().map(r -> "?").collect(Collectors.joining(","));
-        String sql = """
-                SELECT a.email FROM member m
-                JOIN account a ON a.id = m.account_id
-                WHERE m.household_id = ? AND m.role IN (%s) AND m.status = 'ACTIVE'
-                  AND a.email IS NOT NULL AND a.email != ''
-                """.formatted(placeholders);
-
-        List<Object> params = new ArrayList<>();
-        params.add(householdId);
-        params.addAll(roles);
-
-        return jdbcTemplate.queryForList(sql, String.class, params.toArray());
     }
 }

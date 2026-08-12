@@ -9,7 +9,6 @@ import com.zija.reminder.internal.persistence.*;
 import com.zija.system.SystemApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +19,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 提醒任务重算入口（事件与每日扫描共用）。
@@ -40,7 +38,7 @@ class ReminderReconciler {
     private final MailSettingService mailSettingService;
     private final MailTemplateRenderer templateRenderer;
     private final SystemApi systemApi;
-    private final JdbcTemplate jdbcTemplate;
+    private final MemberEmails memberEmails;
     private final Clock clock;
 
     public ReminderReconciler(ReminderService reminderService, CatalogApi catalogApi,
@@ -48,13 +46,14 @@ class ReminderReconciler {
                                NotificationMapper notificationMapper,
                                MailService mailService, MailSettingService mailSettingService,
                                MailTemplateRenderer templateRenderer, SystemApi systemApi,
-                               JdbcTemplate jdbcTemplate, @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
+                               MemberEmails memberEmails,
+                               @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
         this.reminderService = reminderService; this.catalogApi = catalogApi;
         this.inventoryApi = inventoryApi; this.taskMapper = taskMapper;
         this.notificationMapper = notificationMapper;
         this.mailService = mailService; this.mailSettingService = mailSettingService;
         this.templateRenderer = templateRenderer; this.systemApi = systemApi;
-        this.jdbcTemplate = jdbcTemplate; this.clock = clock;
+        this.memberEmails = memberEmails; this.clock = clock;
     }
 
     @Transactional
@@ -86,7 +85,7 @@ class ReminderReconciler {
         var lot = lotMap.get(lotId);
         if (lot == null || lot.totalQuantity().signum() <= 0) {
             // Lot consumed or not found: auto-close any open expiry task
-            closeExistingExpiry(householdId, lotId, now, "LOT_CONSUMED");
+            closeExistingTask(householdId, "EXPIRY", lotId, null, now, "LOT_CONSUMED", "临期任务已自动关闭");
             return;
         }
         if (lot.expiryDate() == null) return;
@@ -94,7 +93,7 @@ class ReminderReconciler {
         var eff = ReminderRuleResolver.resolveExpiry(item, rule);
         if (!eff.enabled()) {
             // Rule disabled: auto-close if there's an existing task
-            closeExistingExpiry(householdId, lotId, now, "LOT_RECOVERED");
+            closeExistingTask(householdId, "EXPIRY", lotId, null, now, "LOT_RECOVERED", "临期任务已自动关闭");
             return;
         }
         long daysLeft = ChronoUnit.DAYS.between(today, lot.expiryDate());
@@ -102,7 +101,7 @@ class ReminderReconciler {
         String severity = SeverityClassifier.expiry(maxDay, daysLeft);
         if (severity == null) {
             // 不在提醒窗口（如规则窗口收窄后批次落出窗口）：关闭既有 OPEN 任务，避免残留过期任务
-            closeExistingExpiry(householdId, lotId, now, "OUT_OF_WINDOW");
+            closeExistingTask(householdId, "EXPIRY", lotId, null, now, "OUT_OF_WINDOW", "临期任务已自动关闭");
             return;
         }
 
@@ -133,8 +132,9 @@ class ReminderReconciler {
         }
     }
 
-    private void closeExistingExpiry(UUID householdId, UUID lotId, OffsetDateTime now, String reason) {
-        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "EXPIRY", lotId, null);
+    private void closeExistingTask(UUID householdId, String kind, UUID lotId, UUID itemId,
+                                   OffsetDateTime now, String reason, String message) {
+        var existing = taskMapper.lockOpenByKindAndTarget(householdId, kind, lotId, itemId);
         if (existing == null) return;
         existing.setStatus("DONE");
         var snap = existing.getThresholdSnapshot() == null ? new HashMap<String, Object>() : new HashMap<>(existing.getThresholdSnapshot());
@@ -143,7 +143,7 @@ class ReminderReconciler {
         existing.setSnoozedUntil(null);
         existing.setLastReconciledAt(now); existing.setUpdatedAt(now);
         taskMapper.updateForReconcile(existing);
-        writeNotification(householdId, "TASK_CLOSED", existing.getId(), "临期任务已自动关闭");
+        writeNotification(householdId, "TASK_CLOSED", existing.getId(), message);
     }
 
     private void reconcileLowStockItem(UUID householdId, UUID itemId, ReminderService.RuleView rule, OffsetDateTime now) {
@@ -152,7 +152,7 @@ class ReminderReconciler {
         BigDecimal qty = inventoryApi.currentTotalStockOfItem(householdId, itemId);
 
         if (!eff.enabled()) {
-            closeExistingLowStock(householdId, itemId, now, "RECOVERED");
+            closeExistingTask(householdId, "LOW_STOCK", null, itemId, now, "RECOVERED", "低库存任务已自动关闭");
             return;
         }
         BigDecimal threshold = eff.threshold();
@@ -186,21 +186,8 @@ class ReminderReconciler {
             }
         } else {
             // Stock recovered, auto-close
-            closeExistingLowStock(householdId, itemId, now, "RECOVERED");
+            closeExistingTask(householdId, "LOW_STOCK", null, itemId, now, "RECOVERED", "低库存任务已自动关闭");
         }
-    }
-
-    private void closeExistingLowStock(UUID householdId, UUID itemId, OffsetDateTime now, String reason) {
-        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "LOW_STOCK", null, itemId);
-        if (existing == null) return;
-        existing.setStatus("DONE");
-        var snap = existing.getThresholdSnapshot() == null ? new HashMap<String, Object>() : new HashMap<>(existing.getThresholdSnapshot());
-        snap.put("autoClosed", true); snap.put("reason", reason);
-        existing.setThresholdSnapshot(snap);
-        existing.setSnoozedUntil(null);
-        existing.setLastReconciledAt(now); existing.setUpdatedAt(now);
-        taskMapper.updateForReconcile(existing);
-        writeNotification(householdId, "TASK_CLOSED", existing.getId(), "低库存任务已自动关闭");
     }
 
     private void writeNotification(UUID householdId, String scope, UUID taskId, String title) {
@@ -220,7 +207,7 @@ class ReminderReconciler {
             var mailSetting = mailSettingService.getOrCreate(householdId);
             if (!mailSetting.urgentEnabled()) return;
 
-            List<String> emails = findMemberEmails(householdId, mailSetting.recipientRoles());
+            List<String> emails = memberEmails.findByRoles(householdId, mailSetting.recipientRoles());
             if (emails.isEmpty()) return;
 
             String html = templateRenderer.renderUrgent(Map.of(
@@ -246,23 +233,5 @@ class ReminderReconciler {
                 log.warn("Audit write also failed: {}", auditEx.getMessage());
             }
         }
-    }
-
-    /**
-     * 通过 JdbcTemplate 查询符合角色条件的家庭成员邮箱。
-     */
-    private List<String> findMemberEmails(UUID householdId, List<String> roles) {
-        if (roles == null || roles.isEmpty()) return List.of();
-        String placeholders = roles.stream().map(r -> "?").collect(Collectors.joining(","));
-        String sql = """
-                SELECT a.email FROM member m
-                JOIN account a ON a.id = m.account_id
-                WHERE m.household_id = ? AND m.role IN (%s) AND m.status = 'ACTIVE'
-                  AND a.email IS NOT NULL AND a.email != ''
-                """.formatted(placeholders);
-        List<Object> params = new ArrayList<>();
-        params.add(householdId);
-        params.addAll(roles);
-        return jdbcTemplate.queryForList(sql, String.class, params.toArray());
     }
 }

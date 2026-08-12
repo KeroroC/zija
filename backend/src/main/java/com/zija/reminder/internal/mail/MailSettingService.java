@@ -1,6 +1,7 @@
 package com.zija.reminder.internal.mail;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.reminder.internal.LazyInit;
 import com.zija.reminder.internal.exception.MailSettingVersionConflictException;
 import com.zija.system.SystemApi;
 import org.springframework.stereotype.Service;
@@ -49,8 +50,14 @@ public class MailSettingService {
     public MailSettingView getOrCreate(UUID householdId) {
         var wrapper = new LambdaQueryWrapper<MailSettingEntity>()
                 .eq(MailSettingEntity::getHouseholdId, householdId);
-        var existing = mailSettingMapper.selectOne(wrapper);
-        if (existing != null) return toView(existing);
+        MailSettingEntity e = LazyInit.getOrCreate(
+                () -> mailSettingMapper.selectOne(wrapper),
+                () -> createDefaultSetting(householdId),
+                mailSettingMapper::insert);
+        return toView(e);
+    }
+
+    private MailSettingEntity createDefaultSetting(UUID householdId) {
         var e = new MailSettingEntity();
         e.setId(UUID.randomUUID());
         e.setHouseholdId(householdId);
@@ -61,13 +68,7 @@ public class MailSettingService {
         e.setCreatedAt(OffsetDateTime.now());
         e.setUpdatedAt(OffsetDateTime.now());
         e.setVersion(0);
-        try {
-            mailSettingMapper.insert(e);
-        } catch (org.springframework.dao.DuplicateKeyException dup) {
-            // concurrent creation: re-read
-            return toView(mailSettingMapper.selectOne(wrapper));
-        }
-        return toView(e);
+        return e;
     }
 
     /** Update mail settings with optimistic lock. */

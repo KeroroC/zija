@@ -52,8 +52,14 @@ class ReminderService {
     public RuleView getOrCreateRule(UUID householdId) {
         var wrapper = new LambdaQueryWrapper<HouseholdRuleEntity>()
                 .eq(HouseholdRuleEntity::getHouseholdId, householdId);
-        var existing = ruleMapper.selectOne(wrapper);
-        if (existing != null) return toView(existing);
+        HouseholdRuleEntity e = LazyInit.getOrCreate(
+                () -> ruleMapper.selectOne(wrapper),
+                () -> createDefaultRule(householdId),
+                ruleMapper::insert);
+        return toView(e);
+    }
+
+    private HouseholdRuleEntity createDefaultRule(UUID householdId) {
         var e = new HouseholdRuleEntity();
         e.setId(UUID.randomUUID());
         e.setHouseholdId(householdId);
@@ -64,13 +70,7 @@ class ReminderService {
         e.setCreatedAt(OffsetDateTime.now());
         e.setUpdatedAt(OffsetDateTime.now());
         e.setVersion(0);
-        try {
-            ruleMapper.insert(e);
-        } catch (org.springframework.dao.DuplicateKeyException dup) {
-            // concurrent creation: re-read
-            return toView(ruleMapper.selectOne(wrapper));
-        }
-        return toView(e);
+        return e;
     }
 
     @Transactional
