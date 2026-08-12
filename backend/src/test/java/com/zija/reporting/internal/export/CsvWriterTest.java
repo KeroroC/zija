@@ -62,6 +62,27 @@ class CsvWriterTest {
     }
 
     @Test
+    void formulaLeadingCharactersAreNeutralized() {
+        assertThat(CsvWriter.escapeField("=1+1")).isEqualTo("'=1+1");
+        assertThat(CsvWriter.escapeField("+SUM(A1)")).isEqualTo("'+SUM(A1)");
+        assertThat(CsvWriter.escapeField("-2+3")).isEqualTo("'-2+3");
+        assertThat(CsvWriter.escapeField("@cmd")).isEqualTo("'@cmd");
+        assertThat(CsvWriter.escapeField("\tcmd")).isEqualTo("'\tcmd");
+        assertThat(CsvWriter.escapeField("plain")).isEqualTo("plain");
+        assertThat(CsvWriter.escapeField("")).isEmpty();
+    }
+
+    @Test
+    void formulaLeadingValueInsideQuotesIsStillNeutralized() throws IOException {
+        var out = new ByteArrayOutputStream();
+        var row = new LinkedHashMap<String, Object>();
+        row.put("name", "=HYPERLINK(\"http://evil\",\"x\")");
+        CsvWriter.write(out, List.of("name"), List.of(row));
+        String csv = out.toString(StandardCharsets.UTF_8);
+        assertThat(csv).contains("'=HYPERLINK");
+    }
+
+    @Test
     void oneHundredThousandRowsDoesNotThrow() throws IOException {
         var out = new ByteArrayOutputStream();
         var headers = List.of("id", "name");

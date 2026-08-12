@@ -1,7 +1,6 @@
 package com.zija.reminder.internal;
 
 import com.zija.reminder.internal.exception.*;
-import com.zija.reminder.internal.exception.MailSettingVersionConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -28,12 +27,12 @@ class ReminderExceptionHandler {
 
     @ExceptionHandler(ReminderRuleExpiryDaysInvalidException.class)
     ProblemDetail handleExpiryDays(HttpServletRequest r) {
-        return problem(r, HttpStatus.UNPROCESSABLE_ENTITY, "临期天数无效", "REMINDER_RULE_EXPIRY_DAYS_INVALID");
+        return problem(r, HttpStatus.UNPROCESSABLE_CONTENT, "临期天数无效", "REMINDER_RULE_EXPIRY_DAYS_INVALID");
     }
 
     @ExceptionHandler(ReminderRuleLowStockInvalidException.class)
     ProblemDetail handleLowStock(HttpServletRequest r) {
-        return problem(r, HttpStatus.UNPROCESSABLE_ENTITY, "低库存阈值无效", "REMINDER_RULE_LOW_STOCK_INVALID");
+        return problem(r, HttpStatus.UNPROCESSABLE_CONTENT, "低库存阈值无效", "REMINDER_RULE_LOW_STOCK_INVALID");
     }
 
     @ExceptionHandler(ReminderTaskNotFoundException.class)
@@ -48,12 +47,12 @@ class ReminderExceptionHandler {
 
     @ExceptionHandler(ReminderTaskSnoozeUntilInvalidException.class)
     ProblemDetail handleSnoozeUntil(HttpServletRequest r) {
-        return problem(r, HttpStatus.UNPROCESSABLE_ENTITY, "稍后提醒时间无效", "REMINDER_TASK_SNOOZE_UNTIL_INVALID");
+        return problem(r, HttpStatus.UNPROCESSABLE_CONTENT, "稍后提醒时间无效", "REMINDER_TASK_SNOOZE_UNTIL_INVALID");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleIllegalArgument(HttpServletRequest r, IllegalArgumentException ex) {
-        return problem(r, HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), "REMINDER_INVALID_ARGUMENT");
+        return problem(r, HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage(), "REMINDER_INVALID_ARGUMENT");
     }
 
     private ProblemDetail problem(HttpServletRequest request, HttpStatus status, String title, String errorCode) {

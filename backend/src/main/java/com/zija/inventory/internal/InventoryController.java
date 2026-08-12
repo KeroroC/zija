@@ -191,7 +191,7 @@ class InventoryController {
         }
 
         var pageObj = new Page<com.zija.inventory.internal.persistence.MovementEntity>(page, pageSize);
-        var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, (UUID) null, fromDt, toDt, "created_at DESC");
+        var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, null, fromDt, toDt, "created_at DESC");
 
         var response = new LinkedHashMap<String, Object>();
         response.put("items", result.getRecords().stream().map(this::toMovementEntityResponse).toList());
@@ -687,7 +687,7 @@ class InventoryController {
     ) {
         @AssertTrue(message = "fromLocationId and toLocationId must be different")
         private boolean isDifferentLocations() {
-            return fromLocationId == null || toLocationId == null || !fromLocationId.equals(toLocationId);
+            return !fromLocationId.equals(toLocationId);
         }
     }
 

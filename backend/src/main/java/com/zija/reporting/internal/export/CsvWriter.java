@@ -43,13 +43,25 @@ public class CsvWriter {
 
     /**
      * RFC 4180 转义：含逗号/双引号/换行的字段用双引号包裹，内部双引号转义为两个双引号。
+     * <p>
+     * 同时防御 CSV 公式注入（XSS 变体）：以 {@code =}, {@code +}, {@code -}, {@code @} 或
+     * 制表符/回车开头的字段会被 Excel/LibreOffice 当作公式执行，统一以单引号前缀中和。
      */
     static String escapeField(String field) {
         if (field == null) return "";
+        if (needsFormulaNeutralization(field)) {
+            field = "'" + field;
+        }
         if (field.contains(",") || field.contains("\"") || field.contains("\n")
                 || field.contains("\r")) {
             return "\"" + field.replace("\"", "\"\"") + "\"";
         }
         return field;
+    }
+
+    private static boolean needsFormulaNeutralization(String field) {
+        if (field.isEmpty()) return false;
+        char c = field.charAt(0);
+        return c == '=' || c == '+' || c == '-' || c == '@' || c == '\t' || c == '\r';
     }
 }

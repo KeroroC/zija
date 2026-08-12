@@ -13,8 +13,9 @@ spring:
     locations: classpath:db/migration
   modulith:
     events:
-      jdbc-schema-initialization:
-        enabled: false
+      jdbc:
+        schema-initialization:
+          enabled: false
   mvc:
     problemdetails:
       enabled: true
@@ -35,10 +36,6 @@ spring:
     properties:
       mail.smtp.auth: true
       mail.smtp.starttls.enable: ${ZIJA_SMTP_TLS:true}
-  session:
-    jdbc:
-      initialize-schema: never
-    timeout: 24h
 
 server:
   shutdown: graceful

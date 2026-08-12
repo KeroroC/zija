@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
  * 对受影响 lot（临期）与 item（低库存）计算是否需新建/更新/自动关闭任务，同事务内写通知。
  */
 @Service
-public class ReminderReconciler {
+class ReminderReconciler {
 
     private static final Logger log = LoggerFactory.getLogger(ReminderReconciler.class);
 

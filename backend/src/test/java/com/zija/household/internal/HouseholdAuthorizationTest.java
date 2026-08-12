@@ -19,12 +19,12 @@ class HouseholdAuthorizationTest {
     @Test
     void memberEndpointsDeclareOperationSpecificAuthority() throws NoSuchMethodException {
         assertThat(MemberController.class.isAnnotationPresent(RequireAdmin.class)).isFalse();
-        assertThat(MemberController.class.getDeclaredMethod("list")
+        assertThat(MemberController.class.getDeclaredMethod("list", ZijaPrincipal.class)
                 .isAnnotationPresent(RequireMember.class)).isTrue();
-        assertThat(MemberController.class.getDeclaredMethod("updateRole", UUID.class,
+        assertThat(MemberController.class.getDeclaredMethod("updateRole", ZijaPrincipal.class, UUID.class,
                         MemberController.UpdateRoleRequest.class)
                 .isAnnotationPresent(RequireOwner.class)).isTrue();
-        assertThat(MemberController.class.getDeclaredMethod("updateStatus", UUID.class,
+        assertThat(MemberController.class.getDeclaredMethod("updateStatus", ZijaPrincipal.class, UUID.class,
                         MemberController.UpdateStatusRequest.class)
                 .isAnnotationPresent(RequireAdmin.class)).isTrue();
     }

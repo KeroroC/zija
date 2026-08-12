@@ -1,5 +1,6 @@
 package com.zija;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -44,6 +45,7 @@ public final class ZijaPrincipal implements UserDetails {
     public String getName() { return accountId.toString(); }
 
     @Override
+    @NonNull
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return Collections.emptyList();
     }
@@ -52,6 +54,7 @@ public final class ZijaPrincipal implements UserDetails {
     public String getPassword() { return passwordHash; }
 
     @Override
+    @NonNull
     public String getUsername() { return username; }
 
     /** 返回用户显示名称（昵称）。 */

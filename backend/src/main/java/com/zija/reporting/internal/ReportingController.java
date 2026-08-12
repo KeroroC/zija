@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -152,10 +153,19 @@ class ReportingController {
             throw new IllegalArgumentException("Unknown reportKey: " + reportKey);
         }
 
+        // 白名单过滤请求参数：仅保留导出服务支持的参数键，拒绝未知键回显到 CSV 输出
+        Map<String, String> safeParams = new LinkedHashMap<>();
+        for (String key : SUPPORTED_EXPORT_PARAMS) {
+            String value = params.get(key);
+            if (value != null) {
+                safeParams.put(key, value);
+            }
+        }
+
         // 响应头不应回显用户输入：filename 仅由服务端常量生成，不含 @PathVariable。
         String filename = "zija-export-" + System.currentTimeMillis() + ".csv";
         StreamingResponseBody body = out -> exportService.exportToStream(
-                member.householdId(), reportKey, params, out);
+                member.householdId(), reportKey, safeParams, out);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
@@ -163,6 +173,11 @@ class ReportingController {
                         ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build().toString())
                 .body(body);
     }
+
+    /** 导出接口允许的请求参数键白名单（与 ExportService 支持的参数一致）。 */
+    private static final Set<String> SUPPORTED_EXPORT_PARAMS = Set.of(
+            "q", "type", "itemId", "categoryId", "locationId", "brandId",
+            "withinDays", "from", "to", "operatorAccountId");
 
     // --- 投影重建（ADMIN+） ---
 

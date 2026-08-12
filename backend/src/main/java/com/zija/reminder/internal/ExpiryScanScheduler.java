@@ -3,7 +3,6 @@ package com.zija.reminder.internal;
 import com.zija.catalog.CatalogApi;
 import com.zija.household.HouseholdApi;
 import com.zija.inventory.InventoryApi;
-import com.zija.reminder.internal.persistence.TaskEntity;
 import com.zija.reminder.internal.persistence.TaskMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

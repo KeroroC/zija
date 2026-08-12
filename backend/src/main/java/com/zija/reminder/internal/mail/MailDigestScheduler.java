@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  * 发送失败时写入 MAIL_SEND_FAILED 审计事件，不阻塞其他家庭的处理。
  */
 @Service
-public class MailDigestScheduler {
+class MailDigestScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(MailDigestScheduler.class);
 

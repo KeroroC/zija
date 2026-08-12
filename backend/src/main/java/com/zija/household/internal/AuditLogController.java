@@ -1,7 +1,6 @@
 package com.zija.household.internal;
 
 import com.zija.household.RequireAdmin;
-import com.zija.household.RequireMember;
 import com.zija.identity.IdentityApi;
 import com.zija.system.SystemApi;
 import org.springframework.web.bind.annotation.GetMapping;
