@@ -35,7 +35,7 @@ class OwnerRecoveryCommand implements org.springframework.boot.CommandLineRunner
      * @param args 命令行参数（未使用）
      */
     @Override
-    public void run(@NonNull String... args) {
+    public void run(@NonNull String @NonNull ... args) {
         var household = householdMapper.selectById((short) 1);
         if (household == null) {
             System.err.println("household not initialized");
