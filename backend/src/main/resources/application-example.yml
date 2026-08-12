@@ -1,0 +1,159 @@
+# =====================================================================
+# 知家 (zija) — 后端完整示例配置
+# 覆盖 application.yml 全部可配置项；带 ${ZIJA_...:默认值} 的环境变量占位
+# 使用时复制为 application.yml 并按需调整；未列出的项保持框架默认
+# =====================================================================
+
+spring:
+  application:
+    name: zija
+
+  # ---------- 数据源 ----------
+  datasource:
+    url: ${ZIJA_DB_URL:jdbc:postgresql://localhost:5432/zija}
+    username: ${ZIJA_DB_USERNAME:zija}
+    password: ${ZIJA_DB_PASSWORD:zija}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 1
+      connection-timeout: 30000
+      max-lifetime: 1800000
+
+  # ---------- 数据库迁移 (Flyway) ----------
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  # ---------- Spring Modulith ----------
+  modulith:
+    events:
+      jdbc-schema-initialization:
+        enabled: false
+
+  # ---------- 异常响应 (RFC 7807 Problem Details) ----------
+  mvc:
+    problemdetails:
+      enabled: true
+
+  # ---------- 优雅停机 ----------
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  # ---------- 邮件 (SMTP，可选) ----------
+  # 不配置则 MailCapabilityConfig 不创建 JavaMailSender，邮件功能静默禁用
+  mail:
+    host: ${ZIJA_SMTP_HOST:}
+    port: ${ZIJA_SMTP_PORT:587}
+    username: ${ZIJA_SMTP_USERNAME:}
+    password: ${ZIJA_SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: ${ZIJA_SMTP_TLS:true}
+
+  # ---------- 会话 (Session) ----------
+  session:
+    jdbc:
+      initialize-schema: never   # 表结构由 Flyway 管理
+    timeout: 24h
+
+# ---------- 服务器 ----------
+server:
+  shutdown: graceful
+  # 透传反向代理头（X-Forwarded-Proto / -For），供 Cookie secure 判断与客户端 IP
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      remote-ip-header: X-Forwarded-For
+      # 显式声明信任的反向代理 IP 段（覆盖 Tomcat 默认值）。
+      # 包含 RFC 1918 全部私有网段，确保 Docker Compose 任意自定义子网均可正确解析客户端 IP。
+      # 生产环境如有固定 Nginx/Gateway IP，可替换为更精确的表达式。
+      internal-proxies: 10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.1[6-9]\.\d{1,3}\.\d{1,3}|172\.2[0-9]\.\d{1,3}\.\d{1,3}|172\.3[0-1]\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0:0:0:0:0:0:0:1
+  servlet:
+    encoding:
+      charset: UTF-8
+      # force=true 让所有响应（包括直接使用 HttpServletResponse.getWriter() 的
+      # Security 异常处理器）都以 UTF-8 输出。Servlet 规范默认 ISO-8859-1，
+      # 会把中文错误文案退化成 "????"。
+      force: true
+    session:
+      timeout: 24h
+      cookie:
+        name: ZIJA_SESSION
+        http-only: true
+        same-site: lax
+        # secure: true 由 application-prod.yml 在 prod profile 下开启（仅 HTTPS）
+
+# ---------- 应用信息（系统信息页展示） ----------
+info:
+  app:
+    version: ${ZIJA_VERSION:dev}
+
+# ---------- Actuator ----------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+        liveness:
+          include: livenessState
+      show-details: never
+
+# ---------- MyBatis-Plus ----------
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-handlers-package: com.zija.system.internal.persistence
+  configuration:
+    map-underscore-to-camel-case: true
+    default-statement-timeout: 10
+  global-config:
+    banner: false
+    db-config:
+      id-type: assign_uuid
+
+# ---------- SpringDoc (OpenAPI / Swagger) ----------
+# prod profile 下无论此值如何均强制关闭（见 application-prod.yml）
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: ${ZIJA_SWAGGER_ENABLED:false}
+
+# ---------- 业务配置 ----------
+zija:
+  # 文件存储根目录（容器内挂载卷路径）
+  file:
+    storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}
+
+  # 登录限流
+  login:
+    rate-limit:
+      account-threshold: ${ZIJA_RATE_LIMIT_ACCOUNT_THRESHOLD:5}
+      account-window-minutes: ${ZIJA_RATE_LIMIT_ACCOUNT_WINDOW_MINUTES:5}
+      ip-threshold: ${ZIJA_RATE_LIMIT_IP_THRESHOLD:50}
+      ip-window-minutes: ${ZIJA_RATE_LIMIT_IP_WINDOW_MINUTES:5}
+      max-entries: ${ZIJA_RATE_LIMIT_MAX_ENTRIES:1000}
+
+  # 后台定时任务（时区与 cron；测试环境 cron 置 "-" 禁用）
+  schedule:
+    zone: ${ZIJA_SCHEDULE_ZONE:Asia/Shanghai}
+    expiry-scan: ${ZIJA_SCHEDULE_EXPIRY_SCAN:0 0 3 * * *}              # 每日临期扫描
+    mail-digest: ${ZIJA_SCHEDULE_MAIL_DIGEST:0 30 3 * * *}             # 每日邮件摘要
+    dead-letter-retry: ${ZIJA_SCHEDULE_DEAD_LETTER_RETRY:*/30 * * * * *}   # 事件死信重投
+    reporting-dead-letter-retry: ${ZIJA_SCHEDULE_REPORTING_DLQ_RETRY:*/30 * * * * *}  # 报表死信重投
+
+  # SMTP 邮件（MailCapabilityConfig 直接读取 zija.smtp.*，与 spring.mail.* 二选一即可）
+  smtp:
+    host: ${ZIJA_SMTP_HOST:}
+    port: ${ZIJA_SMTP_PORT:587}
+    username: ${ZIJA_SMTP_USERNAME:}
+    password: ${ZIJA_SMTP_PASSWORD:}
+    from: ${ZIJA_SMTP_FROM:}
+    tls: ${ZIJA_SMTP_TLS:true}
