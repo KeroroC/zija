@@ -28,7 +28,7 @@ import java.util.UUID;
  * </ol>
  */
 @Service
-public class ExpiryScanScheduler {
+class ExpiryScanScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(ExpiryScanScheduler.class);
 
