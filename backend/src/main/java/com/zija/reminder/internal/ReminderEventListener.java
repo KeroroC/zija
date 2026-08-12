@@ -6,6 +6,7 @@ import com.zija.reminder.internal.persistence.DeadLetterMapper;
 import com.zija.reminder.internal.persistence.ProcessedEventMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.event.TransactionPhase;
