@@ -1,7 +1,6 @@
 package com.zija.reporting.internal.projection;
 
 import com.zija.catalog.*;
-import com.zija.identity.IdentityApi;
 import com.zija.inventory.InventoryApi;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.location.LocationApi;
@@ -37,7 +36,7 @@ public class ProjectionListener {
     private final CatalogApi catalogApi;
     private final LocationApi locationApi;
     private final InventoryApi inventoryApi;
-    private final IdentityApi identityApi;
+    private final ProjectionEntityBuilder builder;
     private final TransactionTemplate requiresNewTx;
 
     public ProjectionListener(ReportingProcessedEventMapper processedEventMapper,
@@ -48,7 +47,7 @@ public class ProjectionListener {
                                CatalogApi catalogApi,
                                LocationApi locationApi,
                                InventoryApi inventoryApi,
-                               IdentityApi identityApi,
+                               ProjectionEntityBuilder builder,
                                PlatformTransactionManager txManager) {
         this.processedEventMapper = processedEventMapper;
         this.deadLetterMapper = deadLetterMapper;
@@ -58,7 +57,7 @@ public class ProjectionListener {
         this.catalogApi = catalogApi;
         this.locationApi = locationApi;
         this.inventoryApi = inventoryApi;
-        this.identityApi = identityApi;
+        this.builder = builder;
         this.requiresNewTx = new TransactionTemplate(txManager);
         this.requiresNewTx.setPropagationBehaviorName("PROPAGATION_REQUIRES_NEW");
     }
@@ -102,26 +101,11 @@ public class ProjectionListener {
     }
 
     private MovementFlatEntity buildMovementFlat(StockChangedEvent evt) {
-        var e = new MovementFlatEntity();
-        e.setHouseholdId(evt.householdId());
-        e.setMovementId(evt.movementId());
-        e.setEventId(evt.eventId());
-        e.setLotId(evt.lotId());
-        e.setItemId(evt.itemId());
-        e.setItemName(resolveItemName(evt.householdId(), evt.itemId()));
-        e.setType(evt.movementType());
-        e.setQuantityDelta(evt.quantityDelta());
-        e.setFromLocationId(evt.fromLocationId());
-        e.setToLocationId(evt.toLocationId());
-        e.setFromLocationPath(resolveLocationPath(evt.householdId(), evt.fromLocationId()));
-        e.setToLocationPath(resolveLocationPath(evt.householdId(), evt.toLocationId()));
-        e.setOperatorAccountId(evt.operatorAccountId());
-        e.setOperatorDisplayName(resolveDisplayName(evt.operatorAccountId()));
-        e.setReason(evt.reason());
-        e.setReversalOf(evt.reversalOf());
-        e.setBusinessTime(evt.businessTime());
-        e.setCreatedAt(OffsetDateTime.now());
-        return e;
+        return builder.buildMovementFlat(
+                evt.householdId(), evt.movementId(), evt.eventId(),
+                evt.lotId(), evt.itemId(), evt.movementType(),
+                evt.quantityDelta(), evt.fromLocationId(), evt.toLocationId(),
+                evt.operatorAccountId(), evt.reason(), evt.reversalOf(), evt.businessTime());
     }
 
     private void rebuildStockFlatForLot(UUID householdId, UUID itemId, UUID lotId) {
@@ -131,23 +115,12 @@ public class ProjectionListener {
         var positions = inventoryApi.stockPositionsOfItem(householdId, itemId);
         for (var pos : positions) {
             if (!pos.lotId().equals(lotId)) continue;
-            var e = new StockFlatEntity();
-            e.setHouseholdId(householdId);
-            e.setLotId(pos.lotId());
-            e.setItemId(itemId);
-            e.setItemName(item != null ? item.name() : itemId.toString());
-            e.setUnitName(item != null && item.unitId() != null
-                    ? resolveUnitName(householdId, item.unitId()) : null);
-            if (lot != null) {
-                e.setLotNumber(lot.lotNumber());
-                e.setSerialNumber(lot.serialNumber());
-                e.setExpiryDate(lot.expiryDate());
-            }
-            e.setLocationId(pos.locationId());
-            e.setLocationPath(resolveLocationPath(householdId, pos.locationId()));
-            e.setQuantity(pos.quantity());
-            e.setUpdatedAt(OffsetDateTime.now());
-            stockFlatMapper.upsert(e);
+            String itemName = item != null ? item.name() : itemId.toString();
+            String unitName = item != null && item.unitId() != null
+                    ? builder.resolveUnitName(householdId, item.unitId()) : null;
+            stockFlatMapper.upsert(builder.buildStockFlat(
+                    householdId, pos.lotId(), itemId, itemName, unitName,
+                    lot, pos.locationId(), pos.quantity()));
         }
     }
 
@@ -185,7 +158,7 @@ public class ProjectionListener {
             var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
             for (var item : page.items()) {
                 if (item.itemId().equals(evt.itemId())) {
-                    searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                    searchIndexMapper.upsert(builder.buildItemSearchIndex(evt.householdId(), item));
                     return;
                 }
             }
@@ -217,7 +190,7 @@ public class ProjectionListener {
                 var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
                 for (var item : page.items()) {
                     if (evt.categoryId().equals(item.categoryId())) {
-                        searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                        searchIndexMapper.upsert(builder.buildItemSearchIndex(evt.householdId(), item));
                     }
                 }
                 cursor = page.nextCursor();
@@ -249,7 +222,7 @@ public class ProjectionListener {
                 var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
                 for (var item : page.items()) {
                     if (evt.brandId().equals(item.brandId())) {
-                        searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                        searchIndexMapper.upsert(builder.buildItemSearchIndex(evt.householdId(), item));
                     }
                 }
                 cursor = page.nextCursor();
@@ -281,7 +254,7 @@ public class ProjectionListener {
                 var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
                 for (var item : page.items()) {
                     if (evt.unitId().equals(item.unitId())) {
-                        searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                        searchIndexMapper.upsert(builder.buildItemSearchIndex(evt.householdId(), item));
                     }
                 }
                 cursor = page.nextCursor();
@@ -313,7 +286,7 @@ public class ProjectionListener {
             while (hasMore) {
                 var page = catalogApi.dumpItems(evt.householdId(), cursor, 1000);
                 for (var item : page.items()) {
-                    searchIndexMapper.upsert(buildItemSearchIndex(evt.householdId(), item));
+                    searchIndexMapper.upsert(builder.buildItemSearchIndex(evt.householdId(), item));
                 }
                 cursor = page.nextCursor();
                 hasMore = page.hasMore();
@@ -355,40 +328,13 @@ public class ProjectionListener {
             var page = locationApi.dumpTree(evt.householdId(), cursor, 1000);
             for (var loc : page.items()) {
                 if (loc.locationId().equals(evt.locationId())) {
-                    searchIndexMapper.upsert(buildLocationSearchIndex(evt.householdId(), loc));
+                    searchIndexMapper.upsert(builder.buildLocationSearchIndex(evt.householdId(), loc));
                     break;
                 }
             }
             cursor = page.nextCursor();
             hasMore = page.hasMore();
         }
-    }
-
-    // ===== SearchIndex 构建 =====
-
-    private SearchIndexEntity buildItemSearchIndex(UUID householdId, CatalogApi.ItemFlat item) {
-        var e = new SearchIndexEntity();
-        e.setHouseholdId(householdId);
-        e.setEntityType("ITEM");
-        e.setEntityId(item.itemId());
-        e.setItemName(item.name());
-        e.setBrandName(item.brandName());
-        e.setTagNames(item.tagNames());
-        e.setCategoryName(item.categoryName());
-        e.setUnitName(item.unitName());
-        e.setUpdatedAt(OffsetDateTime.now());
-        return e;
-    }
-
-    private SearchIndexEntity buildLocationSearchIndex(UUID householdId, LocationApi.LocationFlat loc) {
-        var e = new SearchIndexEntity();
-        e.setHouseholdId(householdId);
-        e.setEntityType("LOCATION");
-        e.setEntityId(loc.locationId());
-        e.setLocationName(loc.name());
-        e.setLocationPath(loc.path());
-        e.setUpdatedAt(OffsetDateTime.now());
-        return e;
     }
 
     // ===== 辅助方法 =====
@@ -415,50 +361,11 @@ public class ProjectionListener {
         });
     }
 
-    private String resolveItemName(UUID householdId, UUID itemId) {
-        try {
-            var item = catalogApi.requireItem(householdId, itemId);
-            return item.name();
-        } catch (Exception e) {
-            return itemId.toString();
-        }
-    }
-
     private CatalogApi.ItemInfo resolveItemInfo(UUID householdId, UUID itemId) {
         try {
             return catalogApi.requireItem(householdId, itemId);
         } catch (Exception e) {
             return null;
-        }
-    }
-
-    private String resolveUnitName(UUID householdId, UUID unitId) {
-        if (unitId == null) return null;
-        try {
-            var unit = catalogApi.requireUnit(householdId, unitId);
-            return unit.name();
-        } catch (Exception e) {
-            return unitId.toString();
-        }
-    }
-
-    private String resolveLocationPath(UUID householdId, UUID locationId) {
-        if (locationId == null) return null;
-        try {
-            var loc = locationApi.requireLocation(householdId, locationId);
-            return loc.name();
-        } catch (Exception e) {
-            return locationId.toString();
-        }
-    }
-
-    private String resolveDisplayName(UUID accountId) {
-        if (accountId == null) return null;
-        try {
-            var account = identityApi.findById(accountId);
-            return account.map(IdentityApi.AccountInfo::displayName).orElse(accountId.toString());
-        } catch (Exception e) {
-            return accountId.toString();
         }
     }
 
