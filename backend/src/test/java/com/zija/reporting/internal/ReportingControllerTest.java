@@ -120,6 +120,7 @@ class ReportingControllerTest extends AbstractWebMvcSliceTest {
 
     @Test
     void exportReturnsCsvStreamWithContentDisposition() throws Exception {
+        when(exportService.isSupportedReportKey("stock-by-location")).thenReturn(true);
         doNothing().when(exportService).exportToStream(eq(HOUSEHOLD_ID), eq("stock-by-location"),
                 anyMap(), any());
 
@@ -127,12 +128,27 @@ class ReportingControllerTest extends AbstractWebMvcSliceTest {
                         .with(SecurityMockMvcRequestPostProcessors.user(principal)))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition",
-                        org.hamcrest.Matchers.containsString("zija-stock-by-location")))
+                        org.hamcrest.Matchers.containsString("zija-export-")))
                 .andExpect(header().string("Content-Type",
                         org.hamcrest.Matchers.containsString("text/csv")));
     }
 
     // --- POST /projection/rebuild ---
+
+    // --- Unknown reportKey is rejected before any response header is written ---
+
+    @Test
+    void exportWithUnknownReportKeyReturns400() throws Exception {
+        when(exportService.isSupportedReportKey("evil-key")).thenReturn(false);
+
+        mockMvc.perform(get("/api/v1/reporting/exports/evil-key")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REPORTING_INVALID_REQUEST"));
+
+        verify(exportService, never())
+                .exportToStream(any(), anyString(), anyMap(), any());
+    }
 
     @Test
     void rebuildProjectionReturnsOk() throws Exception {
@@ -199,6 +215,7 @@ class ReportingControllerTest extends AbstractWebMvcSliceTest {
         // The ExportTooLargeException is thrown inside the stream; the handler
         // catches it for non-streaming paths. For streaming, we verify the
         // service is called with correct parameters (audit + exception).
+        when(exportService.isSupportedReportKey("stock-by-location")).thenReturn(true);
         doThrow(new ExportTooLargeException(150_000, 100_000))
                 .when(exportService).exportToStream(eq(HOUSEHOLD_ID), eq("stock-by-location"),
                         anyMap(), any());

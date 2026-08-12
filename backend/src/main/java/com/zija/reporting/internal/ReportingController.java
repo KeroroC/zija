@@ -14,6 +14,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -146,13 +147,20 @@ class ReportingController {
             @RequestParam Map<String, String> params) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
 
-        String filename = "zija-" + reportKey + "-" + System.currentTimeMillis() + ".csv";
+        // 在写入任何响应头之前校验 reportKey，避免未校验的用户输入进入 Content-Disposition 头
+        if (!exportService.isSupportedReportKey(reportKey)) {
+            throw new IllegalArgumentException("Unknown reportKey: " + reportKey);
+        }
+
+        // 响应头不应回显用户输入：filename 仅由服务端常量生成，不含 @PathVariable。
+        String filename = "zija-export-" + System.currentTimeMillis() + ".csv";
         StreamingResponseBody body = out -> exportService.exportToStream(
                 member.householdId(), reportKey, params, out);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build().toString())
                 .body(body);
     }
 

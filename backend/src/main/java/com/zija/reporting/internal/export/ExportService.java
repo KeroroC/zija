@@ -126,6 +126,15 @@ public class ExportService {
         return new ArrayList<>(searchFunction.apply(query, MAX_ROWS));
     }
 
+    private static final Set<String> SUPPORTED_REPORT_KEYS = Set.of(
+            "stock-by-location", "expiring-lots", "low-stock",
+            "stock-changes", "movements", "items-full", "locations-full");
+
+    /** 校验 reportKey 是否在支持范围内。控制器须在写入响应头之前调用，避免未校验输入进入响应头。 */
+    public boolean isSupportedReportKey(String reportKey) {
+        return reportKey != null && SUPPORTED_REPORT_KEYS.contains(reportKey);
+    }
+
     private List<String> getHeaders(String reportKey) {
         return switch (reportKey) {
             case "stock-by-location" -> List.of("location_path", "item_name", "lot_number",

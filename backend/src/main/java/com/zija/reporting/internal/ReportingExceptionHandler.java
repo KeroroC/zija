@@ -2,6 +2,7 @@ package com.zija.reporting.internal;
 
 import com.zija.reporting.internal.exception.ExportTooLargeException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -22,5 +23,13 @@ class ReportingExceptionHandler {
         body.put("detail", "Export contains " + ex.getActualRows() + " rows (max " + ex.getMaxRows() + "). "
                 + "Please narrow your filter criteria.");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    ResponseEntity<ProblemDetail> handleIllegalArgument(IllegalArgumentException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setTitle("Bad Request");
+        problem.setProperty("errorCode", "REPORTING_INVALID_REQUEST");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 }
