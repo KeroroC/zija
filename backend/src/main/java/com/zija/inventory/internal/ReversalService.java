@@ -108,112 +108,23 @@ public class ReversalService {
         // 5. Calculate reverse impact and adjust stock positions
         //    For each subtractIfSufficient that returns 0 → throw, full rollback
         switch (type) {
-            case "INBOUND" -> {
-                // Original added stock to toLocation → reverse subtract from toLocation
-                UUID toLoc = original.getToLocationId();
-                StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, toLoc);
-                if (sp == null) {
-                    throw new InventoryReversalWouldNegativeException(
-                            "stock position not found for reversal: lot=" + lotId + " location=" + toLoc);
-                }
-                int updated = stockPositionMapper.subtractIfSufficient(householdId, lotId, toLoc, originalQty);
-                if (updated == 0) {
-                    throw new InventoryReversalWouldNegativeException(
-                            "reversal would cause negative stock: lot=" + lotId + " location=" + toLoc);
-                }
-            }
-            case "CONSUME", "LOSS" -> {
-                // Original subtracted stock from fromLocation → reverse add back to fromLocation
-                UUID fromLoc = original.getFromLocationId();
-                StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, fromLoc);
-                if (sp == null) {
-                    // Create stock position if it doesn't exist (defensive)
-                    sp = new StockPositionEntity();
-                    sp.setId(UUID.randomUUID());
-                    sp.setHouseholdId(householdId);
-                    sp.setLotId(lotId);
-                    sp.setLocationId(fromLoc);
-                    sp.setQuantity(BigDecimal.ZERO);
-                    sp.setRevision(0L);
-                    sp.setCreatedAt(OffsetDateTime.now());
-                    sp.setUpdatedAt(OffsetDateTime.now());
-                    stockPositionMapper.insert(sp);
-                }
-                stockPositionMapper.addQuantity(householdId, lotId, fromLoc, originalQty);
-            }
+            case "INBOUND" -> subtractForReversal(householdId, lotId, original.getToLocationId(), originalQty);
+            case "CONSUME", "LOSS" -> addForReversal(householdId, lotId, original.getFromLocationId(), originalQty);
             case "TRANSFER" -> {
-                // Original moved stock from fromLocation to toLocation
-                // Reverse: subtract from toLocation, add back to fromLocation
-                UUID fromLoc = original.getFromLocationId();
-                UUID toLoc = original.getToLocationId();
-
-                // Subtract from toLocation
-                StockPositionEntity toSp = stockPositionMapper.lockOne(householdId, lotId, toLoc);
-                if (toSp == null) {
-                    throw new InventoryReversalWouldNegativeException(
-                            "stock position not found for reversal: lot=" + lotId + " location=" + toLoc);
-                }
-                int updated = stockPositionMapper.subtractIfSufficient(householdId, lotId, toLoc, originalQty);
-                if (updated == 0) {
-                    throw new InventoryReversalWouldNegativeException(
-                            "reversal would cause negative stock: lot=" + lotId + " location=" + toLoc);
-                }
-
-                // Add back to fromLocation
-                StockPositionEntity fromSp = stockPositionMapper.lockOne(householdId, lotId, fromLoc);
-                if (fromSp == null) {
-                    fromSp = new StockPositionEntity();
-                    fromSp.setId(UUID.randomUUID());
-                    fromSp.setHouseholdId(householdId);
-                    fromSp.setLotId(lotId);
-                    fromSp.setLocationId(fromLoc);
-                    fromSp.setQuantity(BigDecimal.ZERO);
-                    fromSp.setRevision(0L);
-                    fromSp.setCreatedAt(OffsetDateTime.now());
-                    fromSp.setUpdatedAt(OffsetDateTime.now());
-                    stockPositionMapper.insert(fromSp);
-                }
-                stockPositionMapper.addQuantity(householdId, lotId, fromLoc, originalQty);
+                // Original moved stock from fromLocation to toLocation; reverse both endpoints
+                subtractForReversal(householdId, lotId, original.getToLocationId(), originalQty);
+                addForReversal(householdId, lotId, original.getFromLocationId(), originalQty);
             }
             case "ADJUSTMENT" -> {
-                // ADJUSTMENT has both from and to locations
-                // Determine direction by checking which location has stock
-                UUID fromLoc = original.getFromLocationId();
-                UUID toLoc = original.getToLocationId();
-
-                if (fromLoc == null && toLoc == null) {
+                if (original.getFromLocationId() == null && original.getToLocationId() == null) {
                     throw new InventoryReversalNotAllowedException(
                             "ADJUSTMENT movement has no location endpoints: " + originalMovementId);
                 }
-
-                // Reverse: subtract from toLocation (if exists), add back to fromLocation (if exists)
-                if (toLoc != null) {
-                    StockPositionEntity toSp = stockPositionMapper.lockOne(householdId, lotId, toLoc);
-                    if (toSp == null) {
-                        throw new InventoryReversalWouldNegativeException(
-                                "stock position not found for reversal: lot=" + lotId + " location=" + toLoc);
-                    }
-                    int updated = stockPositionMapper.subtractIfSufficient(householdId, lotId, toLoc, originalQty);
-                    if (updated == 0) {
-                        throw new InventoryReversalWouldNegativeException(
-                                "reversal would cause negative stock: lot=" + lotId + " location=" + toLoc);
-                    }
+                if (original.getToLocationId() != null) {
+                    subtractForReversal(householdId, lotId, original.getToLocationId(), originalQty);
                 }
-                if (fromLoc != null) {
-                    StockPositionEntity fromSp = stockPositionMapper.lockOne(householdId, lotId, fromLoc);
-                    if (fromSp == null) {
-                        fromSp = new StockPositionEntity();
-                        fromSp.setId(UUID.randomUUID());
-                        fromSp.setHouseholdId(householdId);
-                        fromSp.setLotId(lotId);
-                        fromSp.setLocationId(fromLoc);
-                        fromSp.setQuantity(BigDecimal.ZERO);
-                        fromSp.setRevision(0L);
-                        fromSp.setCreatedAt(OffsetDateTime.now());
-                        fromSp.setUpdatedAt(OffsetDateTime.now());
-                        stockPositionMapper.insert(fromSp);
-                    }
-                    stockPositionMapper.addQuantity(householdId, lotId, fromLoc, originalQty);
+                if (original.getFromLocationId() != null) {
+                    addForReversal(householdId, lotId, original.getFromLocationId(), originalQty);
                 }
             }
             default -> throw new InventoryReversalNotAllowedException(
@@ -290,5 +201,41 @@ public class ReversalService {
                 accountId, null, originalMovementId));
 
         return new ReversalResult(reversalMovementId, lotId);
+    }
+
+    /**
+     * 冲正时从指定位置扣减库存；位置不存在或数量不足则抛异常。
+     */
+    private void subtractForReversal(UUID householdId, UUID lotId, UUID locationId, BigDecimal qty) {
+        StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        if (sp == null) {
+            throw new InventoryReversalWouldNegativeException(
+                    "stock position not found for reversal: lot=" + lotId + " location=" + locationId);
+        }
+        int updated = stockPositionMapper.subtractIfSufficient(householdId, lotId, locationId, qty);
+        if (updated == 0) {
+            throw new InventoryReversalWouldNegativeException(
+                    "reversal would cause negative stock: lot=" + lotId + " location=" + locationId);
+        }
+    }
+
+    /**
+     * 冲正时向指定位置加回库存；位置不存在则先创建（防御性）。
+     */
+    private void addForReversal(UUID householdId, UUID lotId, UUID locationId, BigDecimal qty) {
+        StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        if (sp == null) {
+            sp = new StockPositionEntity();
+            sp.setId(UUID.randomUUID());
+            sp.setHouseholdId(householdId);
+            sp.setLotId(lotId);
+            sp.setLocationId(locationId);
+            sp.setQuantity(BigDecimal.ZERO);
+            sp.setRevision(0L);
+            sp.setCreatedAt(OffsetDateTime.now());
+            sp.setUpdatedAt(OffsetDateTime.now());
+            stockPositionMapper.insert(sp);
+        }
+        stockPositionMapper.addQuantity(householdId, lotId, locationId, qty);
     }
 }

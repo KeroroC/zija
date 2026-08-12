@@ -113,26 +113,16 @@ class StocktakeService {
      */
     @Transactional
     public void refreshDraft(UUID householdId, UUID stocktakeId, int clientVersion, UUID locationId) {
-        // 1. 锁定盘点单，校验草稿状态
-        StocktakeEntity stocktake = stocktakeMapper.lockById(householdId, stocktakeId);
-        if (stocktake == null || !"DRAFT".equals(stocktake.getStatus())) {
-            throw new StocktakeNotDraftException();
-        }
+        // 1. 锁定盘点单，校验草稿状态并乐观锁更新版本
+        StocktakeEntity stocktake = lockDraftAndBumpVersion(householdId, stocktakeId, clientVersion);
 
-        // 2. 乐观锁更新盘点单版本
-        stocktake.setVersion(clientVersion);
-        int rows = stocktakeMapper.updateById(stocktake);
-        if (rows == 0) {
-            throw new InventoryLotVersionConflictException();
-        }
-
-        // 3. 删除所有行项
+        // 2. 删除所有行项
         stocktakeItemMapper.deleteByStocktake(stocktakeId);
 
-        // 4. 查询该位置下所有库存位
+        // 3. 查询该位置下所有库存位
         List<StockPositionEntity> positions = stockPositionMapper.findByLocation(householdId, locationId);
 
-        // 5. 为每个库存位生成盘点行项（与 createDraft 步骤 3-4 相同）
+        // 4. 为每个库存位生成盘点行项
         if (!positions.isEmpty()) {
             List<StocktakeItemEntity> items = new ArrayList<>(positions.size());
             for (StockPositionEntity sp : positions) {
@@ -160,26 +150,16 @@ class StocktakeService {
     @Transactional
     public void updateDraft(UUID householdId, UUID stocktakeId, int clientVersion,
                             List<StocktakeItemUpdate> updates) {
-        // 1. 锁定盘点单，校验草稿状态
-        StocktakeEntity stocktake = stocktakeMapper.lockById(householdId, stocktakeId);
-        if (stocktake == null || !"DRAFT".equals(stocktake.getStatus())) {
-            throw new StocktakeNotDraftException();
-        }
+        // 1. 锁定盘点单，校验草稿状态并乐观锁更新版本
+        StocktakeEntity stocktake = lockDraftAndBumpVersion(householdId, stocktakeId, clientVersion);
 
-        // 2. 乐观锁更新盘点单
-        stocktake.setVersion(clientVersion);
-        int rows = stocktakeMapper.updateById(stocktake);
-        if (rows == 0) {
-            throw new InventoryLotVersionConflictException();
-        }
-
-        // 3. 锁定现有行项
+        // 2. 锁定现有行项
         List<StocktakeItemEntity> existingItems = stocktakeItemMapper.lockByStocktake(householdId, stocktakeId);
 
-        // 4. 处理每条更新
+        // 3. 处理每条更新
         List<StocktakeItemEntity> backfillItems = new ArrayList<>();
         for (StocktakeItemUpdate update : updates) {
-            // 4a. 查找匹配的现有行项
+            // 3a. 查找匹配的现有行项
             StocktakeItemEntity matched = null;
             for (StocktakeItemEntity item : existingItems) {
                 if (item.getLotId().equals(update.lotId()) && item.getLocationId().equals(update.locationId())) {
@@ -189,12 +169,12 @@ class StocktakeService {
             }
 
             if (matched != null) {
-                // 4b. 更新现有行项
+                // 3b. 更新现有行项
                 matched.setActualQuantity(update.actualQuantity());
                 matched.setReason(update.reason());
                 stocktakeItemMapper.updateById(matched);
             } else {
-                // 4c. 补录：校验库存位和批次
+                // 3c. 补录：校验库存位和批次
                 StockPositionEntity sp = stockPositionMapper.lockOne(householdId, update.lotId(), update.locationId());
                 if (sp != null) {
                     if (sp.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
@@ -210,7 +190,7 @@ class StocktakeService {
                     }
                 }
 
-                // 4d. 插入补录行项
+                // 3d. 插入补录行项
                 StocktakeItemEntity newItem = new StocktakeItemEntity();
                 newItem.setId(UUID.randomUUID());
                 newItem.setStocktakeId(stocktakeId);
@@ -225,7 +205,7 @@ class StocktakeService {
             }
         }
 
-        // 5. 批量插入补录行项
+        // 4. 批量插入补录行项
         if (!backfillItems.isEmpty()) {
             stocktakeItemMapper.batchInsert(backfillItems);
         }
@@ -284,23 +264,13 @@ class StocktakeService {
      */
     @Transactional
     public ConfirmResult confirm(UUID householdId, UUID stocktakeId, int clientVersion, UUID accountId) {
-        // 1. 锁定盘点单，校验草稿状态
-        StocktakeEntity stocktake = stocktakeMapper.lockById(householdId, stocktakeId);
-        if (stocktake == null || !"DRAFT".equals(stocktake.getStatus())) {
-            throw new StocktakeNotDraftException();
-        }
+        // 1. 锁定盘点单，校验草稿状态并乐观锁更新版本
+        StocktakeEntity stocktake = lockDraftAndBumpVersion(householdId, stocktakeId, clientVersion);
 
-        // 2. 乐观锁版本检查
-        stocktake.setVersion(clientVersion);
-        int rows = stocktakeMapper.updateById(stocktake);
-        if (rows == 0) {
-            throw new InventoryLotVersionConflictException();
-        }
-
-        // 3. 锁定所有行项
+        // 2. 锁定所有行项
         List<StocktakeItemEntity> items = stocktakeItemMapper.lockByStocktake(householdId, stocktakeId);
 
-        // 4. 逐项校验库存位未变化
+        // 3. 逐项校验库存位未变化
         for (StocktakeItemEntity item : items) {
             StockPositionEntity sp = stockPositionMapper.lockOne(
                     householdId, item.getLotId(), item.getLocationId());
@@ -316,7 +286,7 @@ class StocktakeService {
             }
         }
 
-        // 5. 处理差异：校验原因 → 生成 ADJUSTMENT 流水 → 更新库存位
+        // 4. 处理差异：校验原因 → 生成 ADJUSTMENT 流水 → 更新库存位
         OffsetDateTime now = OffsetDateTime.now();
         int adjustedCount = 0;
         for (StocktakeItemEntity item : items) {
@@ -400,18 +370,37 @@ class StocktakeService {
             adjustedCount++;
         }
 
-        // 6. 盘点单状态 → COMPLETED
+        // 5. 盘点单状态 → COMPLETED
         stocktake.setStatus("COMPLETED");
         stocktake.setCompletedAt(now);
         stocktakeMapper.updateById(stocktake);
 
-        // 7. 审计
+        // 6. 审计
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 "INVENTORY_STOCKTAKE_CONFIRM", "SUCCESS",
                 householdId, accountId, null, null, null,
                 Map.of("stocktakeId", stocktakeId, "adjustedCount", adjustedCount)));
 
         return new ConfirmResult(stocktakeId, adjustedCount);
+    }
+
+    /**
+     * 锁定盘点单并校验草稿状态，同时以 clientVersion 乐观锁更新版本号。
+     *
+     * @throws StocktakeNotDraftException          盘点单不是草稿状态
+     * @throws InventoryLotVersionConflictException 盘点单版本冲突
+     */
+    private StocktakeEntity lockDraftAndBumpVersion(UUID householdId, UUID stocktakeId, int clientVersion) {
+        StocktakeEntity stocktake = stocktakeMapper.lockById(householdId, stocktakeId);
+        if (stocktake == null || !"DRAFT".equals(stocktake.getStatus())) {
+            throw new StocktakeNotDraftException();
+        }
+        stocktake.setVersion(clientVersion);
+        int rows = stocktakeMapper.updateById(stocktake);
+        if (rows == 0) {
+            throw new InventoryLotVersionConflictException();
+        }
+        return stocktake;
     }
 
     /**

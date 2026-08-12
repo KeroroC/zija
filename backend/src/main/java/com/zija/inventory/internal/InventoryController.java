@@ -103,12 +103,9 @@ class InventoryController {
         var pageObj = new Page<StockPositionWithDetails>(page, pageSize);
         var result = stockPositionMapper.findPage(pageObj, member.householdId(), itemId, locationId, "sp.updated_at DESC");
 
-        var response = new LinkedHashMap<String, Object>();
-        response.put("items", result.getRecords().stream().map(this::toStockPositionResponse).toList());
-        response.put("total", result.getTotal());
-        response.put("page", page);
-        response.put("pageSize", pageSize);
-        return response;
+        return pagedResponse(
+                result.getRecords().stream().map(this::toStockPositionResponse).toList(),
+                result.getTotal(), page, pageSize);
     }
 
     /**
@@ -130,12 +127,9 @@ class InventoryController {
         var pageObj = new Page<com.zija.inventory.internal.persistence.LotWithDetails>(page, pageSize);
         var result = lotMapper.findPage(pageObj, member.householdId(), itemId);
 
-        var response = new LinkedHashMap<String, Object>();
-        response.put("items", result.getRecords().stream().map(this::toLotSummaryResponse).toList());
-        response.put("total", result.getTotal());
-        response.put("page", page);
-        response.put("pageSize", pageSize);
-        return response;
+        return pagedResponse(
+                result.getRecords().stream().map(this::toLotSummaryResponse).toList(),
+                result.getTotal(), page, pageSize);
     }
 
     /**
@@ -193,12 +187,9 @@ class InventoryController {
         var pageObj = new Page<com.zija.inventory.internal.persistence.MovementEntity>(page, pageSize);
         var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, null, fromDt, toDt, "created_at DESC");
 
-        var response = new LinkedHashMap<String, Object>();
-        response.put("items", result.getRecords().stream().map(this::toMovementEntityResponse).toList());
-        response.put("total", result.getTotal());
-        response.put("page", page);
-        response.put("pageSize", pageSize);
-        return response;
+        return pagedResponse(
+                result.getRecords().stream().map(this::toMovementEntityResponse).toList(),
+                result.getTotal(), page, pageSize);
     }
 
     /**
@@ -477,12 +468,9 @@ class InventoryController {
         var pageObj = new Page<StocktakeEntity>(page, pageSize);
         var result = stocktakeMapper.findPage(pageObj, member.householdId(), status, "created_at DESC");
 
-        var response = new LinkedHashMap<String, Object>();
-        response.put("items", result.getRecords().stream().map(this::toStocktakeResponse).toList());
-        response.put("total", result.getTotal());
-        response.put("page", page);
-        response.put("pageSize", pageSize);
-        return response;
+        return pagedResponse(
+                result.getRecords().stream().map(this::toStocktakeResponse).toList(),
+                result.getTotal(), page, pageSize);
     }
 
     /**
@@ -533,6 +521,18 @@ class InventoryController {
         map.put("createdAt", lot.getCreatedAt());
         map.put("updatedAt", lot.getUpdatedAt());
         return map;
+    }
+
+    /**
+     * 分页响应：统一 items/total/page/pageSize 结构。
+     */
+    private Map<String, Object> pagedResponse(List<?> items, long total, int page, int pageSize) {
+        var response = new LinkedHashMap<String, Object>();
+        response.put("items", items);
+        response.put("total", total);
+        response.put("page", page);
+        response.put("pageSize", pageSize);
+        return response;
     }
 
     /**
