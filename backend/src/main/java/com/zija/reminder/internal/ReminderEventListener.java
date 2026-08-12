@@ -23,7 +23,7 @@ import java.util.UUID;
  * 失败时写 dead-letter（独立事务提交），不向上抛异常。
  */
 @Service
-public class ReminderEventListener {
+class ReminderEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(ReminderEventListener.class);
 
