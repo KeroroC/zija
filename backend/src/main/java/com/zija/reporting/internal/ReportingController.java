@@ -48,7 +48,7 @@ class ReportingController {
             @RequestParam String q,
             @RequestParam(defaultValue = "5") int limitPerGroup) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        int limit = Math.min(Math.max(limitPerGroup, 1), 20);
+        int limit = Math.clamp(limitPerGroup, 1, 20);
         return searchService.search(member.householdId(), q.trim(), limit);
     }
 
@@ -66,7 +66,7 @@ class ReportingController {
             @RequestParam(required = false) UUID brandId) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = reportService.stockByLocation(member.householdId(),
-                Math.max(page, 1), Math.min(Math.max(pageSize, 1), 100),
+                Math.max(page, 1), Math.clamp(pageSize, 1, 100),
                 itemId, categoryId, locationId, brandId);
         return toPageResponse(result);
     }
@@ -82,7 +82,7 @@ class ReportingController {
             @RequestParam(required = false) UUID locationId) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = reportService.expiringLots(member.householdId(),
-                Math.max(page, 1), Math.min(Math.max(pageSize, 1), 100),
+                Math.max(page, 1), Math.clamp(pageSize, 1, 100),
                 Math.max(withinDays, 1), itemId, locationId);
         return toPageResponse(result);
     }
@@ -96,7 +96,7 @@ class ReportingController {
             @RequestParam(required = false) UUID categoryId) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = reportService.lowStock(member.householdId(),
-                Math.max(page, 1), Math.min(Math.max(pageSize, 1), 100), categoryId);
+                Math.max(page, 1), Math.clamp(pageSize, 1, 100), categoryId);
         return toPageResponse(result);
     }
 
@@ -113,7 +113,7 @@ class ReportingController {
             @RequestParam(required = false) String type) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = reportService.stockChanges(member.householdId(),
-                Math.max(page, 1), Math.min(Math.max(pageSize, 1), 100),
+                Math.max(page, 1), Math.clamp(pageSize, 1, 100),
                 from, to, itemId, locationId, type);
         return toPageResponse(result);
     }
@@ -131,7 +131,7 @@ class ReportingController {
             @RequestParam(required = false) UUID operatorAccountId) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = reportService.movements(member.householdId(),
-                Math.max(page, 1), Math.min(Math.max(pageSize, 1), 100),
+                Math.max(page, 1), Math.clamp(pageSize, 1, 100),
                 from, to, itemId, type, operatorAccountId);
         return toPageResponse(result);
     }
