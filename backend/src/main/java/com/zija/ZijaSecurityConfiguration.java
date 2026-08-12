@@ -47,7 +47,8 @@ public class ZijaSecurityConfiguration {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             ZijaProblemHandlers problemHandlers,
-            SystemApi systemApi
+            SystemApi systemApi,
+            CsrfTokenRepository csrfTokenRepository
     ) throws Exception {
         return http
                 .authorizeHttpRequests(authorize -> authorize
@@ -65,7 +66,7 @@ public class ZijaSecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .csrf(csrf -> csrf.spa()
-                        .csrfTokenRepository(csrfTokenRepository()))
+                        .csrfTokenRepository(csrfTokenRepository))
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                         .sessionFixation(fixation -> fixation.changeSessionId()))
