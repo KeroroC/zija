@@ -55,7 +55,7 @@ public class ReportingEventRetryService {
 
     /**
      * 测试 / 运维辅助：手动重投一条指定死信。
-     * 与 {@link EventRetryService#retryOnceNow} 对称。
+     * 与提醒模块的 {@code EventRetryService#retryOnceNow} 对称。
      */
     public void retryOnceNow(UUID dlId) {
         var dl = deadLetterMapper.selectById(dlId);
