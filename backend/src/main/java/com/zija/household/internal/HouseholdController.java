@@ -3,7 +3,6 @@ package com.zija.household.internal;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.Utf8ByteLength;
-import com.zija.household.HouseholdApi;
 import com.zija.household.RequireOwner;
 import com.zija.identity.SessionInfo;
 import jakarta.servlet.http.HttpServletRequest;

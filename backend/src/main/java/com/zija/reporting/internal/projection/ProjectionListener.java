@@ -1,7 +1,6 @@
 package com.zija.reporting.internal.projection;
 
 import com.zija.catalog.*;
-import com.zija.household.HouseholdApi;
 import com.zija.identity.IdentityApi;
 import com.zija.inventory.InventoryApi;
 import com.zija.inventory.StockChangedEvent;
@@ -39,7 +38,6 @@ public class ProjectionListener {
     private final LocationApi locationApi;
     private final InventoryApi inventoryApi;
     private final IdentityApi identityApi;
-    private final HouseholdApi householdApi;
     private final TransactionTemplate requiresNewTx;
 
     public ProjectionListener(ReportingProcessedEventMapper processedEventMapper,
@@ -51,7 +49,6 @@ public class ProjectionListener {
                                LocationApi locationApi,
                                InventoryApi inventoryApi,
                                IdentityApi identityApi,
-                               HouseholdApi householdApi,
                                PlatformTransactionManager txManager) {
         this.processedEventMapper = processedEventMapper;
         this.deadLetterMapper = deadLetterMapper;
@@ -62,7 +59,6 @@ public class ProjectionListener {
         this.locationApi = locationApi;
         this.inventoryApi = inventoryApi;
         this.identityApi = identityApi;
-        this.householdApi = householdApi;
         this.requiresNewTx = new TransactionTemplate(txManager);
         this.requiresNewTx.setPropagationBehaviorName("PROPAGATION_REQUIRES_NEW");
     }
