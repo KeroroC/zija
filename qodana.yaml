@@ -8,3 +8,8 @@ profile:
   name: qodana.recommended
 include:
   - name: CheckDependencyLicenses
+exclude:
+  # Idempotency-Key 是事实标准幂等请求头（Stripe 等广泛采用），不在内置头名单中，属误报。
+  - name: UastIncorrectHttpHeaderInspection
+    paths:
+      - backend/src/main/java/com/zija/inventory/internal/InventoryController.java
