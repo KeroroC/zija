@@ -2,10 +2,12 @@ name: Qodana
 on:
   workflow_dispatch:
   pull_request:
+    branches:
+      - main   # 仅目标为 main 的 PR（即 dev → main）才触发扫描
   push:
-    branches: # Specify your branches here
-      - main # The 'main' branch
-      - 'releases/*' # The release branches
+    branches:
+      - main   # 发布基线：PR 合并后扫描，保证主干质量
+      - dev    # 开发集成分支：新代码 push 后扫描，尽早暴露问题
 
 jobs:
   qodana:
@@ -15,7 +17,7 @@ jobs:
       pull-requests: write
       checks: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}  # to check out the actual pull request commit, not the merge commit
           fetch-depth: 0  # a full history is required for pull request analysis
