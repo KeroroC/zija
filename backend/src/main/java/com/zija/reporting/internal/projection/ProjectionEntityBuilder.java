@@ -22,16 +22,13 @@ class ProjectionEntityBuilder {
 
     private final CatalogApi catalogApi;
     private final LocationApi locationApi;
-    private final InventoryApi inventoryApi;
     private final IdentityApi identityApi;
 
     ProjectionEntityBuilder(CatalogApi catalogApi,
                             LocationApi locationApi,
-                            InventoryApi inventoryApi,
                             IdentityApi identityApi) {
         this.catalogApi = catalogApi;
         this.locationApi = locationApi;
-        this.inventoryApi = inventoryApi;
         this.identityApi = identityApi;
     }
 
