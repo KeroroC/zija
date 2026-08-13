@@ -243,21 +243,11 @@ public class StockCommandService {
     public InboundResult consume(UUID householdId, UUID accountId, UUID lotId,
                                  UUID locationId, BigDecimal quantity,
                                  String reason, String memo, String idempotencyKey) {
-        // 1. Lock lot (stock position lockOne below provides the critical row-level lock)
-        var lot = lotMapper.selectById(lotId);
-        if (lot == null || !lot.getHouseholdId().equals(householdId)) {
-            throw new InventoryLotNotFoundException();
-        }
-        UUID itemId = lot.getItemId();
+        var prepared = ExistingLotQuantity.require(lotMapper, catalogApi, householdId, lotId, quantity);
+        UUID itemId = prepared.itemId();
+        BigDecimal validatedQty = prepared.validatedQty();
 
-        // 2. Validate item exists (allows archived items to be consumed)
-        CatalogApi.ItemInfo itemInfo = requireItemOrThrow(householdId, itemId);
-
-        // 3. Validate quantity precision
-        var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
-        BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
-
-        // 3.5. Check idempotency replay
+        // Check idempotency replay
         String requestHash = null;
         if (idempotencyKey != null) {
             requestHash = RequestHashing.sha256("CONSUME:"
@@ -314,21 +304,11 @@ public class StockCommandService {
     public InboundResult loss(UUID householdId, UUID accountId, UUID lotId,
                               UUID locationId, BigDecimal quantity,
                               String reason, String memo, String idempotencyKey) {
-        // 1. Lock lot (stock position lockOne below provides the critical row-level lock)
-        var lot = lotMapper.selectById(lotId);
-        if (lot == null || !lot.getHouseholdId().equals(householdId)) {
-            throw new InventoryLotNotFoundException();
-        }
-        UUID itemId = lot.getItemId();
+        var prepared = ExistingLotQuantity.require(lotMapper, catalogApi, householdId, lotId, quantity);
+        UUID itemId = prepared.itemId();
+        BigDecimal validatedQty = prepared.validatedQty();
 
-        // 2. Validate item exists (allows archived items to be lost)
-        CatalogApi.ItemInfo itemInfo = requireItemOrThrow(householdId, itemId);
-
-        // 3. Validate quantity precision
-        var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
-        BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
-
-        // 3.5. Check idempotency replay
+        // Check idempotency replay
         String requestHash = null;
         if (idempotencyKey != null) {
             requestHash = RequestHashing.sha256("LOSS:"
@@ -390,21 +370,11 @@ public class StockCommandService {
             throw new IllegalStateException("fromLocationId and toLocationId must be different");
         }
 
-        // 2. Lock lot
-        var lot = lotMapper.selectById(lotId);
-        if (lot == null || !lot.getHouseholdId().equals(householdId)) {
-            throw new InventoryLotNotFoundException();
-        }
-        UUID itemId = lot.getItemId();
+        var prepared = ExistingLotQuantity.require(lotMapper, catalogApi, householdId, lotId, quantity);
+        UUID itemId = prepared.itemId();
+        BigDecimal validatedQty = prepared.validatedQty();
 
-        // 3. Validate item exists (allows archived items to be transferred)
-        CatalogApi.ItemInfo itemInfo = requireItemOrThrow(householdId, itemId);
-
-        // 4. Validate quantity precision
-        var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
-        BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
-
-        // 4.5. Check idempotency replay
+        // Check idempotency replay
         String requestHash = null;
         if (idempotencyKey != null) {
             requestHash = RequestHashing.sha256("TRANSFER:"
@@ -529,17 +499,6 @@ public class StockCommandService {
             return catalogApi.requireActiveItem(householdId, itemId);
         } catch (RuntimeException ex) {
             throw new InventoryArchivedItemException("item is archived or missing: " + itemId);
-        }
-    }
-
-    /**
-     * 校验物品存在（允许归档物品被领用/报损/移位）。
-     */
-    private CatalogApi.ItemInfo requireItemOrThrow(UUID householdId, UUID itemId) {
-        try {
-            return catalogApi.requireItem(householdId, itemId);
-        } catch (RuntimeException ex) {
-            throw new InventoryArchivedItemException("item is missing: " + itemId);
         }
     }
 
