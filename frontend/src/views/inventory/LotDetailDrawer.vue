@@ -64,6 +64,7 @@
               type="date"
               value-format="YYYY-MM-DD"
               placeholder="选择日期"
+              :shortcuts="pastDateShortcuts"
               clearable
               style="width: 100%"
             />
@@ -74,6 +75,7 @@
               type="date"
               value-format="YYYY-MM-DD"
               placeholder="选择日期"
+              :shortcuts="pastDateShortcuts"
               clearable
               style="width: 100%"
             />
@@ -84,6 +86,7 @@
               type="date"
               value-format="YYYY-MM-DD"
               placeholder="选择日期"
+              :shortcuts="futureDateShortcuts"
               clearable
               style="width: 100%"
             />
@@ -155,6 +158,7 @@ import { ElMessage } from 'element-plus'
 import { fetchLot, fetchMovements, updateLotMeta } from '../../api/inventory'
 import { ApiError } from '../../api/http'
 import type { LotSummary, Movement, MovementType } from '../../types/inventory'
+import { futureDateShortcuts, pastDateShortcuts } from '../../utils/date'
 
 const props = defineProps<{
   modelValue: boolean

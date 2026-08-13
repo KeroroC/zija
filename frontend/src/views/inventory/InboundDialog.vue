@@ -25,20 +25,32 @@
 
         <!-- Item selection (both modes) -->
         <el-form-item label="物品">
-          <el-select
-            v-model="form.itemId"
-            filterable
-            placeholder="选择物品"
-            style="width: 100%"
-            @change="onItemChange"
-          >
-            <el-option
-              v-for="item in activeItems"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-            />
-          </el-select>
+          <div class="item-select-row">
+            <el-select
+              ref="itemSelectRef"
+              v-model="form.itemId"
+              filterable
+              :filter-method="onItemFilter"
+              placeholder="选择物品"
+              class="item-select"
+              @change="onItemChange"
+              @visible-change="onItemSelectVisible"
+            >
+              <el-option
+                v-for="item in filteredActiveItems"
+                :key="item.id"
+                :label="item.name"
+                :value="item.id"
+              />
+              <template #empty>
+                <div class="item-select-empty">
+                  <span>无匹配物品</span>
+                  <el-button link type="primary" @click="openCreateItem">新建物品</el-button>
+                </div>
+              </template>
+            </el-select>
+            <el-button @click="openCreateItem">新建</el-button>
+          </div>
         </el-form-item>
 
         <!-- Lot selection (existing mode only) -->
@@ -82,6 +94,7 @@
               type="date"
               placeholder="选择日期"
               value-format="YYYY-MM-DD"
+              :shortcuts="pastDateShortcuts"
               style="width: 100%"
               @change="resetIdempotencyKey"
             />
@@ -92,6 +105,7 @@
               type="date"
               placeholder="选择日期"
               value-format="YYYY-MM-DD"
+              :shortcuts="pastDateShortcuts"
               style="width: 100%"
               @change="resetIdempotencyKey"
             />
@@ -102,6 +116,7 @@
               type="date"
               placeholder="选择日期"
               value-format="YYYY-MM-DD"
+              :shortcuts="futureDateShortcuts"
               style="width: 100%"
               @change="resetIdempotencyKey"
             />
@@ -198,10 +213,18 @@
       </div>
     </template>
   </el-dialog>
+
+  <ItemFormDrawer
+    v-if="createItemVisible"
+    v-model="createItemVisible"
+    :item="null"
+    :preset-name="createItemPresetName"
+    @saved="onItemCreated"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchItems, fetchUnits } from '../../api/catalog'
 import { fetchLots, inboundNewLot, inboundExistingLot } from '../../api/inventory'
@@ -210,6 +233,8 @@ import { ApiError } from '../../api/http'
 import type { CatalogItem, Unit } from '../../types/catalog'
 import type { LotSummary } from '../../types/inventory'
 import type { LocationNode, LocationTree } from '../../types/location'
+import { futureDateShortcuts, pastDateShortcuts } from '../../utils/date'
+import ItemFormDrawer from '../ItemFormDrawer.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -232,6 +257,11 @@ const activeItems = ref<CatalogItem[]>([])
 const units = ref<Unit[]>([])
 const availableLots = ref<LotSummary[]>([])
 const locationTreeData = ref<LocationNode[]>([])
+
+const itemSelectRef = ref<{ $el?: HTMLElement } | null>(null)
+const itemFilterQuery = ref('')
+const createItemVisible = ref(false)
+const createItemPresetName = ref('')
 
 const form = ref({
   itemId: '',
@@ -256,6 +286,12 @@ const unitMap = computed(() => {
 const selectedItem = computed(() =>
   activeItems.value.find((i) => i.id === form.value.itemId),
 )
+
+const filteredActiveItems = computed(() => {
+  const q = itemFilterQuery.value.trim().toLowerCase()
+  if (!q) return activeItems.value
+  return activeItems.value.filter((i) => i.name.toLowerCase().includes(q))
+})
 
 const unitName = computed(() => {
   if (!selectedItem.value) return ''
@@ -317,6 +353,7 @@ function onModeChange() {
 }
 
 async function onItemChange() {
+  itemFilterQuery.value = ''
   form.value.lotId = ''
   form.value.quantity = 1
   resetIdempotencyKey()
@@ -328,6 +365,52 @@ async function onItemChange() {
     } catch {
       availableLots.value = []
     }
+  }
+}
+
+function onItemFilter(query: string) {
+  itemFilterQuery.value = query
+}
+
+function onItemSelectVisible(visible: boolean) {
+  if (!visible) {
+    // Defer clear so the external「新建」click (mousedown → blur → click) can
+    // still read the filter for create prefills. ItemFormDrawer clears eagerly
+    // because its create actions live inside the select dropdown.
+    nextTick(() => {
+      itemFilterQuery.value = ''
+    })
+  }
+}
+
+function openCreateItem() {
+  // Prefer the tracked filter query: blur often resets the select input to the
+  // selected label (or empty) before the side / empty-state create click runs.
+  createItemPresetName.value = itemFilterQuery.value.trim()
+  // Dismiss filterable dropdown so it doesn't stack over the drawer.
+  const root = itemSelectRef.value?.$el
+  const input = root?.querySelector('input') as HTMLInputElement | null
+  input?.blur()
+  createItemVisible.value = true
+}
+
+async function onItemCreated(item: CatalogItem) {
+  if (!activeItems.value.some((i) => i.id === item.id)) {
+    activeItems.value = [...activeItems.value, item]
+  }
+  // ItemFormDrawer may create a unit inline; refresh so unitName / decimalScale resolve.
+  try {
+    units.value = await fetchUnits()
+  } catch {
+    // Keep existing units; precision may fall back until next open.
+  }
+  form.value.itemId = item.id
+  await onItemChange()
+
+  if (mode.value === 'existing' && availableLots.value.length === 0) {
+    mode.value = 'new'
+    onModeChange()
+    ElMessage.info('新物品尚无批次，已改为新建批次')
   }
 }
 
@@ -407,6 +490,9 @@ function resetState() {
   mode.value = 'new'
   serialDuplicated.value = false
   idempotencyKey.value = crypto.randomUUID()
+  createItemVisible.value = false
+  createItemPresetName.value = ''
+  itemFilterQuery.value = ''
   form.value = {
     itemId: '',
     lotId: '',
@@ -458,5 +544,24 @@ watch(
 .footer-right {
   display: flex;
   gap: 8px;
+}
+.item-select-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+.item-select {
+  flex: 1;
+  min-width: 0;
+}
+.item-select-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  color: var(--zj-ink-400);
+  font-size: 13px;
 }
 </style>
