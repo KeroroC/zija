@@ -87,7 +87,7 @@ public class StockCommandService {
         locationApi.markReferenced(householdId, locationId);
 
         // 4. Lock or create stock position
-        StockPositionEntity sp = lockOrCreateStockPosition(householdId, lotId, locationId);
+        StockPositionEntity sp = StockPositions.lockOrCreate(stockPositionMapper, householdId, lotId, locationId);
 
         // 5. Add quantity to stock position
         stockPositionMapper.addQuantity(householdId, lotId, locationId, validatedQty);
@@ -181,7 +181,7 @@ public class StockCommandService {
         locationApi.markReferenced(householdId, locationId);
 
         // 5. Lock or create stock position
-        StockPositionEntity sp = lockOrCreateStockPosition(householdId, lotId, locationId);
+        StockPositionEntity sp = StockPositions.lockOrCreate(stockPositionMapper, householdId, lotId, locationId);
 
         // 6. Add quantity to stock position
         stockPositionMapper.addQuantity(householdId, lotId, locationId, validatedQty);
@@ -559,26 +559,6 @@ public class StockCommandService {
                 .eq(StockPositionEntity::getLocationId, locationId));
         BigDecimal quantityAfter = sp0 != null ? sp0.getQuantity() : BigDecimal.ZERO;
         return java.util.Optional.of(new InboundResult(cachedLotId, locationId, cachedMovementId, quantityAfter, false));
-    }
-
-    /**
-     * 锁定或创建库存位（创建时初始数量为 0）。
-     */
-    private StockPositionEntity lockOrCreateStockPosition(UUID householdId, UUID lotId, UUID locationId) {
-        StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
-        if (sp == null) {
-            sp = new StockPositionEntity();
-            sp.setId(UUID.randomUUID());
-            sp.setHouseholdId(householdId);
-            sp.setLotId(lotId);
-            sp.setLocationId(locationId);
-            sp.setQuantity(BigDecimal.ZERO);
-            sp.setRevision(0L);
-            sp.setCreatedAt(OffsetDateTime.now());
-            sp.setUpdatedAt(OffsetDateTime.now());
-            stockPositionMapper.insert(sp);
-        }
-        return sp;
     }
 
     /**
