@@ -18,20 +18,17 @@ import java.util.UUID;
  * reporting_* 实体组装逻辑，避免两处重复实现。
  */
 @Component
-class ProjectionEntityBuilder {
+public class ProjectionEntityBuilder {
 
     private final CatalogApi catalogApi;
     private final LocationApi locationApi;
-    private final InventoryApi inventoryApi;
     private final IdentityApi identityApi;
 
     ProjectionEntityBuilder(CatalogApi catalogApi,
                             LocationApi locationApi,
-                            InventoryApi inventoryApi,
                             IdentityApi identityApi) {
         this.catalogApi = catalogApi;
         this.locationApi = locationApi;
-        this.inventoryApi = inventoryApi;
         this.identityApi = identityApi;
     }
 

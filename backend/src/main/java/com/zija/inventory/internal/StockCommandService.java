@@ -87,7 +87,7 @@ public class StockCommandService {
         locationApi.markReferenced(householdId, locationId);
 
         // 4. Lock or create stock position
-        StockPositionEntity sp = lockOrCreateStockPosition(householdId, lotId, locationId);
+        StockPositionEntity sp = StockPositions.lockOrCreate(stockPositionMapper, householdId, lotId, locationId);
 
         // 5. Add quantity to stock position
         stockPositionMapper.addQuantity(householdId, lotId, locationId, validatedQty);
@@ -181,7 +181,7 @@ public class StockCommandService {
         locationApi.markReferenced(householdId, locationId);
 
         // 5. Lock or create stock position
-        StockPositionEntity sp = lockOrCreateStockPosition(householdId, lotId, locationId);
+        StockPositionEntity sp = StockPositions.lockOrCreate(stockPositionMapper, householdId, lotId, locationId);
 
         // 6. Add quantity to stock position
         stockPositionMapper.addQuantity(householdId, lotId, locationId, validatedQty);
@@ -243,21 +243,11 @@ public class StockCommandService {
     public InboundResult consume(UUID householdId, UUID accountId, UUID lotId,
                                  UUID locationId, BigDecimal quantity,
                                  String reason, String memo, String idempotencyKey) {
-        // 1. Lock lot (stock position lockOne below provides the critical row-level lock)
-        var lot = lotMapper.selectById(lotId);
-        if (lot == null || !lot.getHouseholdId().equals(householdId)) {
-            throw new InventoryLotNotFoundException();
-        }
-        UUID itemId = lot.getItemId();
+        var prepared = ExistingLotQuantity.require(lotMapper, catalogApi, householdId, lotId, quantity);
+        UUID itemId = prepared.itemId();
+        BigDecimal validatedQty = prepared.validatedQty();
 
-        // 2. Validate item exists (allows archived items to be consumed)
-        CatalogApi.ItemInfo itemInfo = requireItemOrThrow(householdId, itemId);
-
-        // 3. Validate quantity precision
-        var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
-        BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
-
-        // 3.5. Check idempotency replay
+        // Check idempotency replay
         String requestHash = null;
         if (idempotencyKey != null) {
             requestHash = RequestHashing.sha256("CONSUME:"
@@ -314,21 +304,11 @@ public class StockCommandService {
     public InboundResult loss(UUID householdId, UUID accountId, UUID lotId,
                               UUID locationId, BigDecimal quantity,
                               String reason, String memo, String idempotencyKey) {
-        // 1. Lock lot (stock position lockOne below provides the critical row-level lock)
-        var lot = lotMapper.selectById(lotId);
-        if (lot == null || !lot.getHouseholdId().equals(householdId)) {
-            throw new InventoryLotNotFoundException();
-        }
-        UUID itemId = lot.getItemId();
+        var prepared = ExistingLotQuantity.require(lotMapper, catalogApi, householdId, lotId, quantity);
+        UUID itemId = prepared.itemId();
+        BigDecimal validatedQty = prepared.validatedQty();
 
-        // 2. Validate item exists (allows archived items to be lost)
-        CatalogApi.ItemInfo itemInfo = requireItemOrThrow(householdId, itemId);
-
-        // 3. Validate quantity precision
-        var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
-        BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
-
-        // 3.5. Check idempotency replay
+        // Check idempotency replay
         String requestHash = null;
         if (idempotencyKey != null) {
             requestHash = RequestHashing.sha256("LOSS:"
@@ -390,21 +370,11 @@ public class StockCommandService {
             throw new IllegalStateException("fromLocationId and toLocationId must be different");
         }
 
-        // 2. Lock lot
-        var lot = lotMapper.selectById(lotId);
-        if (lot == null || !lot.getHouseholdId().equals(householdId)) {
-            throw new InventoryLotNotFoundException();
-        }
-        UUID itemId = lot.getItemId();
+        var prepared = ExistingLotQuantity.require(lotMapper, catalogApi, householdId, lotId, quantity);
+        UUID itemId = prepared.itemId();
+        BigDecimal validatedQty = prepared.validatedQty();
 
-        // 3. Validate item exists (allows archived items to be transferred)
-        CatalogApi.ItemInfo itemInfo = requireItemOrThrow(householdId, itemId);
-
-        // 4. Validate quantity precision
-        var unitInfo = catalogApi.requireUnit(householdId, itemInfo.unitId());
-        BigDecimal validatedQty = QuantityPrecision.require(unitInfo.decimalScale(), quantity);
-
-        // 4.5. Check idempotency replay
+        // Check idempotency replay
         String requestHash = null;
         if (idempotencyKey != null) {
             requestHash = RequestHashing.sha256("TRANSFER:"
@@ -533,17 +503,6 @@ public class StockCommandService {
     }
 
     /**
-     * 校验物品存在（允许归档物品被领用/报损/移位）。
-     */
-    private CatalogApi.ItemInfo requireItemOrThrow(UUID householdId, UUID itemId) {
-        try {
-            return catalogApi.requireItem(householdId, itemId);
-        } catch (RuntimeException ex) {
-            throw new InventoryArchivedItemException("item is missing: " + itemId);
-        }
-    }
-
-    /**
      * 幂等回放：命中缓存则返回缓存的入库结果，否则返回空。
      */
     private java.util.Optional<InboundResult> replayCached(UUID householdId, String idempotencyKey,
@@ -559,26 +518,6 @@ public class StockCommandService {
                 .eq(StockPositionEntity::getLocationId, locationId));
         BigDecimal quantityAfter = sp0 != null ? sp0.getQuantity() : BigDecimal.ZERO;
         return java.util.Optional.of(new InboundResult(cachedLotId, locationId, cachedMovementId, quantityAfter, false));
-    }
-
-    /**
-     * 锁定或创建库存位（创建时初始数量为 0）。
-     */
-    private StockPositionEntity lockOrCreateStockPosition(UUID householdId, UUID lotId, UUID locationId) {
-        StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
-        if (sp == null) {
-            sp = new StockPositionEntity();
-            sp.setId(UUID.randomUUID());
-            sp.setHouseholdId(householdId);
-            sp.setLotId(lotId);
-            sp.setLocationId(locationId);
-            sp.setQuantity(BigDecimal.ZERO);
-            sp.setRevision(0L);
-            sp.setCreatedAt(OffsetDateTime.now());
-            sp.setUpdatedAt(OffsetDateTime.now());
-            stockPositionMapper.insert(sp);
-        }
-        return sp;
     }
 
     /**
