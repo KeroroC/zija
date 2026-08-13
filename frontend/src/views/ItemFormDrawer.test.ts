@@ -8,6 +8,8 @@ import {
   fetchBrands,
   fetchUnits,
   fetchTags,
+  createBrand,
+  createTag,
   createUnit,
 } from "../api/catalog"
 import ItemFormDrawer from "./ItemFormDrawer.vue"
@@ -31,6 +33,8 @@ const fetchCategoriesMock = vi.mocked(fetchCategories)
 const fetchBrandsMock = vi.mocked(fetchBrands)
 const fetchUnitsMock = vi.mocked(fetchUnits)
 const fetchTagsMock = vi.mocked(fetchTags)
+const createBrandMock = vi.mocked(createBrand)
+const createTagMock = vi.mocked(createTag)
 const createUnitMock = vi.mocked(createUnit)
 
 const unit: Unit = {
@@ -94,6 +98,20 @@ describe("ItemFormDrawer", () => {
       householdId: "h1",
       name: "箱",
       decimalScale: 0,
+      status: "ACTIVE",
+      version: 1,
+    })
+    createBrandMock.mockReset().mockResolvedValue({
+      id: "brand-new",
+      householdId: "h1",
+      name: "三只松鼠",
+      status: "ACTIVE",
+      version: 1,
+    })
+    createTagMock.mockReset().mockResolvedValue({
+      id: "tag-new",
+      householdId: "h1",
+      name: "零食",
       status: "ACTIVE",
       version: 1,
     })
@@ -309,6 +327,248 @@ describe("ItemFormDrawer", () => {
     const createDialog = wrapper!
       .findAllComponents({ name: "ElDialog" })
       .find((d) => d.props("title") === "新建单位")
+    expect(createDialog?.props("modelValue")).toBe(true)
+  })
+
+  function brandSelect() {
+    return wrapper!
+      .findAllComponents({ name: "ElSelect" })
+      .find((c) => c.props("placeholder") === "请选择品牌（可选）")
+  }
+
+  function tagSelect() {
+    return wrapper!
+      .findAllComponents({ name: "ElSelect" })
+      .find((c) => c.props("placeholder") === "请选择标签（可选）")
+  }
+
+  async function openCreateBrandDialog(filterText?: string) {
+    const select = brandSelect()
+    expect(select).toBeDefined()
+    expect(select!.props("allowCreate")).toBeFalsy()
+    if (filterText !== undefined) {
+      const filterMethod = select!.props("filterMethod") as ((query: string) => void) | undefined
+      expect(filterMethod).toBeTypeOf("function")
+      filterMethod!(filterText)
+      await flushPromises()
+    }
+    const entry = Array.from(document.querySelectorAll("button")).find((el) =>
+      el.textContent?.includes("新建品牌"),
+    )
+    expect(entry).toBeDefined()
+    entry!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+  }
+
+  async function openCreateTagDialog(filterText?: string) {
+    const select = tagSelect()
+    expect(select).toBeDefined()
+    expect(select!.props("allowCreate")).toBeFalsy()
+    if (filterText !== undefined) {
+      const filterMethod = select!.props("filterMethod") as ((query: string) => void) | undefined
+      expect(filterMethod).toBeTypeOf("function")
+      filterMethod!(filterText)
+      await flushPromises()
+    }
+    const entry = Array.from(document.querySelectorAll("button")).find((el) =>
+      el.textContent?.includes("新建标签"),
+    )
+    expect(entry).toBeDefined()
+    entry!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+  }
+
+  it("brand select is filterable without allow-create and offers create entry", async () => {
+    await mountDrawer()
+
+    expect(brandSelect()!.props("filterable")).toBe(true)
+    expect(brandSelect()!.props("allowCreate")).toBeFalsy()
+
+    const entry = Array.from(document.querySelectorAll("button")).find((el) =>
+      el.textContent?.includes("新建品牌"),
+    )
+    expect(entry).toBeDefined()
+  })
+
+  it("opens create-brand dialog and prefills filter text", async () => {
+    await mountDrawer()
+    await openCreateBrandDialog("三只松鼠")
+
+    const nameInput = document.querySelector(
+      'input[placeholder="请输入品牌名称"]',
+    ) as HTMLInputElement | null
+    expect(nameInput).not.toBeNull()
+    expect(nameInput!.value).toBe("三只松鼠")
+  })
+
+  it("creates brand via API, selects it, toasts success, and closes dialog", async () => {
+    await mountDrawer()
+    await openCreateBrandDialog("三只松鼠")
+
+    const confirmBtn = Array.from(
+      document.querySelectorAll(".create-brand-dialog button, .el-dialog__footer button"),
+    ).find((b) => b.textContent?.trim() === "确定")
+    expect(confirmBtn).toBeDefined()
+    confirmBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(createBrandMock).toHaveBeenCalledWith("三只松鼠")
+    expect(ElMessage.success).toHaveBeenCalledWith("品牌已创建")
+    expect(brandSelect()!.props("modelValue")).toBe("brand-new")
+    const createDialog = wrapper!
+      .findAllComponents({ name: "ElDialog" })
+      .find((d) => d.props("title") === "新建品牌")
+    expect(createDialog?.props("modelValue")).toBe(false)
+  })
+
+  it("shows created brand name after create even if dialog name differs from filter", async () => {
+    createBrandMock.mockResolvedValueOnce({
+      id: "brand-alt",
+      householdId: "h1",
+      name: "良品铺子",
+      status: "ACTIVE",
+      version: 1,
+    })
+    await mountDrawer()
+    await openCreateBrandDialog("三只松鼠")
+
+    const nameField = wrapper!
+      .findAllComponents({ name: "ElInput" })
+      .find((c) => c.props("placeholder") === "请输入品牌名称")
+    expect(nameField).toBeDefined()
+    await nameField!.setValue("良品铺子")
+    await flushPromises()
+
+    const confirmBtn = Array.from(
+      document.querySelectorAll(".create-brand-dialog button, .el-dialog__footer button"),
+    ).find((b) => b.textContent?.trim() === "确定")
+    confirmBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(createBrandMock).toHaveBeenCalledWith("良品铺子")
+    expect(brandSelect()!.props("modelValue")).toBe("brand-alt")
+    expect(brandSelect()!.text()).toContain("良品铺子")
+    expect(brandSelect()!.text()).not.toContain("brand-alt")
+  })
+
+  it("opens create-brand dialog with empty name when there is no filter query", async () => {
+    await mountDrawer()
+    await openCreateBrandDialog()
+
+    const nameInput = document.querySelector(
+      'input[placeholder="请输入品牌名称"]',
+    ) as HTMLInputElement | null
+    expect(nameInput).not.toBeNull()
+    expect(nameInput!.value).toBe("")
+  })
+
+  it("keeps create-brand dialog open and does not select on API failure", async () => {
+    createBrandMock.mockRejectedValueOnce(new Error("名称已存在"))
+    await mountDrawer()
+    await openCreateBrandDialog("索尼")
+
+    const confirmBtn = Array.from(
+      document.querySelectorAll(".create-brand-dialog button, .el-dialog__footer button"),
+    ).find((b) => b.textContent?.trim() === "确定")
+    confirmBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(createBrandMock).toHaveBeenCalledWith("索尼")
+    expect(ElMessage.error).toHaveBeenCalled()
+    expect(brandSelect()!.props("modelValue")).toBeNull()
+    const createDialog = wrapper!
+      .findAllComponents({ name: "ElDialog" })
+      .find((d) => d.props("title") === "新建品牌")
+    expect(createDialog?.props("modelValue")).toBe(true)
+  })
+
+  it("tag select is filterable without allow-create and offers create entry", async () => {
+    await mountDrawer()
+
+    expect(tagSelect()!.props("filterable")).toBe(true)
+    expect(tagSelect()!.props("allowCreate")).toBeFalsy()
+    expect(tagSelect()!.props("multiple")).toBe(true)
+
+    const entry = Array.from(document.querySelectorAll("button")).find((el) =>
+      el.textContent?.includes("新建标签"),
+    )
+    expect(entry).toBeDefined()
+  })
+
+  it("opens create-tag dialog and prefills filter text", async () => {
+    await mountDrawer()
+    await openCreateTagDialog("零食")
+
+    const nameInput = document.querySelector(
+      'input[placeholder="请输入标签名称"]',
+    ) as HTMLInputElement | null
+    expect(nameInput).not.toBeNull()
+    expect(nameInput!.value).toBe("零食")
+  })
+
+  it("opens create-tag dialog with empty name when there is no filter query", async () => {
+    await mountDrawer()
+    await openCreateTagDialog()
+
+    const nameInput = document.querySelector(
+      'input[placeholder="请输入标签名称"]',
+    ) as HTMLInputElement | null
+    expect(nameInput).not.toBeNull()
+    expect(nameInput!.value).toBe("")
+  })
+
+  it("creates tag via API, selects it, toasts success, and closes dialog", async () => {
+    await mountDrawer()
+    await openCreateTagDialog("零食")
+
+    const confirmBtn = Array.from(
+      document.querySelectorAll(".create-tag-dialog button, .el-dialog__footer button"),
+    ).find((b) => b.textContent?.trim() === "确定")
+    expect(confirmBtn).toBeDefined()
+    confirmBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(createTagMock).toHaveBeenCalledWith("零食")
+    expect(ElMessage.success).toHaveBeenCalledWith("标签已创建")
+    expect(tagSelect()!.props("modelValue")).toEqual(["tag-new"])
+    const createDialog = wrapper!
+      .findAllComponents({ name: "ElDialog" })
+      .find((d) => d.props("title") === "新建标签")
+    expect(createDialog?.props("modelValue")).toBe(false)
+  })
+
+  it("appends created tag without clearing existing selections", async () => {
+    await mountDrawer()
+    await tagSelect()!.vm.$emit("update:modelValue", ["tag-1"])
+    await flushPromises()
+    await openCreateTagDialog("零食")
+
+    const confirmBtn = Array.from(
+      document.querySelectorAll(".create-tag-dialog button, .el-dialog__footer button"),
+    ).find((b) => b.textContent?.trim() === "确定")
+    confirmBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(tagSelect()!.props("modelValue")).toEqual(["tag-1", "tag-new"])
+  })
+
+  it("keeps create-tag dialog open and does not select on API failure", async () => {
+    createTagMock.mockRejectedValueOnce(new Error("名称已存在"))
+    await mountDrawer()
+    await openCreateTagDialog("常用")
+
+    const confirmBtn = Array.from(
+      document.querySelectorAll(".create-tag-dialog button, .el-dialog__footer button"),
+    ).find((b) => b.textContent?.trim() === "确定")
+    confirmBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(createTagMock).toHaveBeenCalledWith("常用")
+    expect(ElMessage.error).toHaveBeenCalled()
+    expect(tagSelect()!.props("modelValue")).toEqual([])
+    const createDialog = wrapper!
+      .findAllComponents({ name: "ElDialog" })
+      .find((d) => d.props("title") === "新建标签")
     expect(createDialog?.props("modelValue")).toBe(true)
   })
 })
