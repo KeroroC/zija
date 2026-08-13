@@ -30,12 +30,13 @@
               ref="itemSelectRef"
               v-model="form.itemId"
               filterable
+              :filter-method="onItemFilter"
               placeholder="选择物品"
               class="item-select"
               @change="onItemChange"
             >
               <el-option
-                v-for="item in activeItems"
+                v-for="item in filteredActiveItems"
                 :key="item.id"
                 :label="item.name"
                 :value="item.id"
@@ -257,6 +258,7 @@ const availableLots = ref<LotSummary[]>([])
 const locationTreeData = ref<LocationNode[]>([])
 
 const itemSelectRef = ref<{ $el?: HTMLElement } | null>(null)
+const itemFilterQuery = ref('')
 const createItemVisible = ref(false)
 const createItemPresetName = ref('')
 
@@ -283,6 +285,12 @@ const unitMap = computed(() => {
 const selectedItem = computed(() =>
   activeItems.value.find((i) => i.id === form.value.itemId),
 )
+
+const filteredActiveItems = computed(() => {
+  const q = itemFilterQuery.value.trim().toLowerCase()
+  if (!q) return activeItems.value
+  return activeItems.value.filter((i) => i.name.toLowerCase().includes(q))
+})
 
 const unitName = computed(() => {
   if (!selectedItem.value) return ''
@@ -344,6 +352,7 @@ function onModeChange() {
 }
 
 async function onItemChange() {
+  itemFilterQuery.value = ''
   form.value.lotId = ''
   form.value.quantity = 1
   resetIdempotencyKey()
@@ -358,15 +367,14 @@ async function onItemChange() {
   }
 }
 
-function readItemFilterQuery(): string {
-  const root = itemSelectRef.value?.$el
-  if (!root) return ''
-  const input = root.querySelector('input') as HTMLInputElement | null
-  return input?.value?.trim() ?? ''
+function onItemFilter(query: string) {
+  itemFilterQuery.value = query
 }
 
 function openCreateItem() {
-  createItemPresetName.value = readItemFilterQuery()
+  // Prefer the tracked filter query: blur often resets the select input to the
+  // selected label (or empty) before the side / empty-state create click runs.
+  createItemPresetName.value = itemFilterQuery.value.trim()
   // Dismiss filterable dropdown so it doesn't stack over the drawer.
   const root = itemSelectRef.value?.$el
   const input = root?.querySelector('input') as HTMLInputElement | null
@@ -466,6 +474,7 @@ function resetState() {
   idempotencyKey.value = crypto.randomUUID()
   createItemVisible.value = false
   createItemPresetName.value = ''
+  itemFilterQuery.value = ''
   form.value = {
     itemId: '',
     lotId: '',

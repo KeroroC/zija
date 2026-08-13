@@ -484,6 +484,60 @@ describe("InboundDialog", () => {
     expect(drawer.props("item")).toBeNull()
   })
 
+  it("prefills create drawer from tracked filter query, not the select DOM input", async () => {
+    await mountDialog()
+
+    const itemSelect = wrapper!.findAllComponents({ name: "ElSelect" })[0]
+    const filterMethod = itemSelect.props("filterMethod") as
+      | ((query: string) => void)
+      | undefined
+    expect(filterMethod).toBeTypeOf("function")
+    filterMethod!("厨房纸巾")
+    await flushPromises()
+
+    // Blur / close resets the filterable input to the selected label (or empty)
+    // without calling filter-method again — DOM read would then be wrong.
+    const input = itemSelect.element.querySelector("input") as HTMLInputElement | null
+    expect(input).not.toBeNull()
+    input!.value = "纸巾"
+    input!.blur()
+    await flushPromises()
+
+    const createBtn = wrapper!.findAll("button").find((b) => b.text() === "新建")
+    await createBtn!.trigger("click")
+    await flushPromises()
+
+    const drawer = wrapper!.findComponent({ name: "ItemFormDrawer" })
+    expect(drawer.props("modelValue")).toBe(true)
+    expect(drawer.props("presetName")).toBe("厨房纸巾")
+  })
+
+  it("prefills create drawer from empty-state create using tracked filter query", async () => {
+    await mountDialog()
+
+    const itemSelect = wrapper!.findAllComponents({ name: "ElSelect" })[0]
+    const filterMethod = itemSelect.props("filterMethod") as
+      | ((query: string) => void)
+      | undefined
+    expect(filterMethod).toBeTypeOf("function")
+    filterMethod!("全新物品名")
+    await flushPromises()
+
+    // Expand so the empty-slot action mounts, then click it.
+    await itemSelect.trigger("click")
+    await flushPromises()
+
+    const emptyCreate = Array.from(document.querySelectorAll("button")).find((el) =>
+      el.textContent?.includes("新建物品"),
+    )
+    expect(emptyCreate).toBeDefined()
+    emptyCreate!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    const drawer = wrapper!.findComponent({ name: "ItemFormDrawer" })
+    expect(drawer.props("presetName")).toBe("全新物品名")
+  })
+
   it("selects newly created item after ItemFormDrawer saves", async () => {
     await mountDialog()
 
