@@ -223,19 +223,7 @@ public class ReversalService {
      * 冲正时向指定位置加回库存；位置不存在则先创建（防御性）。
      */
     private void addForReversal(UUID householdId, UUID lotId, UUID locationId, BigDecimal qty) {
-        StockPositionEntity sp = stockPositionMapper.lockOne(householdId, lotId, locationId);
-        if (sp == null) {
-            sp = new StockPositionEntity();
-            sp.setId(UUID.randomUUID());
-            sp.setHouseholdId(householdId);
-            sp.setLotId(lotId);
-            sp.setLocationId(locationId);
-            sp.setQuantity(BigDecimal.ZERO);
-            sp.setRevision(0L);
-            sp.setCreatedAt(OffsetDateTime.now());
-            sp.setUpdatedAt(OffsetDateTime.now());
-            stockPositionMapper.insert(sp);
-        }
+        StockPositions.lockOrCreate(stockPositionMapper, householdId, lotId, locationId);
         stockPositionMapper.addQuantity(householdId, lotId, locationId, qty);
     }
 }
