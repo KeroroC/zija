@@ -92,6 +92,7 @@
               type="date"
               placeholder="选择日期"
               value-format="YYYY-MM-DD"
+              :shortcuts="pastDateShortcuts"
               style="width: 100%"
               @change="resetIdempotencyKey"
             />
@@ -102,6 +103,7 @@
               type="date"
               placeholder="选择日期"
               value-format="YYYY-MM-DD"
+              :shortcuts="pastDateShortcuts"
               style="width: 100%"
               @change="resetIdempotencyKey"
             />
@@ -112,6 +114,7 @@
               type="date"
               placeholder="选择日期"
               value-format="YYYY-MM-DD"
+              :shortcuts="futureDateShortcuts"
               style="width: 100%"
               @change="resetIdempotencyKey"
             />
@@ -228,6 +231,7 @@ import { ApiError } from '../../api/http'
 import type { CatalogItem, Unit } from '../../types/catalog'
 import type { LotSummary } from '../../types/inventory'
 import type { LocationNode, LocationTree } from '../../types/location'
+import { futureDateShortcuts, pastDateShortcuts } from '../../utils/date'
 import ItemFormDrawer from '../ItemFormDrawer.vue'
 
 const props = defineProps<{
