@@ -25,13 +25,25 @@
       </el-form-item>
 
       <el-form-item label="单位" prop="unitId">
-        <el-select v-model="form.unitId" placeholder="请选择单位" style="width: 100%">
+        <el-select
+          v-model="form.unitId"
+          placeholder="请选择单位"
+          filterable
+          :filter-method="onUnitFilter"
+          style="width: 100%"
+          @visible-change="onUnitSelectVisible"
+        >
           <el-option
-            v-for="u in units"
+            v-for="u in filteredUnits"
             :key="u.id"
             :label="u.name"
             :value="u.id"
           />
+          <template #footer>
+            <el-button text type="primary" @click.stop="openCreateUnitDialog">
+              + 新建单位…
+            </el-button>
+          </template>
         </el-select>
       </el-form-item>
 
@@ -166,6 +178,35 @@
       </el-button>
     </template>
   </el-drawer>
+
+  <el-dialog
+    v-model="createUnitVisible"
+    title="新建单位"
+    width="360px"
+    append-to-body
+    destroy-on-close
+    class="create-unit-dialog"
+    @closed="resetCreateUnitForm"
+  >
+    <el-form label-position="top" @submit.prevent>
+      <el-form-item label="名称">
+        <el-input
+          v-model="createUnitForm.name"
+          placeholder="请输入单位名称"
+          maxlength="100"
+        />
+      </el-form-item>
+      <el-form-item label="小数位">
+        <el-input-number v-model="createUnitForm.decimalScale" :min="0" :max="6" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="createUnitVisible = false">取消</el-button>
+      <el-button type="primary" :loading="creatingUnit" @click="submitCreateUnit">
+        确定
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -181,6 +222,7 @@ import {
   fetchTags,
   createBrand as apiCreateBrand,
   createTag as apiCreateTag,
+  createUnit as apiCreateUnit,
 } from '../api/catalog'
 import type { CatalogItem, Category, Brand, Unit, Tag } from '../types/catalog'
 import ItemCoverUpload from './ItemCoverUpload.vue'
@@ -208,6 +250,13 @@ const emit = defineEmits<{
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+const createUnitVisible = ref(false)
+const creatingUnit = ref(false)
+const unitFilterQuery = ref('')
+const createUnitForm = reactive({
+  name: '',
+  decimalScale: 0,
+})
 
 const units = ref<Unit[]>([])
 const brands = ref<Brand[]>([])
@@ -215,6 +264,12 @@ const tags = ref<Tag[]>([])
 const categoryTree = ref<CategoryTreeNode[]>([])
 
 const isEdit = computed(() => !!props.item)
+
+const filteredUnits = computed(() => {
+  const q = unitFilterQuery.value.trim().toLowerCase()
+  if (!q) return units.value
+  return units.value.filter((u) => u.name.toLowerCase().includes(q))
+})
 
 const defaultForm = () => ({
   name: '',
@@ -337,6 +392,51 @@ function onCoverRemoved() {
     props.item.coverFileId = null
     props.item.coverUrl = undefined
     props.item.version++
+  }
+}
+
+function onUnitFilter(query: string) {
+  unitFilterQuery.value = query
+}
+
+function onUnitSelectVisible(visible: boolean) {
+  if (!visible) {
+    unitFilterQuery.value = ''
+  }
+}
+
+function resetCreateUnitForm() {
+  createUnitForm.name = ''
+  createUnitForm.decimalScale = 0
+}
+
+function openCreateUnitDialog() {
+  createUnitForm.name = unitFilterQuery.value.trim()
+  createUnitForm.decimalScale = 0
+  createUnitVisible.value = true
+}
+
+async function submitCreateUnit() {
+  const name = createUnitForm.name.trim()
+  if (!name) {
+    ElMessage.warning('请输入单位名称')
+    return
+  }
+  creatingUnit.value = true
+  try {
+    const created = await apiCreateUnit({
+      name,
+      decimalScale: createUnitForm.decimalScale ?? 0,
+    })
+    units.value.push(created)
+    unitFilterQuery.value = ''
+    form.unitId = created.id
+    createUnitVisible.value = false
+    ElMessage.success('单位已创建')
+  } catch (e: any) {
+    ElMessage.error(e.message || '创建单位失败')
+  } finally {
+    creatingUnit.value = false
   }
 }
 
