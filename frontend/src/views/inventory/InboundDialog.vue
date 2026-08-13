@@ -34,6 +34,7 @@
               placeholder="选择物品"
               class="item-select"
               @change="onItemChange"
+              @visible-change="onItemSelectVisible"
             >
               <el-option
                 v-for="item in filteredActiveItems"
@@ -223,7 +224,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchItems, fetchUnits } from '../../api/catalog'
 import { fetchLots, inboundNewLot, inboundExistingLot } from '../../api/inventory'
@@ -369,6 +370,17 @@ async function onItemChange() {
 
 function onItemFilter(query: string) {
   itemFilterQuery.value = query
+}
+
+function onItemSelectVisible(visible: boolean) {
+  if (!visible) {
+    // Defer clear so the external「新建」click (mousedown → blur → click) can
+    // still read the filter for create prefills. ItemFormDrawer clears eagerly
+    // because its create actions live inside the select dropdown.
+    nextTick(() => {
+      itemFilterQuery.value = ''
+    })
+  }
 }
 
 function openCreateItem() {

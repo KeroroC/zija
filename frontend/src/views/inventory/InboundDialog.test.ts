@@ -495,13 +495,12 @@ describe("InboundDialog", () => {
     filterMethod!("厨房纸巾")
     await flushPromises()
 
-    // Blur / close resets the filterable input to the selected label (or empty)
-    // without calling filter-method again — DOM read would then be wrong.
+    // Blur resets the filterable input to the selected label (or empty) without
+    // calling filter-method again — DOM read would then be wrong. Capture must
+    // happen on create click before the select's close clears the tracked query.
     const input = itemSelect.element.querySelector("input") as HTMLInputElement | null
     expect(input).not.toBeNull()
     input!.value = "纸巾"
-    input!.blur()
-    await flushPromises()
 
     const createBtn = wrapper!.findAll("button").find((b) => b.text() === "新建")
     await createBtn!.trigger("click")
@@ -510,6 +509,47 @@ describe("InboundDialog", () => {
     const drawer = wrapper!.findComponent({ name: "ItemFormDrawer" })
     expect(drawer.props("modelValue")).toBe(true)
     expect(drawer.props("presetName")).toBe("厨房纸巾")
+  })
+
+  it("clears item filter when select closes so options are not stuck filtered", async () => {
+    await mountDialog()
+
+    const itemSelect = wrapper!.findAllComponents({ name: "ElSelect" })[0]
+    const filterMethod = itemSelect.props("filterMethod") as
+      | ((query: string) => void)
+      | undefined
+    expect(filterMethod).toBeTypeOf("function")
+    filterMethod!("厨房纸巾")
+    await flushPromises()
+
+    expect(wrapper!.findAllComponents({ name: "ElOption" })).toHaveLength(0)
+
+    await itemSelect.vm.$emit("visible-change", false)
+    await flushPromises()
+
+    expect(wrapper!.findAllComponents({ name: "ElOption" })).toHaveLength(2)
+  })
+
+  it("does not prefill create from a filter after the select has closed", async () => {
+    await mountDialog()
+
+    const itemSelect = wrapper!.findAllComponents({ name: "ElSelect" })[0]
+    const filterMethod = itemSelect.props("filterMethod") as
+      | ((query: string) => void)
+      | undefined
+    expect(filterMethod).toBeTypeOf("function")
+    filterMethod!("厨房纸巾")
+    await flushPromises()
+
+    await itemSelect.vm.$emit("visible-change", false)
+    await flushPromises()
+
+    const createBtn = wrapper!.findAll("button").find((b) => b.text() === "新建")
+    await createBtn!.trigger("click")
+    await flushPromises()
+
+    const drawer = wrapper!.findComponent({ name: "ItemFormDrawer" })
+    expect(drawer.props("presetName")).toBe("")
   })
 
   it("prefills create drawer from empty-state create using tracked filter query", async () => {
