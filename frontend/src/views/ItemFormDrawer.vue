@@ -3,6 +3,7 @@
     :model-value="modelValue"
     :title="isEdit ? '编辑物品' : '新建物品'"
     size="520px"
+    append-to-body
     @close="close"
   >
     <el-form
@@ -188,14 +189,21 @@ interface CategoryTreeNode extends Category {
   children?: CategoryTreeNode[]
 }
 
-const props = defineProps<{
-  modelValue: boolean
-  item: CatalogItem | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    item: CatalogItem | null
+    /** Prefill name when opening create mode (e.g. from inbound filter text). */
+    presetName?: string
+  }>(),
+  {
+    presetName: '',
+  },
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  saved: []
+  saved: [item: CatalogItem]
 }>()
 
 const formRef = ref<FormInstance>()
@@ -303,9 +311,13 @@ watch(
         fillForm(props.item)
       } else {
         resetForm()
+        if (props.presetName.trim()) {
+          form.name = props.presetName.trim()
+        }
       }
     }
   },
+  { immediate: true },
 )
 
 function close() {
@@ -378,15 +390,16 @@ async function handleSubmit() {
   submitting.value = true
   try {
     const data = buildSubmitData()
+    let saved: CatalogItem
     if (isEdit.value && props.item) {
       data.version = props.item.version
-      await updateItem(props.item.id, data)
+      saved = await updateItem(props.item.id, data)
       ElMessage.success('物品已更新')
     } else {
-      await createItem(data as Parameters<typeof createItem>[0])
+      saved = await createItem(data as Parameters<typeof createItem>[0])
       ElMessage.success('物品已创建')
     }
-    emit('saved')
+    emit('saved', saved)
     close()
   } catch (e: any) {
     ElMessage.error(e.message || '操作失败')
