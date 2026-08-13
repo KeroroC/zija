@@ -91,7 +91,13 @@
     </div>
 
     <!-- Create/Rename Dialog -->
-    <el-dialog v-model="nameDialogVisible" :title="nameDialogTitle" width="400px" @opened="focusNameInput">
+    <el-dialog
+      v-model="nameDialogVisible"
+      :title="nameDialogTitle"
+      width="400px"
+      @opened="focusNameInput"
+      @closed="clearRestoredTriggerFocus"
+    >
       <el-form :model="nameForm" label-width="80px" @submit.prevent="submitName">
         <el-form-item label="名称">
           <el-input ref="nameInputRef" v-model="nameForm.name" maxlength="100" />
@@ -176,6 +182,14 @@ function focusNameInput() {
   nameInputRef.value?.focus()
   if (nameForm.editingId) {
     nameInputRef.value?.select()
+  }
+}
+
+/** Dialog restores focus to the opener; clear it so tree action buttons don't stay ringed. */
+function clearRestoredTriggerFocus() {
+  const active = document.activeElement
+  if (active instanceof HTMLElement && active.closest('.tree-node-actions, .page-header')) {
+    active.blur()
   }
 }
 
