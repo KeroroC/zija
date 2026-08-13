@@ -18,7 +18,7 @@ import java.util.UUID;
  * reporting_* 实体组装逻辑，避免两处重复实现。
  */
 @Component
-class ProjectionEntityBuilder {
+public class ProjectionEntityBuilder {
 
     private final CatalogApi catalogApi;
     private final LocationApi locationApi;
