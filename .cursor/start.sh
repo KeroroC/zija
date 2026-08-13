@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # 知家 Cloud Agent 环境 —— 每次启动的运行时初始化（start 阶段）
 #
-# 启动 Docker 守护进程并拉起开发数据库（PostgreSQL）。必须可重复执行、
-# 避免重复进程，并在数据库就绪后返回；随后 terminals 才启动前后端。
+# 启动 Docker 守护进程、开发数据库（PostgreSQL），并在后台拉起后端
+# （Spring Boot，:8080）与前端（Vite，:5173）开发服务。必须可重复执行、
+# 避免重复进程，并在服务就绪后返回。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+# 端口是否已被监听（用于避免重复启动开发服务）
+port_in_use() { { exec 3<>"/dev/tcp/127.0.0.1/$1"; } 2>/dev/null && { exec 3>&- 3<&-; return 0; } || return 1; }
 
 # 1. 启动 Docker 守护进程（若尚未运行）。云 VM 为嵌套容器，使用 fuse-overlayfs
 #    存储驱动（由 /etc/docker/daemon.json 指定）。
@@ -32,3 +36,26 @@ for _ in $(seq 1 40); do
   sleep 2
 done
 echo "start: postgres status=${status:-unknown}"
+
+# 3. 后台拉起后端（Spring Boot，:8080）。已在监听则跳过，避免重复进程。
+if port_in_use 8080; then
+  echo "start: backend already listening on :8080"
+else
+  nohup make dev-backend >/tmp/dev-backend.log 2>&1 &
+  echo "start: backend launching (log: /tmp/dev-backend.log)"
+fi
+
+# 4. 后台拉起前端（Vite，:5173，代理 /api → :8080）。已在监听则跳过。
+if port_in_use 5173; then
+  echo "start: frontend already listening on :5173"
+else
+  nohup make dev-frontend >/tmp/dev-frontend.log 2>&1 &
+  echo "start: frontend launching (log: /tmp/dev-frontend.log)"
+fi
+
+# 5. 等待后端就绪（Flyway 迁移 + 上下文启动需要一些时间）
+for _ in $(seq 1 60); do
+  curl -fsS http://localhost:8080/actuator/health/readiness >/dev/null 2>&1 && break
+  sleep 3
+done
+echo "start: backend readiness=$(curl -fsS http://localhost:8080/actuator/health/readiness 2>/dev/null || echo unreachable)"
