@@ -91,10 +91,10 @@
     </div>
 
     <!-- Create/Rename Dialog -->
-    <el-dialog v-model="nameDialogVisible" :title="nameDialogTitle" width="400px">
+    <el-dialog v-model="nameDialogVisible" :title="nameDialogTitle" width="400px" @opened="focusNameInput">
       <el-form :model="nameForm" label-width="80px" @submit.prevent="submitName">
         <el-form-item label="名称">
-          <el-input v-model="nameForm.name" maxlength="100" />
+          <el-input ref="nameInputRef" v-model="nameForm.name" maxlength="100" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -139,7 +139,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type InputInstance } from 'element-plus'
 import { Plus, Edit, Position, Delete } from '@element-plus/icons-vue'
 import { fetchLocationTree, createLocation, renameLocation, deleteLocation, moveLocation } from '../api/location'
 import { fetchStockPositions } from '../api/inventory'
@@ -164,12 +164,20 @@ const targetSortOrder = ref(0)
 
 const nameDialogVisible = ref(false)
 const nameDialogTitle = ref('')
+const nameInputRef = ref<InputInstance>()
 const nameForm = reactive({
   name: '',
   parentId: null as string | null,
   editingId: null as string | null,
   version: 0,
 })
+
+function focusNameInput() {
+  nameInputRef.value?.focus()
+  if (nameForm.editingId) {
+    nameInputRef.value?.select()
+  }
+}
 
 // Build a flat map for ancestor path lookup
 function buildNodeMap(nodes: LocationNode[], parentPath: string[] = []): Map<string, string[]> {
