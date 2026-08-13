@@ -15,9 +15,8 @@ cd "$ROOT"
 TMUX_BIN="$(command -v tmux || echo /exec-daemon/tmux)"
 TM=("$TMUX_BIN" -L zija)   # 独立 socket，避免与平台自身 terminals 冲突
 
-port_in_use() { { exec 3<>"/dev/tcp/127.0.0.1/$1"; } 2>/dev/null && { exec 3>&- 3<&-; return 0; } || return 1; }
-tmux_has()   { "${TM[@]}" has-session -t "=$1" 2>/dev/null; }
-tmux_run()   { tmux_has "$1" || "${TM[@]}" new-session -d -s "$1" -c "$ROOT" -- bash -lc "$2"; }
+# 幂等：会话已存在则跳过，避免重复进程
+tmux_run() { "${TM[@]}" has-session -t "=$1" 2>/dev/null || "${TM[@]}" new-session -d -s "$1" -c "$ROOT" -- bash -lc "$2"; }
 
 # 1. Docker 守护进程（持久 tmux 会话）。云 VM 为嵌套容器，使用 fuse-overlayfs
 #    存储驱动（由 /etc/docker/daemon.json 指定）。
@@ -44,23 +43,12 @@ for _ in $(seq 1 40); do
 done
 echo "start: postgres status=${status:-unknown}"
 
-# 3. 后端（Spring Boot，:8080，持久 tmux 会话）。端口已监听则跳过。
-if port_in_use 8080; then
-  echo "start: backend already listening on :8080"
-else
-  tmux_run backend 'make dev-backend 2>&1 | tee /tmp/dev-backend.log'
-  echo "start: backend launching in tmux (socket zija, session backend)"
-fi
+# 3. 后端（Spring Boot，:8080）与前端（Vite，:5173，代理 /api → :8080），
+#    各自运行于独立 socket 的持久 tmux 会话中。
+tmux_run backend 'make dev-backend 2>&1 | tee /tmp/dev-backend.log'
+tmux_run frontend 'make dev-frontend 2>&1 | tee /tmp/dev-frontend.log'
 
-# 4. 前端（Vite，:5173，代理 /api → :8080，持久 tmux 会话）。端口已监听则跳过。
-if port_in_use 5173; then
-  echo "start: frontend already listening on :5173"
-else
-  tmux_run frontend 'make dev-frontend 2>&1 | tee /tmp/dev-frontend.log'
-  echo "start: frontend launching in tmux (socket zija, session frontend)"
-fi
-
-# 5. 等待后端就绪（Flyway 迁移 + 上下文启动需要一些时间）
+# 4. 等待后端就绪（Flyway 迁移 + 上下文启动需要一些时间）
 for _ in $(seq 1 60); do
   curl -fsS http://localhost:8080/actuator/health/readiness >/dev/null 2>&1 && break
   sleep 3
