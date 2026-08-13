@@ -386,6 +386,12 @@ async function onItemCreated(item: CatalogItem) {
   if (!activeItems.value.some((i) => i.id === item.id)) {
     activeItems.value = [...activeItems.value, item]
   }
+  // ItemFormDrawer may create a unit inline; refresh so unitName / decimalScale resolve.
+  try {
+    units.value = await fetchUnits()
+  } catch {
+    // Keep existing units; precision may fall back until next open.
+  }
   form.value.itemId = item.id
   await onItemChange()
 

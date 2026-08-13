@@ -574,6 +574,56 @@ describe("InboundDialog", () => {
     expect(itemSelect.props("modelValue")).toBe("item-new")
   })
 
+  it("reloads units after ItemFormDrawer saves so inline-created unit drives precision", async () => {
+    await mountDialog()
+    expect(fetchUnitsMock).toHaveBeenCalledOnce()
+
+    const createBtn = wrapper!.findAll("button").find((b) => b.text() === "新建")
+    await createBtn!.trigger("click")
+    await flushPromises()
+
+    const inlineUnit: Unit = {
+      id: "unit-inline",
+      householdId: "h1",
+      name: "箱",
+      decimalScale: 0,
+      status: "ACTIVE",
+      version: 1,
+    }
+    fetchUnitsMock.mockResolvedValueOnce([...units, inlineUnit])
+
+    const newItem = {
+      id: "item-inline-unit",
+      householdId: "h1",
+      name: "带新单位物品",
+      managementType: "CONSUMABLE" as const,
+      categoryId: null,
+      brandId: null,
+      unitId: "unit-inline",
+      coverFileId: null,
+      memo: null,
+      expiryReminderMode: "INHERIT" as const,
+      expiryReminderDays: null,
+      lowStockMode: "INHERIT" as const,
+      lowStockThreshold: null,
+      status: "ACTIVE" as const,
+      tagIds: [],
+      version: 1,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    }
+
+    const drawer = wrapper!.findComponent({ name: "ItemFormDrawer" })
+    await drawer.vm.$emit("saved", newItem)
+    await flushPromises()
+
+    expect(fetchUnitsMock).toHaveBeenCalledTimes(2)
+
+    const inputNumber = wrapper!.findComponent({ name: "ElInputNumber" })
+    expect(inputNumber.props("precision")).toBe(0)
+    expect(wrapper!.text()).toContain("箱")
+  })
+
   it("switches to new-lot mode when created item has no lots in existing mode", async () => {
     fetchLotsMock.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 1000 })
     const infoSpy = vi.spyOn(ElMessage, "info").mockImplementation(() => undefined as never)
