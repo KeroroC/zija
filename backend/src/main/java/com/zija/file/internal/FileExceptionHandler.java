@@ -15,16 +15,16 @@ class FileExceptionHandler {
 
     @ExceptionHandler(FileTooLargeException.class)
     ProblemDetail handleTooLarge(HttpServletRequest request, FileTooLargeException ex) {
-        return ZijaProblems.of(request, HttpStatus.CONTENT_TOO_LARGE, "文件过大", "FILE_TOO_LARGE");
+        return ZijaProblems.of(request, HttpStatus.CONTENT_TOO_LARGE, "文件过大", ErrorCodes.FILE_TOO_LARGE);
     }
 
     @ExceptionHandler(FileMediaTypeUnsupportedException.class)
     ProblemDetail handleUnsupported(HttpServletRequest request, FileMediaTypeUnsupportedException ex) {
-        return ZijaProblems.of(request, HttpStatus.UNSUPPORTED_MEDIA_TYPE, "不支持的文件类型", "FILE_MEDIA_TYPE_UNSUPPORTED");
+        return ZijaProblems.of(request, HttpStatus.UNSUPPORTED_MEDIA_TYPE, "不支持的文件类型", ErrorCodes.FILE_MEDIA_TYPE_UNSUPPORTED);
     }
 
     @ExceptionHandler(FileSignatureMismatchException.class)
     ProblemDetail handleMismatch(HttpServletRequest request, FileSignatureMismatchException ex) {
-        return ZijaProblems.of(request, HttpStatus.UNPROCESSABLE_CONTENT, "文件签名不匹配", "FILE_SIGNATURE_MISMATCH");
+        return ZijaProblems.of(request, HttpStatus.UNPROCESSABLE_CONTENT, "文件签名不匹配", ErrorCodes.FILE_SIGNATURE_MISMATCH);
     }
 }

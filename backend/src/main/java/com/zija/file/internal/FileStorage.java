@@ -20,6 +20,9 @@ class FileStorage {
 
     private final Path storageRoot;
 
+    // 日期前缀取年月 "yyyy/MM"
+    private static final int DATE_PREFIX_LENGTH = 7;
+
     FileStorage(@Value("${zija.file.storage-path}") String storagePath) {
         this.storageRoot = Path.of(storagePath);
     }
@@ -38,7 +41,7 @@ class FileStorage {
      * @return 相对于存储根目录的存储键（如 {@code 2026/07/<uuid>.jpg}）
      */
     String store(byte[] content, String extension) throws IOException {
-        String datePrefix = java.time.LocalDate.now().toString().replace("-", "/").substring(0, 7);
+        String datePrefix = java.time.LocalDate.now().toString().replace("-", "/").substring(0, DATE_PREFIX_LENGTH);
         String storageKey = datePrefix + "/" + UUID.randomUUID() + extension;
         Path target = storageRoot.resolve(storageKey);
 

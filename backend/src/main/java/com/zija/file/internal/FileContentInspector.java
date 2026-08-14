@@ -3,6 +3,7 @@ package com.zija.file.internal;
 import com.zija.file.internal.exception.FileMediaTypeUnsupportedException;
 import com.zija.file.internal.exception.FileSignatureMismatchException;
 import com.zija.file.internal.exception.FileTooLargeException;
+import com.zija.shared.ZijaDigests;
 import org.springframework.stereotype.Component;
 
 import java.util.Locale;
@@ -19,12 +20,27 @@ import java.util.regex.Pattern;
 @Component
 class FileContentInspector {
 
+    private static final String MEDIA_TYPE_JPEG = "image/jpeg";
+    private static final String MEDIA_TYPE_PNG = "image/png";
+    private static final String MEDIA_TYPE_WEBP = "image/webp";
+    private static final byte[] JPEG_SIGNATURE = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
+    private static final byte[] PNG_SIGNATURE = {(byte) 0x89, 0x50, 0x4E, 0x47};
+    private static final byte[] RIFF_SIGNATURE = {0x52, 0x49, 0x46, 0x46};
+    private static final byte[] WEBP_SIGNATURE = {0x57, 0x45, 0x42, 0x50};
     private static final long MAX_SIZE = 5 * 1024 * 1024;
     private static final Set<String> ALLOWED_TYPES = Set.of(
-            "image/jpeg", "image/png", "image/webp"
+            MEDIA_TYPE_JPEG, MEDIA_TYPE_PNG, MEDIA_TYPE_WEBP
     );
     private static final Pattern CONTROL_CHARS = Pattern.compile("\\p{Cntrl}");
     private static final Pattern PATH_SEPARATOR = Pattern.compile("[/\\\\]");
+
+    private static boolean startsWith(byte[] content, int offset, byte[] signature) {
+        if (content.length < offset + signature.length) return false;
+        for (int i = 0; i < signature.length; i++) {
+            if (content[offset + i] != signature[i]) return false;
+        }
+        return true;
+    }
 
     /**
      * 检查文件内容的合法性，包括大小、媒体类型检测、声明一致性校验，并返回检查结果。
@@ -61,18 +77,12 @@ class FileContentInspector {
             throw new FileMediaTypeUnsupportedException("too short to detect");
         }
         // JPEG: FF D8 FF
-        if ((content[0] & 0xFF) == 0xFF && (content[1] & 0xFF) == 0xD8 && (content[2] & 0xFF) == 0xFF) {
-            return "image/jpeg";
-        }
+        if (startsWith(content, 0, JPEG_SIGNATURE)) return MEDIA_TYPE_JPEG;
         // PNG: 89 50 4E 47
-        if ((content[0] & 0xFF) == 0x89 && content[1] == 0x50 && content[2] == 0x4E && content[3] == 0x47) {
-            return "image/png";
-        }
+        if (startsWith(content, 0, PNG_SIGNATURE)) return MEDIA_TYPE_PNG;
         // WEBP: RIFF....WEBP
-        if (content.length >= 12
-                && content[0] == 0x52 && content[1] == 0x49 && content[2] == 0x46 && content[3] == 0x46
-                && content[8] == 0x57 && content[9] == 0x45 && content[10] == 0x42 && content[11] == 0x50) {
-            return "image/webp";
+        if (startsWith(content, 0, RIFF_SIGNATURE) && startsWith(content, 8, WEBP_SIGNATURE)) {
+            return MEDIA_TYPE_WEBP;
         }
         throw new FileMediaTypeUnsupportedException("unknown");
     }
@@ -80,9 +90,9 @@ class FileContentInspector {
     private String sanitizeBasename(String originalFilename, String detectedMediaType) {
         if (originalFilename == null || originalFilename.isBlank()) {
             String ext = switch (detectedMediaType) {
-                case "image/jpeg" -> ".jpg";
-                case "image/png" -> ".png";
-                case "image/webp" -> ".webp";
+                case MEDIA_TYPE_JPEG -> ".jpg";
+                case MEDIA_TYPE_PNG -> ".png";
+                case MEDIA_TYPE_WEBP -> ".webp";
                 default -> ".bin";
             };
             return "file" + ext;
@@ -102,7 +112,7 @@ class FileContentInspector {
 
     private String computeSha256(byte[] content) {
         try {
-            var md = java.security.MessageDigest.getInstance("SHA-256");
+            var md = java.security.MessageDigest.getInstance(ZijaDigests.SHA_256);
             byte[] hash = md.digest(content);
             StringBuilder sb = new StringBuilder(64);
             for (byte b : hash) {
