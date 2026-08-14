@@ -79,7 +79,7 @@
       </el-table-column>
       <el-table-column prop="quantity_delta" label="数量" width="90" align="right">
         <template #default="{ row }">
-          <span class="numeric-cell">{{ row.quantity_delta > 0 ? '+' : '' }}{{ row.quantity_delta }}</span>
+          <span class="numeric-cell">{{ signedMovementQuantity(row.type, row.quantity_delta) }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="from_location_path" label="来源" min-width="180" show-overflow-tooltip>
@@ -124,7 +124,7 @@ import { fetchItems } from '../../api/catalog'
 import { fetchLocationTree } from '../../api/location'
 import { useSessionStore } from '../../stores/session'
 import { formatDateTime } from '../../utils/date'
-import { movementTypeLabel, movementTagType } from '../../utils/movement'
+import { movementTypeLabel, movementTagType, signedMovementQuantity } from '../../utils/movement'
 import type { StockChangeRow } from '../../types/reporting'
 import type { LocationNode } from '../../types/location'
 
