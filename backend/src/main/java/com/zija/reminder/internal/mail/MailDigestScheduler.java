@@ -1,6 +1,7 @@
 package com.zija.reminder.internal.mail;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.household.HouseholdApi;
 import com.zija.reminder.internal.MemberEmails;
 import com.zija.reminder.internal.persistence.TaskMapper;
@@ -68,7 +69,7 @@ class MailDigestScheduler {
                 log.warn("Digest send failed for household {}: {}",
                         setting.getHouseholdId(), ex.getMessage());
                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                        "MAIL_SEND_FAILED", "FAILURE",
+                        "MAIL_SEND_FAILED", ZijaAuditOutcome.FAILURE,
                         setting.getHouseholdId(), null, null, null, null,
                         Map.of("reason", ex.getMessage() != null ? ex.getMessage() : "unknown")));
             }
@@ -119,7 +120,7 @@ class MailDigestScheduler {
         mailSettingMapper.updateById(setting);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "MAIL_DIGEST_SENT", "SUCCESS",
+                "MAIL_DIGEST_SENT", ZijaAuditOutcome.SUCCESS,
                 householdId, null, null, null, null,
                 Map.of("recipients", String.valueOf(emails.size()))));
 

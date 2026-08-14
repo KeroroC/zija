@@ -1,6 +1,7 @@
 package com.zija.location.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.location.LocationApi;
 import com.zija.location.internal.event.LocationEventPublisher;
 import com.zija.location.internal.exception.LocationCycleException;
@@ -213,7 +214,7 @@ class LocationService implements LocationApi {
 
     private void audit(UUID householdId, String action, UUID resourceId) {
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                action, "SUCCESS", householdId, null, null, null, null,
+                action, ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("id", resourceId.toString())
         ));
     }

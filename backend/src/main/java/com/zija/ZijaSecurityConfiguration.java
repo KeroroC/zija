@@ -2,6 +2,8 @@ package com.zija;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
+
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.system.SystemApi;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
@@ -84,9 +86,9 @@ public class ZijaSecurityConfiguration {
                         .logoutSuccessHandler((request, response, auth) -> {
                             if (auth != null && auth.getPrincipal() instanceof ZijaPrincipal principal) {
                                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                                        "LOGOUT", "SUCCESS", null,
+                                        "LOGOUT", ZijaAuditOutcome.SUCCESS, null,
                                         principal.getAccountId(), null,
-                                        (String) request.getAttribute("zija.request-id"),
+                                        (String) request.getAttribute(ZijaRequestIdFilter.ATTRIBUTE),
                                         request.getRemoteAddr(), null
                                 ));
                             }

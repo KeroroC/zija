@@ -1,5 +1,5 @@
 @org.springframework.modulith.ApplicationModule(
         displayName = "Identity",
-        allowedDependencies = {"system"}
+        allowedDependencies = {"shared", "system"}
 )
 package com.zija.identity;

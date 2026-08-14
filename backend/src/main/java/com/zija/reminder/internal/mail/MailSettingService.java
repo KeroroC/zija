@@ -1,6 +1,8 @@
 package com.zija.reminder.internal.mail;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaMemberRole;
 import com.zija.reminder.internal.LazyInit;
 import com.zija.reminder.internal.exception.MailSettingVersionConflictException;
 import com.zija.system.SystemApi;
@@ -64,7 +66,7 @@ public class MailSettingService {
         e.setDigestEnabled(false);
         e.setDigestFrequency("DAILY");
         e.setUrgentEnabled(true);
-        e.setRecipientRoles(List.of("OWNER"));
+        e.setRecipientRoles(List.of(ZijaMemberRole.OWNER));
         e.setCreatedAt(OffsetDateTime.now());
         e.setUpdatedAt(OffsetDateTime.now());
         e.setVersion(0);
@@ -94,7 +96,7 @@ public class MailSettingService {
         int rows = mailSettingMapper.updateById(current); // optimistic lock
         if (rows == 0) throw new MailSettingVersionConflictException();
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "MAIL_SETTING_UPDATE", "SUCCESS", householdId, null, null, null, null,
+                "MAIL_SETTING_UPDATE", ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("version", String.valueOf(update.version()))));
         return toView(current);
     }

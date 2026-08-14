@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.catalog.CatalogApi;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.inventory.internal.event.InventoryEventPublisher;
@@ -124,7 +125,7 @@ public class StockCommandService {
 
         // 8. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_INBOUND", "SUCCESS",
+                "INVENTORY_INBOUND", ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", cmd.itemId(),
                         "locationId", locationId, "quantity", validatedQty)));
@@ -218,7 +219,7 @@ public class StockCommandService {
 
         // 9. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_INBOUND", "SUCCESS",
+                "INVENTORY_INBOUND", ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", itemId,
                         "locationId", locationId, "quantity", validatedQty)));
@@ -277,7 +278,7 @@ public class StockCommandService {
 
         // 9. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_CONSUME", "SUCCESS",
+                "INVENTORY_CONSUME", ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", itemId,
                         "locationId", locationId, "quantity", validatedQty)));
@@ -338,7 +339,7 @@ public class StockCommandService {
 
         // 9. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_LOSS", "SUCCESS",
+                "INVENTORY_LOSS", ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", itemId,
                         "locationId", locationId, "quantity", validatedQty)));
@@ -472,7 +473,7 @@ public class StockCommandService {
 
         // 11. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_TRANSFER", "SUCCESS",
+                "INVENTORY_TRANSFER", ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", itemId,
                         "fromLocationId", fromLocationId, "toLocationId", toLocationId,

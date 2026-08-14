@@ -1,5 +1,6 @@
 package com.zija.reminder.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.catalog.CatalogApi;
 import com.zija.inventory.InventoryApi;
 import com.zija.reminder.internal.mail.MailService;
@@ -225,7 +226,7 @@ class ReminderReconciler {
             log.warn("Urgent mail trigger failed for task {}: {}", taskId, ex.getMessage());
             try {
                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                        "MAIL_SEND_FAILED", "FAILURE",
+                        "MAIL_SEND_FAILED", ZijaAuditOutcome.FAILURE,
                         householdId, null, null, null, null,
                         Map.of("taskId", taskId.toString(), "reason",
                                 ex.getMessage() != null ? ex.getMessage() : "unknown")));

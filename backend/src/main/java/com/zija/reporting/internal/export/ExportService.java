@@ -2,6 +2,7 @@ package com.zija.reporting.internal.export;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.reporting.internal.LocationScopeResolver;
 import com.zija.reporting.internal.exception.ExportTooLargeException;
 import com.zija.reporting.internal.persistence.ReportMapper;
@@ -56,7 +57,7 @@ public class ExportService {
 
         if (allRows.size() > MAX_ROWS) {
             systemApi.recordAudit(new SystemApi.AuditEvent(
-                    "EXPORT_PERFORMED", "FAILURE", householdId, null, null, null, null,
+                    "EXPORT_PERFORMED", ZijaAuditOutcome.FAILURE, householdId, null, null, null, null,
                     Map.of("reportKey", reportKey, "reason", "TOO_LARGE", "rowCount", allRows.size())));
             throw new ExportTooLargeException(allRows.size(), MAX_ROWS);
         }
@@ -64,7 +65,7 @@ public class ExportService {
         CsvWriter.write(out, headers, allRows);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "EXPORT_PERFORMED", "SUCCESS", householdId, null, null, null, null,
+                "EXPORT_PERFORMED", ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("reportKey", reportKey, "rowCount", allRows.size())));
     }
 

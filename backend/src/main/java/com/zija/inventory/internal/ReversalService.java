@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.inventory.internal.event.InventoryEventPublisher;
 import com.zija.inventory.internal.exception.InventoryMovementAlreadyReversedException;
@@ -186,7 +187,7 @@ public class ReversalService {
 
         // 7. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_REVERSAL", "SUCCESS",
+                "INVENTORY_REVERSAL", ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("reversalOf", originalMovementId, "lotId", lotId,
                         "type", type, "quantity", originalQty)));

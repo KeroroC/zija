@@ -1,6 +1,8 @@
 package com.zija.catalog.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaRecordStatus;
 import com.zija.catalog.internal.event.CatalogEventPublisher;
 import com.zija.catalog.internal.exception.CatalogCategoryHasChildrenException;
 import com.zija.catalog.internal.exception.CatalogCycleDetectedException;
@@ -64,7 +66,7 @@ class CatalogDictionaryService {
         entity.setParentId(parentId);
         entity.setName(name.trim());
         entity.setNameNormalized(normalized);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         entity.setSortOrder(sortOrder);
         entity.setVersion(0);
         categoryMapper.insert(entity);
@@ -81,22 +83,22 @@ class CatalogDictionaryService {
         var entity = requireCategory(householdId, id);
         long childCount = categoryMapper.selectCount(new LambdaQueryWrapper<CategoryEntity>()
                 .eq(CategoryEntity::getParentId, id)
-                .eq(CategoryEntity::getStatus, "ACTIVE"));
+                .eq(CategoryEntity::getStatus, ZijaRecordStatus.ACTIVE));
         if (childCount > 0) {
             throw new CatalogCategoryHasChildrenException();
         }
-        entity.setStatus("ARCHIVED");
+        entity.setStatus(ZijaRecordStatus.ARCHIVED);
         if (categoryMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
         audit(householdId, "CATEGORY_ARCHIVED", id);
-        eventPublisher.publishCategoryChanged(householdId, id, "ARCHIVED");
+        eventPublisher.publishCategoryChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
     @Transactional
     public void restoreCategory(UUID householdId, UUID id, Integer version) {
         var entity = requireCategory(householdId, id);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         if (categoryMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
@@ -153,7 +155,7 @@ class CatalogDictionaryService {
         entity.setHouseholdId(householdId);
         entity.setName(name.trim());
         entity.setNameNormalized(normalized);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         entity.setVersion(0);
         brandMapper.insert(entity);
         audit(householdId, "BRAND_CREATED", entity.getId());
@@ -164,18 +166,18 @@ class CatalogDictionaryService {
     @Transactional
     public void archiveBrand(UUID householdId, UUID id, Integer version) {
         var entity = requireBrand(householdId, id);
-        entity.setStatus("ARCHIVED");
+        entity.setStatus(ZijaRecordStatus.ARCHIVED);
         if (brandMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
         audit(householdId, "BRAND_ARCHIVED", id);
-        eventPublisher.publishBrandChanged(householdId, id, "ARCHIVED");
+        eventPublisher.publishBrandChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
     @Transactional
     public void restoreBrand(UUID householdId, UUID id, Integer version) {
         var entity = requireBrand(householdId, id);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         if (brandMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
@@ -212,7 +214,7 @@ class CatalogDictionaryService {
         entity.setName(name.trim());
         entity.setNameNormalized(normalized);
         entity.setDecimalScale((short) decimalScale);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         entity.setVersion(0);
         unitMapper.insert(entity);
         audit(householdId, "UNIT_CREATED", entity.getId());
@@ -237,18 +239,18 @@ class CatalogDictionaryService {
     @Transactional
     public void archiveUnit(UUID householdId, UUID id, Integer version) {
         var entity = requireUnit(householdId, id);
-        entity.setStatus("ARCHIVED");
+        entity.setStatus(ZijaRecordStatus.ARCHIVED);
         if (unitMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
         audit(householdId, "UNIT_ARCHIVED", id);
-        eventPublisher.publishUnitChanged(householdId, id, "ARCHIVED");
+        eventPublisher.publishUnitChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
     @Transactional
     public void restoreUnit(UUID householdId, UUID id, Integer version) {
         var entity = requireUnit(householdId, id);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         if (unitMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
@@ -310,7 +312,7 @@ class CatalogDictionaryService {
         entity.setHouseholdId(householdId);
         entity.setName(name.trim());
         entity.setNameNormalized(normalized);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         entity.setVersion(0);
         tagMapper.insert(entity);
         audit(householdId, "TAG_CREATED", entity.getId());
@@ -321,12 +323,12 @@ class CatalogDictionaryService {
     @Transactional
     public void archiveTag(UUID householdId, UUID id, Integer version) {
         var entity = requireTag(householdId, id);
-        entity.setStatus("ARCHIVED");
+        entity.setStatus(ZijaRecordStatus.ARCHIVED);
         if (tagMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
         audit(householdId, "TAG_ARCHIVED", id);
-        eventPublisher.publishTagChanged(householdId, id, "ARCHIVED");
+        eventPublisher.publishTagChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
     @Transactional
@@ -346,7 +348,7 @@ class CatalogDictionaryService {
     @Transactional
     public void restoreTag(UUID householdId, UUID id, Integer version) {
         var entity = requireTag(householdId, id);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         if (tagMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
@@ -364,7 +366,7 @@ class CatalogDictionaryService {
         var wrapper = new LambdaQueryWrapper<CategoryEntity>()
                 .eq(CategoryEntity::getHouseholdId, householdId);
         if (!includeArchived) {
-            wrapper.eq(CategoryEntity::getStatus, "ACTIVE");
+            wrapper.eq(CategoryEntity::getStatus, ZijaRecordStatus.ACTIVE);
         }
         wrapper.orderByAsc(CategoryEntity::getSortOrder);
         return categoryMapper.selectList(wrapper);
@@ -375,7 +377,7 @@ class CatalogDictionaryService {
         var wrapper = new LambdaQueryWrapper<BrandEntity>()
                 .eq(BrandEntity::getHouseholdId, householdId);
         if (!includeArchived) {
-            wrapper.eq(BrandEntity::getStatus, "ACTIVE");
+            wrapper.eq(BrandEntity::getStatus, ZijaRecordStatus.ACTIVE);
         }
         return brandMapper.selectList(wrapper);
     }
@@ -385,7 +387,7 @@ class CatalogDictionaryService {
         var wrapper = new LambdaQueryWrapper<UnitEntity>()
                 .eq(UnitEntity::getHouseholdId, householdId);
         if (!includeArchived) {
-            wrapper.eq(UnitEntity::getStatus, "ACTIVE");
+            wrapper.eq(UnitEntity::getStatus, ZijaRecordStatus.ACTIVE);
         }
         return unitMapper.selectList(wrapper);
     }
@@ -395,7 +397,7 @@ class CatalogDictionaryService {
         var wrapper = new LambdaQueryWrapper<TagEntity>()
                 .eq(TagEntity::getHouseholdId, householdId);
         if (!includeArchived) {
-            wrapper.eq(TagEntity::getStatus, "ACTIVE");
+            wrapper.eq(TagEntity::getStatus, ZijaRecordStatus.ACTIVE);
         }
         return tagMapper.selectList(wrapper);
     }
@@ -492,7 +494,7 @@ class CatalogDictionaryService {
 
     private void audit(UUID householdId, String action, UUID resourceId) {
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                action, "SUCCESS", householdId, null, null, null, null,
+                action, ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("id", resourceId.toString())
         ));
     }

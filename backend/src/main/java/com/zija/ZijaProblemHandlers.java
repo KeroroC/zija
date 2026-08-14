@@ -1,12 +1,11 @@
 package com.zija;
 
-import com.zija.ZijaRequestIdFilter;
+import com.zija.shared.ZijaProblems;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.ProblemDetail;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
@@ -53,11 +52,7 @@ public class ZijaProblemHandlers implements AuthenticationEntryPoint, AccessDeni
 
     private void writeProblem(HttpServletRequest request, HttpServletResponse response,
                               HttpStatus status, String title, String errorCode) throws IOException {
-        var problem = ProblemDetail.forStatusAndDetail(status, title);
-        problem.setTitle(title);
-        problem.setProperty("errorCode", errorCode);
-        problem.setProperty("requestId",
-                request.getAttribute(ZijaRequestIdFilter.ATTRIBUTE));
+        var problem = ZijaProblems.of(request, status, title, errorCode);
         response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         // Must be set before getWriter(): the Servlet spec defaults the response

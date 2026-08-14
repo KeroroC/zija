@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.inventory.internal.event.InventoryEventPublisher;
 import com.zija.inventory.internal.exception.InventoryInsufficientStockException;
@@ -255,7 +256,7 @@ class StocktakeService {
 
         // 4. 审计
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_STOCKTAKE_CANCEL", "SUCCESS",
+                "INVENTORY_STOCKTAKE_CANCEL", ZijaAuditOutcome.SUCCESS,
                 householdId, null, null, null, null,
                 Map.of("stocktakeId", stocktakeId)));
     }
@@ -386,7 +387,7 @@ class StocktakeService {
 
         // 6. 审计
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_STOCKTAKE_CONFIRM", "SUCCESS",
+                "INVENTORY_STOCKTAKE_CONFIRM", ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("stocktakeId", stocktakeId, "adjustedCount", adjustedCount)));
 

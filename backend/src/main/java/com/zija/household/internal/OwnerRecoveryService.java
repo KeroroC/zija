@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.household.internal.exception.InvalidInvitationException;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
@@ -86,7 +87,7 @@ class OwnerRecoveryService {
         tokenMapper.markConsumed(token.getId());
         identityApi.resetPassword(token.getAccountId(), newPassword);
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "OWNER_RECOVERY", "SUCCESS", token.getHouseholdId(),
+                "OWNER_RECOVERY", ZijaAuditOutcome.SUCCESS, token.getHouseholdId(),
                 token.getAccountId(), token.getAccountId(), null, null, null));
     }
 

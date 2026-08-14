@@ -2,6 +2,7 @@ package com.zija.reminder.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.reminder.internal.exception.ReminderRuleExpiryDaysInvalidException;
 import com.zija.reminder.internal.exception.ReminderRuleLowStockInvalidException;
 import com.zija.reminder.internal.exception.ReminderRuleVersionConflictException;
@@ -100,7 +101,7 @@ class ReminderService {
         if (rows == 0) throw new ReminderRuleVersionConflictException();
         writeRuleChangedNotification(householdId);
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "REMINDER_RULE_UPDATE", "SUCCESS", householdId, null, null, null, null,
+                "REMINDER_RULE_UPDATE", ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("version", String.valueOf(update.version()))));
         if (changed) {
             eventPublisher.publishEvent(new ReminderRuleChangedEvent(householdId));

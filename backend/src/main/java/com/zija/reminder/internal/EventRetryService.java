@@ -1,5 +1,6 @@
 package com.zija.reminder.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.reminder.internal.persistence.DeadLetterEntity;
 import com.zija.reminder.internal.persistence.DeadLetterMapper;
@@ -74,7 +75,7 @@ class EventRetryService {
         }
         deadLetterMapper.markAbandoned(dlId);
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "REMINDER_EVENT_POISON", "FAILURE", null, null, null, null, null,
+                "REMINDER_EVENT_POISON", ZijaAuditOutcome.FAILURE, null, null, null, null, null,
                 Map.of("eventId", dl.getEventId().toString())));
     }
 
@@ -91,7 +92,7 @@ class EventRetryService {
             if (newCount >= MAX_FAILURES) {
                 deadLetterMapper.markAbandoned(dl.getId());
                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                        "REMINDER_EVENT_POISON", "FAILURE", null, null, null, null, null,
+                        "REMINDER_EVENT_POISON", ZijaAuditOutcome.FAILURE, null, null, null, null, null,
                         Map.of("eventId", dl.getEventId().toString())));
                 log.warn("Dead-letter abandoned after {} failures: eventId={}", newCount, dl.getEventId());
             } else {

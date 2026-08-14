@@ -1,5 +1,8 @@
 package com.zija.household.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaMemberRole;
+import com.zija.shared.ZijaMemberStatus;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.household.HouseholdApi;
 import com.zija.household.internal.exception.InsufficientRoleException;
@@ -51,7 +54,7 @@ class MemberService {
         member.setHouseholdId(householdId);
         member.setAccountId(accountId);
         member.setRole(role.name());
-        member.setStatus("ACTIVE");
+        member.setStatus(ZijaMemberStatus.ACTIVE);
         memberMapper.insert(member);
     }
 
@@ -65,19 +68,19 @@ class MemberService {
      */
     @Transactional
     public void updateRole(UUID actorAccountId, UUID targetMemberId, String newRole) {
-        if (!"ADMIN".equals(newRole) && !"MEMBER".equals(newRole)) {
+        if (!ZijaMemberRole.ADMIN.equals(newRole) && !ZijaMemberRole.MEMBER.equals(newRole)) {
             throw new IllegalArgumentException("role must be ADMIN or MEMBER");
         }
         var target = requireMember(targetMemberId);
         var actor = requireActiveActor(actorAccountId, target.getHouseholdId());
-        if (!"OWNER".equals(actor.getRole())
-                || (!"ADMIN".equals(target.getRole()) && !"MEMBER".equals(target.getRole()))) {
+        if (!ZijaMemberRole.OWNER.equals(actor.getRole())
+                || (!ZijaMemberRole.ADMIN.equals(target.getRole()) && !ZijaMemberRole.MEMBER.equals(target.getRole()))) {
             throw new InsufficientRoleException();
         }
         requireSingleMemberUpdate(memberMapper.updateRole(
                 targetMemberId, newRole, target.getVersion()));
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "ROLE_CHANGED", "SUCCESS", target.getHouseholdId(),
+                "ROLE_CHANGED", ZijaAuditOutcome.SUCCESS, target.getHouseholdId(),
                 actorAccountId, target.getAccountId(), null, null,
                 java.util.Map.of("oldRole", target.getRole(), "newRole", newRole)));
     }
@@ -94,7 +97,7 @@ class MemberService {
      */
     @Transactional
     public void updateStatus(UUID actorAccountId, UUID targetMemberId, String newStatus) {
-        if (!"ACTIVE".equals(newStatus) && !"DEACTIVATED".equals(newStatus)) {
+        if (!ZijaMemberStatus.ACTIVE.equals(newStatus) && !ZijaMemberStatus.DEACTIVATED.equals(newStatus)) {
             throw new IllegalArgumentException("status must be ACTIVE or DEACTIVATED");
         }
         var target = requireMember(targetMemberId);
@@ -102,24 +105,24 @@ class MemberService {
         if (actorAccountId.equals(target.getAccountId())) {
             throw new IllegalStateException("cannot change own status");
         }
-        var ownerManagingAssignableRole = "OWNER".equals(actor.getRole())
-                && ("ADMIN".equals(target.getRole()) || "MEMBER".equals(target.getRole()));
-        var adminManagingMember = "ADMIN".equals(actor.getRole())
-                && "MEMBER".equals(target.getRole());
+        var ownerManagingAssignableRole = ZijaMemberRole.OWNER.equals(actor.getRole())
+                && (ZijaMemberRole.ADMIN.equals(target.getRole()) || ZijaMemberRole.MEMBER.equals(target.getRole()));
+        var adminManagingMember = ZijaMemberRole.ADMIN.equals(actor.getRole())
+                && ZijaMemberRole.MEMBER.equals(target.getRole());
         if (!ownerManagingAssignableRole && !adminManagingMember) {
             throw new InsufficientRoleException();
         }
         requireSingleMemberUpdate(memberMapper.updateStatus(
                 targetMemberId, newStatus, target.getVersion()));
-        if ("DEACTIVATED".equals(newStatus)) {
+        if (ZijaMemberStatus.DEACTIVATED.equals(newStatus)) {
             identityApi.disableAccount(target.getAccountId());
             sessionInvalidator.invalidateAllForAccount(target.getAccountId());
         } else {
             identityApi.activateAccount(target.getAccountId());
         }
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "DEACTIVATED".equals(newStatus) ? "MEMBER_DEACTIVATED" : "MEMBER_REACTIVATED",
-                "SUCCESS", target.getHouseholdId(),
+                ZijaMemberStatus.DEACTIVATED.equals(newStatus) ? "MEMBER_DEACTIVATED" : "MEMBER_REACTIVATED",
+                ZijaAuditOutcome.SUCCESS, target.getHouseholdId(),
                 actorAccountId, target.getAccountId(), null, null, null));
     }
 
@@ -134,19 +137,19 @@ class MemberService {
     @Transactional
     public void transferOwnership(UUID currentOwnerAccountId, UUID targetMemberId) {
         var target = requireMember(targetMemberId);
-        if (!"ACTIVE".equals(target.getStatus())
-                || target.getRole().equals("OWNER")) {
+        if (!ZijaMemberStatus.ACTIVE.equals(target.getStatus())
+                || target.getRole().equals(ZijaMemberRole.OWNER)) {
             throw new InsufficientRoleException();
         }
         var household = target.getHouseholdId();
         var currentOwner = requireActiveActor(currentOwnerAccountId, household);
-        if (!"OWNER".equals(currentOwner.getRole())) {
+        if (!ZijaMemberRole.OWNER.equals(currentOwner.getRole())) {
             throw new InsufficientRoleException();
         }
         requireSingleMemberUpdate(memberMapper.updateRole(
-                currentOwner.getId(), "ADMIN", currentOwner.getVersion()));
+                currentOwner.getId(), ZijaMemberRole.ADMIN, currentOwner.getVersion()));
         requireSingleMemberUpdate(memberMapper.updateRole(
-                targetMemberId, "OWNER", target.getVersion()));
+                targetMemberId, ZijaMemberRole.OWNER, target.getVersion()));
         identityApi.disableAccount(currentOwner.getAccountId());
         identityApi.disableAccount(target.getAccountId());
         identityApi.activateAccount(currentOwner.getAccountId());
@@ -154,7 +157,7 @@ class MemberService {
         sessionInvalidator.invalidateAllForAccount(currentOwner.getAccountId());
         sessionInvalidator.invalidateAllForAccount(target.getAccountId());
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "OWNERSHIP_TRANSFERRED", "SUCCESS", household,
+                "OWNERSHIP_TRANSFERRED", ZijaAuditOutcome.SUCCESS, household,
                 currentOwnerAccountId, target.getAccountId(), null, null,
                 java.util.Map.of("oldOwner", currentOwner.getAccountId().toString(),
                         "newOwner", target.getAccountId().toString())));
@@ -177,7 +180,7 @@ class MemberService {
     private MemberEntity requireActiveActor(UUID accountId, UUID householdId) {
         var actor = memberMapper.selectByAccount(accountId)
                 .orElseThrow(InsufficientRoleException::new);
-        if (!"ACTIVE".equals(actor.getStatus())
+        if (!ZijaMemberStatus.ACTIVE.equals(actor.getStatus())
                 || !householdId.equals(actor.getHouseholdId())) {
             throw new InsufficientRoleException();
         }

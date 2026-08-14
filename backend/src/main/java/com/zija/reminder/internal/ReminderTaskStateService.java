@@ -1,5 +1,6 @@
 package com.zija.reminder.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.reminder.internal.exception.ReminderTaskInvalidTransitionException;
 import com.zija.reminder.internal.exception.ReminderTaskNotFoundException;
 import com.zija.reminder.internal.exception.ReminderTaskSnoozeUntilInvalidException;
@@ -74,7 +75,7 @@ class ReminderTaskStateService {
 
     private void audit(UUID householdId, UUID taskId, String action) {
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                action, "SUCCESS", householdId, null, null, null, null,
+                action, ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("taskId", taskId.toString())));
     }
 }

@@ -1,5 +1,6 @@
 package com.zija.reporting.internal.projection;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.catalog.*;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.location.LocationChangedEvent;
@@ -71,7 +72,7 @@ public class ReportingEventRetryService {
             if (newCount >= MAX_FAILURES) {
                 deadLetterMapper.markAbandoned(dl.getId());
                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                        "REPORTING_EVENT_ABANDONED", "FAILURE", null, null, null, null, null,
+                        "REPORTING_EVENT_ABANDONED", ZijaAuditOutcome.FAILURE, null, null, null, null, null,
                         Map.of("eventId", dl.getEventId().toString(),
                                "eventType", dl.getEventType())));
                 log.warn("Reporting dead-letter abandoned after {} failures: eventId={}",

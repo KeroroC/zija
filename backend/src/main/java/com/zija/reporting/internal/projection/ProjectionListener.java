@@ -1,5 +1,6 @@
 package com.zija.reporting.internal.projection;
 
+import com.zija.shared.ZijaRecordStatus;
 import com.zija.catalog.*;
 import com.zija.inventory.InventoryApi;
 import com.zija.inventory.StockChangedEvent;
@@ -147,7 +148,7 @@ public class ProjectionListener {
     }
 
     private void handleItemChanged(ItemChangedEvent evt) {
-        if ("ARCHIVED".equals(evt.changeType())) {
+        if (ZijaRecordStatus.ARCHIVED.equals(evt.changeType())) {
             searchIndexMapper.deleteByEntity(evt.householdId(), "ITEM", evt.itemId());
             return;
         }

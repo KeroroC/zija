@@ -1,6 +1,6 @@
 package com.zija.identity.internal;
 
-import com.zija.ZijaRequestIdFilter;
+import com.zija.shared.ZijaProblems;
 import com.zija.identity.internal.exception.AccountVersionConflictException;
 import com.zija.identity.internal.exception.InvalidCredentialsException;
 import com.zija.identity.internal.exception.LoginRateLimitedException;
@@ -17,12 +17,12 @@ class IdentityExceptionHandler {
 
     @ExceptionHandler(InvalidCredentialsException.class)
     ProblemDetail handleInvalidCredentials(HttpServletRequest request) {
-        return problem(request, HttpStatus.UNAUTHORIZED, "用户名或密码错误", "AUTH_LOGIN_FAILED");
+        return ZijaProblems.of(request, HttpStatus.UNAUTHORIZED, "用户名或密码错误", "AUTH_LOGIN_FAILED");
     }
 
     @ExceptionHandler(LoginRateLimitedException.class)
     ResponseEntity<ProblemDetail> handleRateLimited(HttpServletRequest request) {
-        var body = problem(request, HttpStatus.TOO_MANY_REQUESTS,
+        var body = ZijaProblems.of(request, HttpStatus.TOO_MANY_REQUESTS,
                 "登录尝试过多", "AUTH_LOGIN_RATE_LIMITED");
         return ResponseEntity
                 .status(HttpStatus.TOO_MANY_REQUESTS)
@@ -32,21 +32,11 @@ class IdentityExceptionHandler {
 
     @ExceptionHandler(UsernameAlreadyExistsException.class)
     ProblemDetail handleDuplicate(HttpServletRequest request) {
-        return problem(request, HttpStatus.CONFLICT, "用户名已存在", "IDENTITY_USERNAME_TAKEN");
+        return ZijaProblems.of(request, HttpStatus.CONFLICT, "用户名已存在", "IDENTITY_USERNAME_TAKEN");
     }
 
     @ExceptionHandler(AccountVersionConflictException.class)
     ProblemDetail handleVersionConflict(HttpServletRequest request) {
-        return problem(request, HttpStatus.CONFLICT, "版本冲突", "IDENTITY_VERSION_CONFLICT");
-    }
-
-    private ProblemDetail problem(HttpServletRequest request, HttpStatus status,
-                                  String title, String errorCode) {
-        var problem = ProblemDetail.forStatusAndDetail(status, title);
-        problem.setTitle(title);
-        problem.setProperty("errorCode", errorCode);
-        problem.setProperty("requestId",
-                request.getAttribute(ZijaRequestIdFilter.ATTRIBUTE));
-        return problem;
+        return ZijaProblems.of(request, HttpStatus.CONFLICT, "版本冲突", "IDENTITY_VERSION_CONFLICT");
     }
 }

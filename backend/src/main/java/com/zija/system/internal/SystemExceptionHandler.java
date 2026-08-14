@@ -1,6 +1,6 @@
 package com.zija.system.internal;
 
-import com.zija.ZijaRequestIdFilter;
+import com.zija.shared.ZijaProblems;
 import com.zija.system.internal.exception.SystemStateUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -30,19 +30,9 @@ class SystemExceptionHandler {
     }
 
     private ProblemDetail unavailableProblem(HttpServletRequest request) {
-        var problem = ProblemDetail.forStatusAndDetail(
-                HttpStatus.INTERNAL_SERVER_ERROR,
-                "The system installation state could not be loaded."
-        );
-        problem.setTitle("System state unavailable");
-        problem.setProperty(
-                "errorCode",
-                "system_state_unavailable"
-        );
-        problem.setProperty(
-                "requestId",
-                request.getAttribute(ZijaRequestIdFilter.ATTRIBUTE)
-        );
-        return problem;
+        return ZijaProblems.of(request, HttpStatus.INTERNAL_SERVER_ERROR,
+                "System state unavailable",
+                "The system installation state could not be loaded.",
+                "system_state_unavailable");
     }
 }

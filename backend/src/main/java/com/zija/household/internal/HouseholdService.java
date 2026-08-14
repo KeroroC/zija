@@ -1,5 +1,8 @@
 package com.zija.household.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaMemberRole;
+import com.zija.shared.ZijaMemberStatus;
 import com.zija.household.HouseholdApi;
 import com.zija.household.internal.exception.HouseholdAlreadyInitializedException;
 import com.zija.household.internal.exception.InvalidCredentialsException;
@@ -104,13 +107,13 @@ class HouseholdService implements HouseholdApi {
         member.setId(UUID.randomUUID());
         member.setHouseholdId(household.getId());
         member.setAccountId(account.id());
-        member.setRole("OWNER");
-        member.setStatus("ACTIVE");
+        member.setRole(ZijaMemberRole.OWNER);
+        member.setStatus(ZijaMemberStatus.ACTIVE);
         member.setVersion(0);
         memberMapper.insert(member);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "HOUSEHOLD_INITIALIZED", "SUCCESS",
+                "HOUSEHOLD_INITIALIZED", ZijaAuditOutcome.SUCCESS,
                 household.getId(), account.id(), account.id(),
                 null, null, null));
 
@@ -147,7 +150,7 @@ class HouseholdService implements HouseholdApi {
     public MemberInfo requireActiveMember(UUID accountId) {
         var member = memberMapper.selectByAccount(accountId)
                 .orElseThrow(() -> new InvalidCredentialsException());
-        if (!"ACTIVE".equals(member.getStatus())) {
+        if (!ZijaMemberStatus.ACTIVE.equals(member.getStatus())) {
             throw new InvalidCredentialsException();
         }
         return toInfo(member);
@@ -164,7 +167,7 @@ class HouseholdService implements HouseholdApi {
     @Transactional(readOnly = true)
     public boolean hasAtLeastRole(UUID accountId, MemberRole requiredRole) {
         var member = memberMapper.selectByAccount(accountId).orElse(null);
-        if (member == null || !"ACTIVE".equals(member.getStatus())) {
+        if (member == null || !ZijaMemberStatus.ACTIVE.equals(member.getStatus())) {
             return false;
         }
         return MemberRole.valueOf(member.getRole()).isAtLeast(requiredRole);
