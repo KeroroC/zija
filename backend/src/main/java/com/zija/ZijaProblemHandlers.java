@@ -27,6 +27,10 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class ZijaProblemHandlers implements AuthenticationEntryPoint, AccessDeniedHandler {
 
+    private static final String ERROR_AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED";
+    private static final String ERROR_CSRF_TOKEN_INVALID = "CSRF_TOKEN_INVALID";
+    private static final String ERROR_ACCESS_DENIED = "ACCESS_DENIED";
+
     private final ObjectMapper objectMapper;
 
     public ZijaProblemHandlers(ObjectMapper objectMapper) {
@@ -38,14 +42,14 @@ public class ZijaProblemHandlers implements AuthenticationEntryPoint, AccessDeni
     public void commence(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
                          @NonNull AuthenticationException ex) throws IOException {
         writeProblem(request, response, HttpStatus.UNAUTHORIZED,
-                "需要认证", "AUTHENTICATION_REQUIRED");
+                "需要认证", ERROR_AUTHENTICATION_REQUIRED);
     }
 
     /** 已认证但权限不足时返回 403 Problem Details 响应，CSRF 失败会使用专用错误码。 */
     @Override
     public void handle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
                        @NonNull AccessDeniedException ex) throws IOException {
-        var errorCode = ex instanceof CsrfException ? "CSRF_TOKEN_INVALID" : "ACCESS_DENIED";
+        var errorCode = ex instanceof CsrfException ? ERROR_CSRF_TOKEN_INVALID : ERROR_ACCESS_DENIED;
         var title = ex instanceof CsrfException ? "CSRF Token 无效" : "权限不足";
         writeProblem(request, response, HttpStatus.FORBIDDEN, title, errorCode);
     }

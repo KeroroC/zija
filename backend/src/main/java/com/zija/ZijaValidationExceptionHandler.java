@@ -1,5 +1,6 @@
 package com.zija;
 
+import com.zija.shared.ZijaErrorCodes;
 import com.zija.shared.ZijaProblems;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -60,7 +61,7 @@ public class ZijaValidationExceptionHandler {
             Map<String, String> fieldErrors
     ) {
         var problem = ZijaProblems.of(request, HttpStatus.BAD_REQUEST,
-                "请求字段校验失败", "VALIDATION_FAILED");
+                "请求字段校验失败", ZijaErrorCodes.VALIDATION_FAILED);
         problem.setProperty(ZijaProblems.PROP_FIELD_ERRORS, fieldErrors);
         return problem;
     }
