@@ -156,7 +156,7 @@ class IdentityService implements IdentityApi {
     public void disableAccount(UUID accountId) {
         var account = accountMapper.selectById(accountId);
         if (account != null) {
-            accountMapper.updateStatus(accountId, "DISABLED", account.getVersion());
+            accountMapper.updateStatus(accountId, AccountStatus.DISABLED, account.getVersion());
         }
     }
 
@@ -170,7 +170,7 @@ class IdentityService implements IdentityApi {
     public void activateAccount(UUID accountId) {
         var account = accountMapper.selectById(accountId);
         if (account != null) {
-            accountMapper.updateStatus(accountId, ZijaMemberStatus.ACTIVE, account.getVersion());
+            accountMapper.updateStatus(accountId, AccountStatus.ACTIVE, account.getVersion());
         }
     }
 
