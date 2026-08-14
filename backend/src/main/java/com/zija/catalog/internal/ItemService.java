@@ -3,6 +3,10 @@ package com.zija.catalog.internal;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaChangeType;
+import com.zija.shared.ZijaRecordStatus;
+import com.zija.shared.ZijaReminderMode;
 import com.zija.catalog.CatalogApi;
 import com.zija.catalog.internal.event.CatalogEventPublisher;
 import com.zija.catalog.internal.exception.CatalogArchivedDictionaryException;
@@ -83,7 +87,7 @@ class ItemService implements CatalogApi {
         if (entity == null || !entity.getHouseholdId().equals(householdId)) {
             throw new CatalogArchivedDictionaryException("item", itemId);
         }
-        if (!"ACTIVE".equals(entity.getStatus())) {
+        if (!ZijaRecordStatus.ACTIVE.equals(entity.getStatus())) {
             throw new CatalogArchivedDictionaryException("item", itemId);
         }
         return toInfo(entity);
@@ -105,7 +109,7 @@ class ItemService implements CatalogApi {
     public List<ItemInfo> listActiveItems(UUID householdId) {
         var wrapper = new LambdaQueryWrapper<ItemEntity>()
                 .eq(ItemEntity::getHouseholdId, householdId)
-                .eq(ItemEntity::getStatus, "ACTIVE");
+                .eq(ItemEntity::getStatus, ZijaRecordStatus.ACTIVE);
         return itemMapper.selectList(wrapper).stream().map(this::toInfo).toList();
     }
 
@@ -155,7 +159,7 @@ class ItemService implements CatalogApi {
                 requireActiveDictionary(tagMapper, tagId, householdId, "tag");
             }
         }
-        if ("CUSTOM".equals(lowStockMode) && lowStockThreshold != null) {
+        if (ZijaReminderMode.CUSTOM.equals(lowStockMode) && lowStockThreshold != null) {
             int scale = lowStockThreshold.stripTrailingZeros().scale();
             if (scale > unit.getDecimalScale()) {
                 throw new CatalogUnitPrecisionInvalidException(scale, unit.getDecimalScale());
@@ -175,7 +179,7 @@ class ItemService implements CatalogApi {
         entity.setExpiryReminderDays(expiryReminderDays);
         entity.setLowStockMode(lowStockMode);
         entity.setLowStockThreshold(lowStockThreshold);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         entity.setVersion(0);
         itemMapper.insert(entity);
 
@@ -185,8 +189,8 @@ class ItemService implements CatalogApi {
             }
         }
 
-        audit(householdId, "ITEM_CREATED", entity.getId());
-        eventPublisher.publishItemChanged(householdId, entity.getId(), "CREATED");
+        audit(householdId, SystemApi.AuditAction.ITEM_CREATED, entity.getId());
+        eventPublisher.publishItemChanged(householdId, entity.getId(), ZijaChangeType.CREATED);
         return entity;
     }
 
@@ -196,27 +200,27 @@ class ItemService implements CatalogApi {
     @Transactional
     public void archiveItem(UUID householdId, UUID id, UUID accountId, Integer version) {
         var entity = requireItemEntity(householdId, id);
-        entity.setStatus("ARCHIVED");
+        entity.setStatus(ZijaRecordStatus.ARCHIVED);
         entity.setArchivedAt(OffsetDateTime.now());
         entity.setArchivedBy(accountId);
         if (itemMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "ITEM_ARCHIVED", id);
-        eventPublisher.publishItemChanged(householdId, id, "ARCHIVED");
+        audit(householdId, SystemApi.AuditAction.ITEM_ARCHIVED, id);
+        eventPublisher.publishItemChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
     @Transactional
     public void restoreItem(UUID householdId, UUID id, Integer version) {
         var entity = requireItemEntity(householdId, id);
-        entity.setStatus("ACTIVE");
+        entity.setStatus(ZijaRecordStatus.ACTIVE);
         entity.setArchivedAt(null);
         entity.setArchivedBy(null);
         if (itemMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "ITEM_RESTORED", id);
-        eventPublisher.publishItemChanged(householdId, id, "RESTORED");
+        audit(householdId, SystemApi.AuditAction.ITEM_RESTORED, id);
+        eventPublisher.publishItemChanged(householdId, id, ZijaChangeType.RESTORED);
     }
 
     @Transactional(readOnly = true)
@@ -289,7 +293,7 @@ class ItemService implements CatalogApi {
             entity.setExpiryReminderDays(expiryReminderDays);
         }
         if (lowStockMode != null) {
-            if ("CUSTOM".equals(lowStockMode) && lowStockThreshold != null) {
+            if (ZijaReminderMode.CUSTOM.equals(lowStockMode) && lowStockThreshold != null) {
                 var unit = requireActiveUnit(householdId, entity.getUnitId());
                 int scale = lowStockThreshold.stripTrailingZeros().scale();
                 if (scale > unit.getDecimalScale()) {
@@ -311,8 +315,8 @@ class ItemService implements CatalogApi {
                 itemMapper.insertItemTag(householdId, id, tagId);
             }
         }
-        audit(householdId, "ITEM_UPDATED", id);
-        eventPublisher.publishItemChanged(householdId, id, "UPDATED");
+        audit(householdId, SystemApi.AuditAction.ITEM_UPDATED, id);
+        eventPublisher.publishItemChanged(householdId, id, ZijaChangeType.UPDATED);
         return itemMapper.findByIdFull(id);
     }
 
@@ -355,7 +359,7 @@ class ItemService implements CatalogApi {
             fileApi.release(householdId, oldCoverFileId);
         }
 
-        audit(householdId, "ITEM_COVER_UPLOADED", itemId);
+        audit(householdId, SystemApi.AuditAction.ITEM_COVER_UPLOADED, itemId);
         return new CoverResult(newFileInfo, version + 1);
     }
 
@@ -389,7 +393,7 @@ class ItemService implements CatalogApi {
         // 2. 更新成功后，释放旧文件
         fileApi.release(householdId, oldCoverFileId);
 
-        audit(householdId, "ITEM_COVER_REMOVED", itemId);
+        audit(householdId, SystemApi.AuditAction.ITEM_COVER_REMOVED, itemId);
     }
 
     // --- Private helpers ---
@@ -407,7 +411,7 @@ class ItemService implements CatalogApi {
         if (entity == null || !entity.getHouseholdId().equals(householdId)) {
             throw new CatalogArchivedDictionaryException("unit", unitId);
         }
-        if (!"ACTIVE".equals(entity.getStatus())) {
+        if (!ZijaRecordStatus.ACTIVE.equals(entity.getStatus())) {
             throw new CatalogArchivedDictionaryException("unit", unitId);
         }
         return entity;
@@ -435,7 +439,7 @@ class ItemService implements CatalogApi {
 
     private void audit(UUID householdId, String action, UUID resourceId) {
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                action, "SUCCESS", householdId, null, null, null, null,
+                action, ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("id", resourceId.toString())
         ));
     }

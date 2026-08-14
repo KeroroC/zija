@@ -1,5 +1,6 @@
 package com.zija.reporting.internal;
 
+import com.zija.shared.ZijaProblems;
 import com.zija.reporting.internal.exception.ExportTooLargeException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -19,7 +20,7 @@ class ReportingExceptionHandler {
         body.put("type", "about:blank");
         body.put("title", "Export Too Large");
         body.put("status", 400);
-        body.put("errorCode", "REPORTING_EXPORT_TOO_LARGE");
+        body.put(ZijaProblems.PROP_ERROR_CODE, ErrorCodes.REPORTING_EXPORT_TOO_LARGE);
         body.put("detail", "Export contains " + ex.getActualRows() + " rows (max " + ex.getMaxRows() + "). "
                 + "Please narrow your filter criteria.");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
@@ -29,7 +30,7 @@ class ReportingExceptionHandler {
     ResponseEntity<ProblemDetail> handleIllegalArgument(IllegalArgumentException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         problem.setTitle("Bad Request");
-        problem.setProperty("errorCode", "REPORTING_INVALID_REQUEST");
+        problem.setProperty(ZijaProblems.PROP_ERROR_CODE, ErrorCodes.REPORTING_INVALID_REQUEST);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 }

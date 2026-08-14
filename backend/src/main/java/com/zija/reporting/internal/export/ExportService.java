@@ -2,6 +2,10 @@ package com.zija.reporting.internal.export;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.reporting.internal.LocationScopeResolver;
+import com.zija.reporting.internal.ReportingClockConfig;
+import com.zija.reporting.internal.ReportingController;
 import com.zija.reporting.internal.exception.ExportTooLargeException;
 import com.zija.reporting.internal.persistence.ReportMapper;
 import com.zija.reporting.internal.persistence.SearchMapper;
@@ -31,13 +35,16 @@ public class ExportService {
     private final ReportMapper reportMapper;
     private final SearchMapper searchMapper;
     private final SystemApi systemApi;
+    private final LocationScopeResolver locationScopeResolver;
     private final Clock clock;
 
     public ExportService(ReportMapper reportMapper, SearchMapper searchMapper, SystemApi systemApi,
-                         @Qualifier("reportingClock") Clock clock) {
+                         LocationScopeResolver locationScopeResolver,
+                         @Qualifier(ReportingClockConfig.REPORTING_CLOCK) Clock clock) {
         this.reportMapper = reportMapper;
         this.searchMapper = searchMapper;
         this.systemApi = systemApi;
+        this.locationScopeResolver = locationScopeResolver;
         this.clock = clock;
     }
 
@@ -52,7 +59,7 @@ public class ExportService {
 
         if (allRows.size() > MAX_ROWS) {
             systemApi.recordAudit(new SystemApi.AuditEvent(
-                    "EXPORT_PERFORMED", "FAILURE", householdId, null, null, null, null,
+                    SystemApi.AuditAction.EXPORT_PERFORMED, ZijaAuditOutcome.FAILURE, householdId, null, null, null, null,
                     Map.of("reportKey", reportKey, "reason", "TOO_LARGE", "rowCount", allRows.size())));
             throw new ExportTooLargeException(allRows.size(), MAX_ROWS);
         }
@@ -60,7 +67,7 @@ public class ExportService {
         CsvWriter.write(out, headers, allRows);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "EXPORT_PERFORMED", "SUCCESS", householdId, null, null, null, null,
+                SystemApi.AuditAction.EXPORT_PERFORMED, ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("reportKey", reportKey, "rowCount", allRows.size())));
     }
 
@@ -76,26 +83,25 @@ public class ExportService {
             case "expiring-lots" -> fetchAllPaged(
                     page -> reportMapper.expiringLots(page, householdId,
                             LocalDate.now(clock),
-                            parseInt(params, "withinDays", 30),
+                            parseInt(params, "withinDays", ReportingController.DEFAULT_WITHIN_DAYS),
                             parseUuid(params, "itemId"),
                             parseUuid(params, "locationId")));
             case "low-stock" -> fetchAllPaged(
                     page -> reportMapper.lowStock(page, householdId,
                             parseUuid(params, "categoryId")));
-            case "stock-changes" -> fetchAllPaged(
-                    page -> reportMapper.stockChanges(page, householdId,
-                            parseOffsetDateTime(params, "from"),
-                            parseOffsetDateTime(params, "to"),
-                            parseUuid(params, "itemId"),
-                            parseUuid(params, "locationId"),
-                            params.get("type")));
-            case "movements" -> fetchAllPaged(
-                    page -> reportMapper.movements(page, householdId,
-                            parseOffsetDateTime(params, "from"),
-                            parseOffsetDateTime(params, "to"),
-                            parseUuid(params, "itemId"),
-                            params.get("type"),
-                            parseUuid(params, "operatorAccountId")));
+            case "movements" -> {
+                UUID locationId = parseUuid(params, "locationId");
+                var locationIds = locationId != null
+                        ? locationScopeResolver.expandWithDescendants(householdId, locationId) : null;
+                yield fetchAllPaged(
+                        page -> reportMapper.movements(page, householdId,
+                                parseOffsetDateTime(params, "from"),
+                                parseOffsetDateTime(params, "to"),
+                                parseUuid(params, "itemId"),
+                                params.get("type"),
+                                parseUuid(params, "operatorAccountId"),
+                                locationIds));
+            }
             case "items-full" -> fetchAllSearch(
                     (q, limit) -> searchMapper.searchItems(householdId, q, limit),
                     params.getOrDefault("q", ""));
@@ -128,7 +134,7 @@ public class ExportService {
 
     private static final Set<String> SUPPORTED_REPORT_KEYS = Set.of(
             "stock-by-location", "expiring-lots", "low-stock",
-            "stock-changes", "movements", "items-full", "locations-full");
+            "movements", "items-full", "locations-full");
 
     /** 校验 reportKey 是否在支持范围内。控制器须在写入响应头之前调用，避免未校验输入进入响应头。 */
     public boolean isSupportedReportKey(String reportKey) {
@@ -142,9 +148,6 @@ public class ExportService {
             case "expiring-lots" -> List.of("lot_number", "serial_number", "item_name",
                     "location_path", "quantity", "expiry_date", "days_until_expiry");
             case "low-stock" -> List.of("item_name", "total_quantity", "low_stock_threshold");
-            case "stock-changes" -> List.of("item_name", "type", "quantity_delta",
-                    "from_location_path", "to_location_path", "operator_display_name",
-                    "reason", "business_time");
             case "movements" -> List.of("item_name", "type", "quantity_delta",
                     "from_location_path", "to_location_path", "operator_display_name",
                     "reason", "reversal_of", "business_time");

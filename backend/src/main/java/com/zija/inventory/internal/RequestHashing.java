@@ -1,5 +1,7 @@
 package com.zija.inventory.internal;
 
+import com.zija.shared.ZijaDigests;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
@@ -21,7 +23,7 @@ final class RequestHashing {
      */
     static String sha256(String s) {
         try {
-            var md = MessageDigest.getInstance("SHA-256");
+            var md = MessageDigest.getInstance(ZijaDigests.SHA_256);
             var hex = new StringBuilder();
             for (byte b : md.digest(s.getBytes(StandardCharsets.UTF_8)))
                 hex.append(String.format("%02x", b));

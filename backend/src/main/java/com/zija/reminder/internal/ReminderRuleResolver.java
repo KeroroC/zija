@@ -1,6 +1,7 @@
 package com.zija.reminder.internal;
 
 import com.zija.catalog.CatalogApi;
+import com.zija.shared.ZijaReminderMode;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -12,16 +13,16 @@ final class ReminderRuleResolver {
     record EffectiveLowStockRule(boolean enabled, BigDecimal threshold) {}
 
     static EffectiveExpiryRule resolveExpiry(CatalogApi.ItemInfo item, ReminderService.RuleView hh) {
-        if ("DISABLED".equals(item.expiryReminderMode()) || hh.expiryDisabled()) return new EffectiveExpiryRule(false, null);
-        List<Short> days = "CUSTOM".equals(item.expiryReminderMode())
+        if (ZijaReminderMode.DISABLED.equals(item.expiryReminderMode()) || hh.expiryDisabled()) return new EffectiveExpiryRule(false, null);
+        List<Short> days = ZijaReminderMode.CUSTOM.equals(item.expiryReminderMode())
                 ? item.expiryReminderDays() : hh.expiryReminderDays();
         if (days == null || days.isEmpty()) return new EffectiveExpiryRule(false, null);
         return new EffectiveExpiryRule(true, days);
     }
 
     static EffectiveLowStockRule resolveLowStock(CatalogApi.ItemInfo item, ReminderService.RuleView hh) {
-        if ("DISABLED".equals(item.lowStockMode())) return new EffectiveLowStockRule(false, null);
-        if ("CUSTOM".equals(item.lowStockMode())) {
+        if (ZijaReminderMode.DISABLED.equals(item.lowStockMode())) return new EffectiveLowStockRule(false, null);
+        if (ZijaReminderMode.CUSTOM.equals(item.lowStockMode())) {
             return new EffectiveLowStockRule(true, item.lowStockThreshold());
         }
         // INHERIT

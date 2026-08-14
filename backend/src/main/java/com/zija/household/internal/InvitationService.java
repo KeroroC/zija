@@ -1,5 +1,9 @@
 package com.zija.household.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaDigests;
+import com.zija.shared.ZijaMemberRole;
+import com.zija.shared.ZijaMemberStatus;
 import com.zija.household.HouseholdApi;
 import com.zija.household.internal.exception.InsufficientRoleException;
 import com.zija.household.internal.exception.InvalidInvitationException;
@@ -66,12 +70,12 @@ class InvitationService {
         }
         var creator = memberMapper.selectByAccount(createdBy)
                 .orElseThrow(InsufficientRoleException::new);
-        if (!"ACTIVE".equals(creator.getStatus())
+        if (!ZijaMemberStatus.ACTIVE.equals(creator.getStatus())
                 || !householdId.equals(creator.getHouseholdId())) {
             throw new InsufficientRoleException();
         }
-        var ownerInvitation = "OWNER".equals(creator.getRole());
-        var adminMemberInvitation = "ADMIN".equals(creator.getRole())
+        var ownerInvitation = ZijaMemberRole.OWNER.equals(creator.getRole());
+        var adminMemberInvitation = ZijaMemberRole.ADMIN.equals(creator.getRole())
                 && role == HouseholdApi.MemberRole.MEMBER;
         if (!ownerInvitation && !adminMemberInvitation) {
             throw new InsufficientRoleException();
@@ -92,7 +96,7 @@ class InvitationService {
         invitationMapper.insert(entity);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVITATION_CREATED", "SUCCESS", householdId, createdBy, null,
+                SystemApi.AuditAction.INVITATION_CREATED, ZijaAuditOutcome.SUCCESS, householdId, createdBy, null,
                 null, null, null));
         return new CreateResult(entity.getId(), rawToken, digest, role, entity.getExpiresAt());
     }
@@ -127,10 +131,10 @@ class InvitationService {
         invitationMapper.markConsumed(invitation.getId(), account.id());
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "MEMBER_JOINED", "SUCCESS", invitation.getHouseholdId(),
+                SystemApi.AuditAction.MEMBER_JOINED, ZijaAuditOutcome.SUCCESS, invitation.getHouseholdId(),
                 account.id(), account.id(), null, null, null));
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVITATION_REDEEMED", "SUCCESS", invitation.getHouseholdId(),
+                SystemApi.AuditAction.INVITATION_REDEEMED, ZijaAuditOutcome.SUCCESS, invitation.getHouseholdId(),
                 account.id(), account.id(), null, null, null));
     }
 
@@ -155,7 +159,7 @@ class InvitationService {
      */
     static String sha256Hex(String input) {
         try {
-            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            var digest = java.security.MessageDigest.getInstance(ZijaDigests.SHA_256);
             var hash = digest.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             var sb = new StringBuilder();
             for (byte b : hash) sb.append(String.format("%02x", b));

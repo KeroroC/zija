@@ -9,7 +9,7 @@ import com.zija.inventory.internal.persistence.LotMapper;
 import com.zija.inventory.internal.persistence.MovementMapper;
 import com.zija.inventory.internal.persistence.StockPositionEntity;
 import com.zija.inventory.internal.persistence.StockPositionMapper;
-import com.zija.inventory.internal.persistence.StocktakeItemEntity;
+import com.zija.inventory.internal.persistence.StocktakeItemWithDetails;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -283,11 +283,11 @@ class InventoryService implements InventoryApi {
     }
 
     /**
-     * 查询盘点草稿行项。所有活跃成员可执行。
+     * 查询盘点草稿行项（含物品名称、批次号、单位等展示信息）。所有活跃成员可执行。
      */
-    public List<StocktakeItemEntity> stocktakeItems(UUID accountId, UUID householdId, UUID stocktakeId) {
+    public List<StocktakeItemWithDetails> stocktakeItems(UUID accountId, UUID householdId, UUID stocktakeId) {
         householdApi.requireActiveMember(accountId);
-        return stocktakeService.draftItems(householdId, stocktakeId);
+        return stocktakeService.draftItemsWithDetails(householdId, stocktakeId);
     }
 
     // ---- Admin-only commands ----

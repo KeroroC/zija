@@ -73,18 +73,6 @@ export interface LowStockRow {
   low_stock_threshold: number
 }
 
-/** 库存变化行 */
-export interface StockChangeRow {
-  item_name: string
-  type: string
-  quantity_delta: number
-  from_location_path: string
-  to_location_path: string
-  operator_display_name: string
-  reason: string
-  business_time: string
-}
-
 /** 流水行 */
 export interface MovementRow {
   item_name: string

@@ -1,5 +1,6 @@
 package com.zija.household.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.household.internal.exception.InvalidInvitationException;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
@@ -30,6 +31,9 @@ class OwnerRecoveryService {
     private final SecureRandom random = new SecureRandom();
     private final Base64.Encoder base64Url = Base64.getUrlEncoder().withoutPadding();
 
+    /** 恢复令牌有效期（分钟）。 */
+    private static final long TOKEN_VALIDITY_MINUTES = 15;
+
     OwnerRecoveryService(OwnerRecoveryTokenMapper tokenMapper, IdentityApi identityApi,
                         SystemApi systemApi) {
         this.tokenMapper = tokenMapper;
@@ -54,7 +58,7 @@ class OwnerRecoveryService {
         var rawBytes = new byte[32];
         random.nextBytes(rawBytes);
         var rawToken = base64Url.encodeToString(rawBytes);
-        var expiresAt = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(15);
+        var expiresAt = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(TOKEN_VALIDITY_MINUTES);
 
         var entity = new OwnerRecoveryTokenEntity();
         entity.setId(UUID.randomUUID());
@@ -86,7 +90,7 @@ class OwnerRecoveryService {
         tokenMapper.markConsumed(token.getId());
         identityApi.resetPassword(token.getAccountId(), newPassword);
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "OWNER_RECOVERY", "SUCCESS", token.getHouseholdId(),
+                SystemApi.AuditAction.OWNER_RECOVERY, ZijaAuditOutcome.SUCCESS, token.getHouseholdId(),
                 token.getAccountId(), token.getAccountId(), null, null, null));
     }
 

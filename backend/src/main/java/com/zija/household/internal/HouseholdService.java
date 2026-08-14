@@ -1,5 +1,8 @@
 package com.zija.household.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaMemberRole;
+import com.zija.shared.ZijaMemberStatus;
 import com.zija.household.HouseholdApi;
 import com.zija.household.internal.exception.HouseholdAlreadyInitializedException;
 import com.zija.household.internal.exception.InvalidCredentialsException;
@@ -31,6 +34,8 @@ class HouseholdService implements HouseholdApi {
     private final MemberMapper memberMapper;
     private final IdentityApi identityApi;
     private final SystemApi systemApi;
+
+    private static final String DEFAULT_TIMEZONE = "Asia/Shanghai";
 
     HouseholdService(
             HouseholdMapper householdMapper,
@@ -87,7 +92,7 @@ class HouseholdService implements HouseholdApi {
         household.setSingletonKey((short) 1);
         household.setId(UUID.randomUUID());
         household.setName(command.householdName());
-        household.setTimezone("Asia/Shanghai");
+        household.setTimezone(DEFAULT_TIMEZONE);
         household.setVersion(0);
 
         try {
@@ -104,13 +109,13 @@ class HouseholdService implements HouseholdApi {
         member.setId(UUID.randomUUID());
         member.setHouseholdId(household.getId());
         member.setAccountId(account.id());
-        member.setRole("OWNER");
-        member.setStatus("ACTIVE");
+        member.setRole(ZijaMemberRole.OWNER);
+        member.setStatus(ZijaMemberStatus.ACTIVE);
         member.setVersion(0);
         memberMapper.insert(member);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "HOUSEHOLD_INITIALIZED", "SUCCESS",
+                SystemApi.AuditAction.HOUSEHOLD_INITIALIZED, ZijaAuditOutcome.SUCCESS,
                 household.getId(), account.id(), account.id(),
                 null, null, null));
 
@@ -147,7 +152,7 @@ class HouseholdService implements HouseholdApi {
     public MemberInfo requireActiveMember(UUID accountId) {
         var member = memberMapper.selectByAccount(accountId)
                 .orElseThrow(() -> new InvalidCredentialsException());
-        if (!"ACTIVE".equals(member.getStatus())) {
+        if (!ZijaMemberStatus.ACTIVE.equals(member.getStatus())) {
             throw new InvalidCredentialsException();
         }
         return toInfo(member);
@@ -164,7 +169,7 @@ class HouseholdService implements HouseholdApi {
     @Transactional(readOnly = true)
     public boolean hasAtLeastRole(UUID accountId, MemberRole requiredRole) {
         var member = memberMapper.selectByAccount(accountId).orElse(null);
-        if (member == null || !"ACTIVE".equals(member.getStatus())) {
+        if (member == null || !ZijaMemberStatus.ACTIVE.equals(member.getStatus())) {
             return false;
         }
         return MemberRole.valueOf(member.getRole()).isAtLeast(requiredRole);

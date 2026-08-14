@@ -64,7 +64,7 @@
         <el-form-item label="位置">
           <span>{{ locationNameMap.get(selectedPosition?.locationId ?? '') ?? '-' }}</span>
         </el-form-item>
-        <el-form-item label="数量">
+        <el-form-item label="数量" required>
           <el-input-number
             v-model="form.quantity"
             :min="0.01"
@@ -92,7 +92,7 @@
             v-model="form.memo"
             type="textarea"
             :rows="2"
-            placeholder="可选"
+            placeholder=""
             @change="resetIdempotencyKey"
           />
         </el-form-item>

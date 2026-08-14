@@ -2,13 +2,13 @@ package com.zija.reporting.internal.reports;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.reporting.internal.LocationScopeResolver;
 import com.zija.reporting.internal.persistence.ReportMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.*;
 
@@ -19,6 +19,7 @@ import static org.mockito.Mockito.*;
 class ReportServiceTest {
 
     private ReportMapper reportMapper;
+    private LocationScopeResolver locationScopeResolver;
     private ReportService reportService;
 
     private final UUID householdId = UUID.randomUUID();
@@ -29,7 +30,8 @@ class ReportServiceTest {
     @BeforeEach
     void setUp() {
         reportMapper = mock(ReportMapper.class);
-        reportService = new ReportService(reportMapper, fixedClock);
+        locationScopeResolver = mock(LocationScopeResolver.class);
+        reportService = new ReportService(reportMapper, locationScopeResolver, fixedClock);
     }
 
     // --- stockByLocation ---
@@ -95,43 +97,48 @@ class ReportServiceTest {
         assertThat(result.getRecords().get(0).get("item_name")).isEqualTo("洗衣液");
     }
 
-    // --- stockChanges ---
-
-    @Test
-    void stockChangesAcceptsTimeRangeFilter() {
-        var from = OffsetDateTime.parse("2026-01-01T00:00:00+08:00");
-        var to = OffsetDateTime.parse("2026-07-01T00:00:00+08:00");
-        var page = new Page<Map<String, Object>>(1, 20);
-        page.setRecords(List.of());
-        page.setTotal(0);
-        when(reportMapper.stockChanges(any(Page.class), eq(householdId),
-                eq(from), eq(to), isNull(), isNull(), isNull())).thenReturn(page);
-
-        var result = reportService.stockChanges(householdId, 1, 20,
-                from, to, null, null, null);
-
-        assertThat(result.getRecords()).isEmpty();
-        verify(reportMapper).stockChanges(any(Page.class), eq(householdId),
-                eq(from), eq(to), isNull(), isNull(), isNull());
-    }
+    // --- stockChanges（已并入 movements）---
 
     // --- movements ---
 
     @Test
-    void movementsAcceptsMemberAndTypeFilter() {
+    void movementsAcceptsMemberTypeAndLocationFilter() {
         UUID operatorId = UUID.randomUUID();
+        UUID locationId = UUID.randomUUID();
+        UUID childId = UUID.randomUUID();
+        var page = new Page<Map<String, Object>>(1, 20);
+        page.setRecords(List.of());
+        page.setTotal(0);
+        when(locationScopeResolver.expandWithDescendants(eq(householdId), eq(locationId)))
+                .thenReturn(List.of(locationId, childId));
+        when(reportMapper.movements(any(Page.class), eq(householdId),
+                isNull(), isNull(), isNull(), eq("INBOUND"), eq(operatorId),
+                eq(List.of(locationId, childId))))
+                .thenReturn(page);
+
+        var result = reportService.movements(householdId, 1, 20,
+                null, null, null, "INBOUND", operatorId, locationId);
+
+        assertThat(result.getRecords()).isEmpty();
+        verify(reportMapper).movements(any(Page.class), eq(householdId),
+                isNull(), isNull(), isNull(), eq("INBOUND"), eq(operatorId),
+                eq(List.of(locationId, childId)));
+    }
+
+    /** 未选位置时，不应展开位置集合，直接把 null 传给 mapper。 */
+    @Test
+    void movementsWithoutLocationFilterPassesNullScope() {
         var page = new Page<Map<String, Object>>(1, 20);
         page.setRecords(List.of());
         page.setTotal(0);
         when(reportMapper.movements(any(Page.class), eq(householdId),
-                isNull(), isNull(), isNull(), eq("INBOUND"), eq(operatorId))).thenReturn(page);
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull())).thenReturn(page);
 
         var result = reportService.movements(householdId, 1, 20,
-                null, null, null, "INBOUND", operatorId);
+                null, null, null, null, null, null);
 
         assertThat(result.getRecords()).isEmpty();
-        verify(reportMapper).movements(any(Page.class), eq(householdId),
-                isNull(), isNull(), isNull(), eq("INBOUND"), eq(operatorId));
+        verify(locationScopeResolver, never()).expandWithDescendants(any(), any());
     }
 
     // --- pagination ---

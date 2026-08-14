@@ -333,13 +333,13 @@ describe("ItemFormDrawer", () => {
   function brandSelect() {
     return wrapper!
       .findAllComponents({ name: "ElSelect" })
-      .find((c) => c.props("placeholder") === "请选择品牌（可选）")
+      .find((c) => c.props("placeholder") === "请选择品牌")
   }
 
   function tagSelect() {
     return wrapper!
       .findAllComponents({ name: "ElSelect" })
-      .find((c) => c.props("placeholder") === "请选择标签（可选）")
+      .find((c) => c.props("placeholder") === "请选择标签")
   }
 
   async function openCreateBrandDialog(filterText?: string) {

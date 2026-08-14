@@ -1,5 +1,7 @@
 package com.zija.reporting.internal.projection;
 
+import com.zija.shared.ZijaChangeType;
+import com.zija.shared.ZijaErrorCodes;
 import com.zija.catalog.*;
 import com.zija.inventory.InventoryApi;
 import com.zija.inventory.StockChangedEvent;
@@ -10,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -27,6 +30,10 @@ import java.util.UUID;
 public class ProjectionListener {
 
     private static final Logger log = LoggerFactory.getLogger(ProjectionListener.class);
+
+    // 死信首次重试延迟
+    private static final long RETRY_DELAY_SECONDS = 30;
+    private static final int MAX_ERROR_MESSAGE_LENGTH = 4000;
 
     private final ReportingProcessedEventMapper processedEventMapper;
     private final ReportingDeadLetterMapper deadLetterMapper;
@@ -59,7 +66,7 @@ public class ProjectionListener {
         this.inventoryApi = inventoryApi;
         this.builder = builder;
         this.requiresNewTx = new TransactionTemplate(txManager);
-        this.requiresNewTx.setPropagationBehaviorName("PROPAGATION_REQUIRES_NEW");
+        this.requiresNewTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     // ===== 库存事件 =====
@@ -147,8 +154,8 @@ public class ProjectionListener {
     }
 
     private void handleItemChanged(ItemChangedEvent evt) {
-        if ("ARCHIVED".equals(evt.changeType())) {
-            searchIndexMapper.deleteByEntity(evt.householdId(), "ITEM", evt.itemId());
+        if (ZijaChangeType.ARCHIVED.equals(evt.changeType())) {
+            searchIndexMapper.deleteByEntity(evt.householdId(), SearchEntityType.ITEM, evt.itemId());
             return;
         }
         // 从 CatalogApi.dumpItems 拉取最新数据重建搜索索引（分页遍历直到找到目标物品）
@@ -317,8 +324,8 @@ public class ProjectionListener {
     }
 
     private void handleLocationChanged(LocationChangedEvent evt) {
-        if ("DELETED".equals(evt.changeType())) {
-            searchIndexMapper.deleteByEntity(evt.householdId(), "LOCATION", evt.locationId());
+        if (ZijaChangeType.DELETED.equals(evt.changeType())) {
+            searchIndexMapper.deleteByEntity(evt.householdId(), SearchEntityType.LOCATION, evt.locationId());
             return;
         }
         // 从 LocationApi.dumpTree 拉取最新数据重建搜索索引
@@ -349,8 +356,8 @@ public class ProjectionListener {
             dl.setEventType(eventType);
             dl.setPayload(payload);
             dl.setFailureCount(1);
-            dl.setNextRetryAt(OffsetDateTime.now().plusSeconds(30));
-            dl.setLastError(truncate(err.getMessage(), 4000));
+            dl.setNextRetryAt(OffsetDateTime.now().plusSeconds(RETRY_DELAY_SECONDS));
+            dl.setLastError(truncate(err.getMessage(), MAX_ERROR_MESSAGE_LENGTH));
             dl.setAbandoned(false);
             dl.setCreatedAt(OffsetDateTime.now());
             try {
@@ -370,7 +377,7 @@ public class ProjectionListener {
     }
 
     private static String truncate(String s, int max) {
-        if (s == null) return "UnknownError";
+        if (s == null) return ZijaErrorCodes.UNKNOWN_ERROR;
         return s.length() <= max ? s : s.substring(0, max);
     }
 

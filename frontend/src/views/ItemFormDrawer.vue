@@ -52,7 +52,7 @@
           v-model="form.categoryId"
           :data="categoryTree"
           :props="{ label: 'name', value: 'id', children: 'children' } as any"
-          placeholder="请选择分类（可选）"
+          placeholder="请选择分类"
           clearable
           check-strictly
           style="width: 100%"
@@ -62,7 +62,7 @@
       <el-form-item label="品牌">
         <el-select
           v-model="form.brandId"
-          placeholder="请选择品牌（可选）"
+          placeholder="请选择品牌"
           clearable
           filterable
           :filter-method="onBrandFilter"
@@ -86,7 +86,7 @@
       <el-form-item label="标签">
         <el-select
           v-model="form.tagIds"
-          placeholder="请选择标签（可选）"
+          placeholder="请选择标签"
           multiple
           clearable
           filterable
@@ -113,7 +113,7 @@
           v-model="form.memo"
           type="textarea"
           :rows="3"
-          placeholder="请输入备注（可选）"
+          placeholder="请输入备注"
           maxlength="500"
           show-word-limit
         />

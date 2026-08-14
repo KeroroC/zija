@@ -75,7 +75,9 @@ export interface Movement {
   toLocationName: string | null
   reason: string | null
   memo: string | null
+  operatorAccountId?: string | null
   operatorUsername: string | null
+  operatorDisplayName?: string | null
   businessTime: string
   createdAt: string
   idempotencyKey: string
@@ -116,6 +118,12 @@ export interface StocktakeItem {
   bookQuantity: string
   actualQuantity: string
   reason: string | null
+  /** 物品名称（读时 join 补齐，缺失时前端兜底显示「—」） */
+  itemName?: string | null
+  /** 批次号（可为 null，前端兜底显示「—」） */
+  lotNumber?: string | null
+  /** 单位（可为 null，前端兜底显示「—」） */
+  unitName?: string | null
 }
 
 export interface StocktakeDetail extends StocktakeSummary {

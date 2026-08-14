@@ -14,8 +14,10 @@ import java.time.ZoneId;
  * 与提醒模块的扫描口径一致，避免报表与提醒列表相差一天。
  */
 @Configuration(proxyBeanMethods = false)
-class ReportingClockConfig {
-    @Bean
+public class ReportingClockConfig {
+    public static final String REPORTING_CLOCK = "reportingClock";
+
+    @Bean(name = REPORTING_CLOCK)
     Clock reportingClock(@Value("${zija.schedule.zone:Asia/Shanghai}") String zone) {
         return Clock.system(ZoneId.of(zone));
     }

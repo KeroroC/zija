@@ -2,14 +2,14 @@
   <div class="page-container catalog-settings-page">
     <div class="page-header">
       <div>
-        <h2 class="page-title">目录设置</h2>
-        <p class="page-subtitle">分类、品牌、单位与标签的字典维护</p>
+        <h2 class="page-title">{{ pageTitle }}</h2>
+        <p class="page-subtitle">{{ pageSubtitle }}</p>
       </div>
     </div>
 
     <el-tabs v-model="activeTab">
       <!-- 分类 -->
-      <el-tab-pane label="分类" name="categories">
+      <el-tab-pane label="分类" name="catalog">
         <div class="tab-toolbar">
           <el-switch v-model="includeArchived.categories" active-text="显示已归档" @change="loadCategories" />
           <el-button type="primary" size="small" @click="openCreateCategory()">添加根分类</el-button>
@@ -125,6 +125,11 @@
           </el-table-column>
         </el-table>
       </el-tab-pane>
+
+      <!-- 提醒规则 -->
+      <el-tab-pane label="提醒规则" name="reminder">
+        <ReminderRulesTab />
+      </el-tab-pane>
     </el-tabs>
 
     <!-- Create Category Dialog -->
@@ -216,6 +221,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   fetchCategories, createCategory, renameCategory, moveCategory, archiveCategory, restoreCategory,
@@ -224,6 +230,10 @@ import {
   fetchTags, createTag, renameTag, archiveTag, restoreTag,
 } from '../api/catalog'
 import type { Category, Brand, Unit, Tag } from '../types/catalog'
+import ReminderRulesTab from './settings/ReminderRulesTab.vue'
+
+const route = useRoute();
+const router = useRouter();
 
 // --------------- Types ---------------
 
@@ -233,7 +243,28 @@ interface CategoryTreeNode extends Category {
 
 // --------------- State ---------------
 
-const activeTab = ref('categories')
+// 活动标签 = 当前路由的末段路径（catalog/brands/units/tags/reminder）。
+// 未知段回退到 catalog；切换 tab 即跳转到 /settings/<segment>。
+const SETTING_TABS = ['catalog', 'brands', 'units', 'tags', 'reminder'] as const;
+const activeTab = computed({
+  get: () => {
+    const seg = route.path.replace(/^\/settings\/?/, '') || 'catalog';
+    return (SETTING_TABS as readonly string[]).includes(seg) ? seg : 'catalog';
+  },
+  set: (name: string) => {
+    router.push(`/settings/${name}`);
+  },
+});
+
+const TITLE_MAP: Record<string, { title: string; subtitle: string }> = {
+  catalog: { title: '目录设置', subtitle: '分类、品牌、单位与标签的字典维护' },
+  brands: { title: '目录设置', subtitle: '分类、品牌、单位与标签的字典维护' },
+  units: { title: '目录设置', subtitle: '分类、品牌、单位与标签的字典维护' },
+  tags: { title: '目录设置', subtitle: '分类、品牌、单位与标签的字典维护' },
+  reminder: { title: '提醒规则', subtitle: '家庭默认值（物品级可覆盖）' },
+};
+const pageTitle = computed(() => TITLE_MAP[activeTab.value].title);
+const pageSubtitle = computed(() => TITLE_MAP[activeTab.value].subtitle);
 
 const loading = reactive({
   categories: false,

@@ -1,5 +1,6 @@
 package com.zija.inventory.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.inventory.internal.event.InventoryEventPublisher;
 import com.zija.inventory.internal.exception.InventoryMovementAlreadyReversedException;
@@ -96,7 +97,7 @@ public class ReversalService {
         }
 
         // 4. REVERSAL type cannot be reversed
-        if ("REVERSAL".equals(original.getType())) {
+        if (MovementType.REVERSAL.equals(original.getType())) {
             throw new InventoryReversalNotAllowedException(
                     "REVERSAL movement cannot be reversed: " + originalMovementId);
         }
@@ -108,14 +109,14 @@ public class ReversalService {
         // 5. Calculate reverse impact and adjust stock positions
         //    For each subtractIfSufficient that returns 0 → throw, full rollback
         switch (type) {
-            case "INBOUND" -> subtractForReversal(householdId, lotId, original.getToLocationId(), originalQty);
-            case "CONSUME", "LOSS" -> addForReversal(householdId, lotId, original.getFromLocationId(), originalQty);
-            case "TRANSFER" -> {
+            case MovementType.INBOUND -> subtractForReversal(householdId, lotId, original.getToLocationId(), originalQty);
+            case MovementType.CONSUME, MovementType.LOSS -> addForReversal(householdId, lotId, original.getFromLocationId(), originalQty);
+            case MovementType.TRANSFER -> {
                 // Original moved stock from fromLocation to toLocation; reverse both endpoints
                 subtractForReversal(householdId, lotId, original.getToLocationId(), originalQty);
                 addForReversal(householdId, lotId, original.getFromLocationId(), originalQty);
             }
-            case "ADJUSTMENT" -> {
+            case MovementType.ADJUSTMENT -> {
                 if (original.getFromLocationId() == null && original.getToLocationId() == null) {
                     throw new InventoryReversalNotAllowedException(
                             "ADJUSTMENT movement has no location endpoints: " + originalMovementId);
@@ -140,7 +141,7 @@ public class ReversalService {
         reversal.setHouseholdId(householdId);
         reversal.setLotId(lotId);
         reversal.setItemId(original.getItemId());
-        reversal.setType("REVERSAL");
+        reversal.setType(MovementType.REVERSAL);
         reversal.setQuantity(originalQty);
         reversal.setReason(reason);
         reversal.setMemo(memo);
@@ -152,22 +153,22 @@ public class ReversalService {
 
         // Set reverse endpoints based on original type
         switch (type) {
-            case "INBOUND" -> {
+            case MovementType.INBOUND -> {
                 // Original: to=location. Reversal: from=location (stock leaving)
                 reversal.setFromLocationId(original.getToLocationId());
                 reversal.setToLocationId(null);
             }
-            case "CONSUME", "LOSS" -> {
+            case MovementType.CONSUME, MovementType.LOSS -> {
                 // Original: from=location. Reversal: to=location (stock returning)
                 reversal.setFromLocationId(null);
                 reversal.setToLocationId(original.getFromLocationId());
             }
-            case "TRANSFER" -> {
+            case MovementType.TRANSFER -> {
                 // Original: from=A, to=B. Reversal: from=B, to=A
                 reversal.setFromLocationId(original.getToLocationId());
                 reversal.setToLocationId(original.getFromLocationId());
             }
-            case "ADJUSTMENT" -> {
+            case MovementType.ADJUSTMENT -> {
                 // Reverse the endpoints
                 reversal.setFromLocationId(original.getToLocationId());
                 reversal.setToLocationId(original.getFromLocationId());
@@ -186,7 +187,7 @@ public class ReversalService {
 
         // 7. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_REVERSAL", "SUCCESS",
+                SystemApi.AuditAction.INVENTORY_REVERSAL, ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("reversalOf", originalMovementId, "lotId", lotId,
                         "type", type, "quantity", originalQty)));
@@ -194,7 +195,7 @@ public class ReversalService {
         // 8. Publish event
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, original.getItemId(),
-                "REVERSAL", originalQty,
+                MovementType.REVERSAL, originalQty,
                 reversal.getFromLocationId(), reversal.getToLocationId(),
                 OffsetDateTime.now(), reversalMovementId,
                 idempotencyKey != null ? UUID.fromString(idempotencyKey) : UUID.randomUUID(),

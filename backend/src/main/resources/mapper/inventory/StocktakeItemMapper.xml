@@ -19,6 +19,25 @@
         ORDER BY id
     </select>
 
+    <select id="findByStocktakeWithDetails" resultType="com.zija.inventory.internal.persistence.StocktakeItemWithDetails">
+        SELECT sti.id,
+               sti.lot_id AS "lotId",
+               sti.location_id AS "locationId",
+               sti.book_quantity AS "bookQuantity",
+               sti.actual_quantity AS "actualQuantity",
+               sti.position_revision AS "positionRevision",
+               sti.reason,
+               i.name AS "itemName",
+               l.lot_number AS "lotNumber",
+               u.name AS "unitName"
+        FROM inventory_stocktake_item sti
+        LEFT JOIN inventory_lot l ON l.id = sti.lot_id
+        LEFT JOIN catalog_item i ON i.id = l.item_id
+        LEFT JOIN catalog_unit u ON u.id = i.unit_id
+        WHERE sti.household_id = #{householdId} AND sti.stocktake_id = #{stocktakeId}
+        ORDER BY sti.id
+    </select>
+
     <delete id="deleteByStocktake">
         DELETE FROM inventory_stocktake_item
         WHERE stocktake_id = #{stocktakeId}

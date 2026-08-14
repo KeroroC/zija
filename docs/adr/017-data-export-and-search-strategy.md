@@ -29,7 +29,7 @@
 
 ### 3. 报表
 
-- 5 张报表：当前库存与位置分布（stock-by-location）、临期批次（expiring-lots）、低库存物品（low-stock）、指定时间范围库存变化（stock-changes）、按成员/操作类型/物品筛选的流水（movements）。
+- 4 张报表：当前库存与位置分布（stock-by-location）、临期批次（expiring-lots）、低库存物品（low-stock）、流水（movements）。后并入原「库存变化（stock-changes）」视图——它与流水同读 `reporting_movement_flat`，仅筛选与列展示略有差异，故收敛进 movements：movements 现支持时间/物品/类型/位置/操作人筛选，位置对来源或目标任一命中即出；`stock-changes` 端点与导出键下线（见 CONTEXT.md「流水」词条）。
 - 统一分页 `page=1&pageSize=20`（上限 100）。
 - 复杂报表 SQL 写在 `reporting` 自有 Mapper XML 中，作用在自有投影表上，不跨模块直连他表（见 ADR-004）。
 

@@ -66,7 +66,7 @@ class IdentityService implements IdentityApi {
         entity.setPasswordHash(passwordEncoder.encode(command.password()));
         entity.setDisplayName(command.displayName().trim());
         entity.setEmail(command.email());
-        entity.setStatus("ACTIVE");
+        entity.setStatus(AccountStatus.ACTIVE);
         entity.setVersion(0);
         accountMapper.insert(entity);
 
@@ -155,7 +155,7 @@ class IdentityService implements IdentityApi {
     public void disableAccount(UUID accountId) {
         var account = accountMapper.selectById(accountId);
         if (account != null) {
-            accountMapper.updateStatus(accountId, "DISABLED", account.getVersion());
+            accountMapper.updateStatus(accountId, AccountStatus.DISABLED, account.getVersion());
         }
     }
 
@@ -169,7 +169,7 @@ class IdentityService implements IdentityApi {
     public void activateAccount(UUID accountId) {
         var account = accountMapper.selectById(accountId);
         if (account != null) {
-            accountMapper.updateStatus(accountId, "ACTIVE", account.getVersion());
+            accountMapper.updateStatus(accountId, AccountStatus.ACTIVE, account.getVersion());
         }
     }
 
@@ -183,7 +183,7 @@ class IdentityService implements IdentityApi {
     @Transactional(readOnly = true)
     public void requireActive(UUID accountId) {
         var account = accountMapper.selectById(accountId);
-        if (account == null || !"ACTIVE".equals(account.getStatus())) {
+        if (account == null || !AccountStatus.ACTIVE.equals(account.getStatus())) {
             throw new InvalidCredentialsException();
         }
     }

@@ -74,14 +74,39 @@
 
     <section class="page-card recent-section">
       <div class="section-title">最近库存流水</div>
-      <el-table :data="recentMovements" size="small">
-        <el-table-column prop="businessTime" label="时间" />
-        <el-table-column label="类型">
-          <template #default="{ row }">{{ moveTypeLabel(row.type) }}</template>
-        </el-table-column>
-        <el-table-column prop="quantity" label="数量" align="right" />
-      </el-table>
+      <div v-if="recentMovements.length === 0" class="empty">暂无流水</div>
+      <div
+        v-for="m in recentMovements"
+        :key="m.id"
+        class="movement-row"
+        role="button"
+        tabindex="0"
+        @click="openMovement(m)"
+      >
+        <div class="movement-primary">
+          <el-tag :type="movementTagType(m.type)" size="small" effect="plain">
+            {{ movementTypeLabel(m.type) }}
+          </el-tag>
+          <span class="movement-item">{{ m.itemName ?? "—" }}</span>
+          <span class="movement-qty">{{ m.quantity }} {{ m.unitName ?? "" }}</span>
+        </div>
+        <div class="movement-secondary">
+          <span class="movement-location">{{ resolveLocation(m) }}</span>
+          <span class="movement-operator">{{ resolveOperator(m) }}</span>
+          <span class="movement-time">{{ formatMovementTime(m.businessTime) }}</span>
+        </div>
+      </div>
     </section>
+
+    <MovementDetailDrawer
+      v-model="drawerVisible"
+      :movement="selectedMovement"
+      :item-name-map="emptyMap"
+      :location-name-map="emptyMap"
+      :item-unit-name-map="emptyMap"
+      :operator-name-map="emptyMap"
+      @reversed="reloadMovements"
+    />
   </div>
 </template>
 
@@ -98,6 +123,8 @@ import {
 import type { DashboardItem } from "../types/reminder";
 import type { Movement } from "../types/inventory";
 import { fetchStocktakes, fetchMovements } from "../api/inventory";
+import { movementTypeLabel, movementTagType } from "../utils/movement";
+import MovementDetailDrawer from "./inventory/MovementDetailDrawer.vue";
 import { ApiError } from "../api/http";
 
 const router = useRouter();
@@ -109,23 +136,38 @@ const stocktakeCount = ref(0);
 const priorityTasks = ref<DashboardItem[]>([]);
 const recentMovements = ref<Movement[]>([]);
 
+const drawerVisible = ref(false);
+const selectedMovement = ref<Movement | null>(null);
+
+// The movements list now carries display names from the backend, so the drawer's
+// name-map fallbacks are unnecessary on the homepage.
+const emptyMap = new Map<string, string>();
+
+async function reloadMovements() {
+  try {
+    const mv = await fetchMovements({ page: 1, pageSize: 10 });
+    recentMovements.value = mv.items;
+  } catch (e) {
+    if (e instanceof ApiError) ElMessage.error(e.message);
+  }
+}
+
 onMounted(async () => {
   try {
-    const [dash, st, mv] = await Promise.all([
+    const [dash, st] = await Promise.all([
       fetchDashboard(7, 8),
       fetchStocktakes({ status: "DRAFT", page: 1, pageSize: 1 }),
-      fetchMovements({ page: 1, pageSize: 10 }),
     ]);
     expiryCount.value = dash.expiryWithin7Days.count;
     lowStockCount.value = dash.lowStockItems.count;
     priorityTasks.value = dash.priorityTasks.items;
     stocktakeCount.value = st.total;
-    recentMovements.value = mv.items;
   } catch (e) {
     if (e instanceof ApiError) ElMessage.error(e.message);
   } finally {
     loading.value = false;
   }
+  await reloadMovements();
 });
 
 function goReminders(kind: string) {
@@ -154,19 +196,27 @@ function formatDate(s: string) {
   }
 }
 
-function moveTypeLabel(t: string) {
-  return (
-    (
-      {
-        INBOUND: "入库",
-        CONSUME: "领用",
-        LOSS: "报损",
-        ADJUSTMENT: "盘点调整",
-        TRANSFER: "移位",
-        REVERSAL: "冲正",
-      } as Record<string, string>
-    )[t] ?? t
-  );
+function formatMovementTime(iso: string) {
+  if (!iso) return "-";
+  return iso.replace("T", " ").replace(/\.\d+Z$/, "");
+}
+
+function resolveLocation(m: Movement) {
+  const from = m.fromLocationName ?? null;
+  const to = m.toLocationName ?? null;
+  if (from && to) return `${from} → ${to}`;
+  if (from) return from;
+  if (to) return to;
+  return "-";
+}
+
+function resolveOperator(m: Movement) {
+  return m.operatorDisplayName ?? m.operatorUsername ?? "-";
+}
+
+function openMovement(m: Movement) {
+  selectedMovement.value = m;
+  drawerVisible.value = true;
 }
 
 async function onTaskAction(cmd: string, taskId: string) {
@@ -268,5 +318,64 @@ async function onTaskAction(cmd: string, taskId: string) {
   padding: 24px 0;
   text-align: center;
   color: var(--zj-ink-400);
+}
+
+.movement-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--zj-line);
+  cursor: pointer;
+  transition: background var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.movement-row:last-child {
+  border-bottom: none;
+}
+
+.movement-row:hover {
+  background: var(--zj-pine-50);
+}
+
+.movement-primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.movement-item {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--zj-ink-900);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.movement-qty {
+  color: var(--zj-ink-600);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.movement-secondary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  color: var(--zj-ink-400);
+  font-size: 12px;
+}
+
+.movement-location {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movement-time {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
 }
 </style>

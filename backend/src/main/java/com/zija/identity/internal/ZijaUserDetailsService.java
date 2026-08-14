@@ -37,7 +37,7 @@ class ZijaUserDetailsService implements UserDetailsService {
         var normalized = username.trim().toLowerCase(Locale.ROOT);
         var account = accountMapper.selectByNormalizedUsername(normalized)
                 .orElseThrow(() -> new UsernameNotFoundException("not found"));
-        if (!"ACTIVE".equals(account.getStatus())) {
+        if (!AccountStatus.ACTIVE.equals(account.getStatus())) {
             throw new UsernameNotFoundException("not active");
         }
         return new ZijaPrincipal(

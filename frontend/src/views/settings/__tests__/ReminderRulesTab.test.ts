@@ -2,24 +2,24 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import ElementPlus from "element-plus";
 
-vi.mock("../stores/session", () => ({
+vi.mock("../../../stores/session", () => ({
   useSessionStore: () => ({ role: "OWNER" }),
 }));
-vi.mock("../api/reminder", () => ({
+vi.mock("../../../api/reminder", () => ({
   fetchRules: vi.fn(),
   updateRules: vi.fn(),
   fetchMailSettings: vi.fn(),
   updateMailSettings: vi.fn(),
 }));
 
-import ReminderRulesSettingsView from "./ReminderRulesSettingsView.vue";
+import ReminderRulesTab from "../ReminderRulesTab.vue";
 import {
   fetchRules,
   updateRules,
   fetchMailSettings,
   updateMailSettings,
-} from "../api/reminder";
-import { ApiError } from "../api/http";
+} from "../../../api/reminder";
+import { ApiError } from "../../../api/http";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -41,16 +41,16 @@ beforeEach(() => {
 });
 
 const mountV = () =>
-  mount(ReminderRulesSettingsView, {
+  mount(ReminderRulesTab, {
     global: { plugins: [ElementPlus] },
   });
 
-describe("ReminderRulesSettingsView", () => {
+describe("ReminderRulesTab", () => {
   it("loads rules on mount", async () => {
     const w = mountV();
     await flushPromises();
     expect(fetchRules).toHaveBeenCalled();
-    expect(w.text()).toContain("提醒规则");
+    expect(w.text()).toContain("临期提醒");
   });
 
   it("saving with stale version shows conflict and reloads", async () => {

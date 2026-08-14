@@ -3,6 +3,7 @@ package com.zija.file.internal;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zija.file.internal.persistence.StoredFileEntity;
 import com.zija.file.internal.persistence.StoredFileMapper;
+import com.zija.shared.ZijaDigests;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -91,7 +92,7 @@ class FileIntegrityService {
 
   static String sha256Hex(byte[] data) {
     try {
-      MessageDigest md = MessageDigest.getInstance("SHA-256");
+      MessageDigest md = MessageDigest.getInstance(ZijaDigests.SHA_256);
       byte[] digest = md.digest(data);
       StringBuilder sb = new StringBuilder();
       for (byte b : digest) sb.append(String.format("%02x", b));

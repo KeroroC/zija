@@ -1,7 +1,9 @@
 package com.zija.reminder.internal.mail;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.household.HouseholdApi;
+import com.zija.reminder.internal.ClockConfig;
 import com.zija.reminder.internal.MemberEmails;
 import com.zija.reminder.internal.persistence.TaskMapper;
 import com.zija.system.SystemApi;
@@ -24,6 +26,7 @@ import java.util.*;
 class MailDigestScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(MailDigestScheduler.class);
+    private static final long DIGEST_WINDOW_DAYS = 7;
 
     private final MailSettingMapper mailSettingMapper;
     private final MailService mailService;
@@ -38,7 +41,7 @@ class MailDigestScheduler {
                                MailTemplateRenderer templateRenderer, HouseholdApi householdApi,
                                TaskMapper taskMapper, SystemApi systemApi,
                                MemberEmails memberEmails,
-                               @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
+                               @org.springframework.beans.factory.annotation.Qualifier(ClockConfig.REMINDER_CLOCK) Clock clock) {
         this.mailSettingMapper = mailSettingMapper;
         this.mailService = mailService;
         this.templateRenderer = templateRenderer;
@@ -68,7 +71,7 @@ class MailDigestScheduler {
                 log.warn("Digest send failed for household {}: {}",
                         setting.getHouseholdId(), ex.getMessage());
                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                        "MAIL_SEND_FAILED", "FAILURE",
+                        SystemApi.AuditAction.MAIL_SEND_FAILED, ZijaAuditOutcome.FAILURE,
                         setting.getHouseholdId(), null, null, null, null,
                         Map.of("reason", ex.getMessage() != null ? ex.getMessage() : "unknown")));
             }
@@ -88,7 +91,7 @@ class MailDigestScheduler {
         }
 
         OffsetDateTime now = OffsetDateTime.now(clock);
-        OffsetDateTime to = now.plusDays(7);
+        OffsetDateTime to = now.plusDays(DIGEST_WINDOW_DAYS);
         var expiryTasks = taskMapper.expiryWithinDays(householdId, now, to, now, 50);
         var lowStockTasks = taskMapper.lowStockOpenTasks(householdId, now, 50);
 
@@ -119,7 +122,7 @@ class MailDigestScheduler {
         mailSettingMapper.updateById(setting);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "MAIL_DIGEST_SENT", "SUCCESS",
+                SystemApi.AuditAction.MAIL_DIGEST_SENT, ZijaAuditOutcome.SUCCESS,
                 householdId, null, null, null, null,
                 Map.of("recipients", String.valueOf(emails.size()))));
 

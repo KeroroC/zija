@@ -25,6 +25,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -137,6 +138,41 @@ class InventoryEndpointIntegrationTest {
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].type").value("INBOUND"))
                 .andExpect(jsonPath("$.items[0].id").value(movementId));
+    }
+
+    // ==================== Test point 1b: Paged movements list returns display names ====================
+
+    @Test
+    void movementsList_returnsDisplayNames() throws Exception {
+        String body = """
+                {
+                    "itemId": "%s",
+                    "quantity": 10,
+                    "locationId": "%s"
+                }
+                """.formatted(itemId, locationId);
+
+        mockMvc.perform(post("/api/v1/inventory/lots")
+                        .with(auth(ownerPrincipal)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        String itemName = jdbcTemplate.queryForObject(
+                "SELECT name FROM catalog_item WHERE id = ?", String.class, itemId);
+        String unitName = jdbcTemplate.queryForObject(
+                "SELECT name FROM catalog_unit WHERE id = ?", String.class, unitId);
+        String locationName = jdbcTemplate.queryForObject(
+                "SELECT name FROM location WHERE id = ?", String.class, locationId);
+
+        mockMvc.perform(get("/api/v1/inventory/movements").with(auth(ownerPrincipal)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].itemName").value(itemName))
+                .andExpect(jsonPath("$.items[0].unitName").value(unitName))
+                .andExpect(jsonPath("$.items[0].fromLocationName").value(nullValue()))
+                .andExpect(jsonPath("$.items[0].toLocationName").value(locationName))
+                .andExpect(jsonPath("$.items[0].operatorDisplayName").value("所有者"));
     }
 
     // ==================== Test point 2: Consume insufficient → 409 ====================

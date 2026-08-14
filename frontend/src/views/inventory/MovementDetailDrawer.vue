@@ -128,12 +128,13 @@ const toLocationName = computed(() => {
 
 const operatorName = computed(() => {
   if (!props.movement) return '-'
-  // The API returns operatorAccountId; try operatorNameMap first, then operatorUsername, then raw ID
-  const accountId = (props.movement as unknown as Record<string, unknown>)['operatorAccountId'] as string | undefined
+  // Prefer the map (display name resolved client-side), then the API's operatorDisplayName,
+  // then operatorUsername, then the raw account id.
+  const accountId = props.movement.operatorAccountId ?? null
   if (accountId && props.operatorNameMap.has(accountId)) {
     return props.operatorNameMap.get(accountId)
   }
-  return props.movement.operatorUsername ?? accountId ?? '-'
+  return props.movement.operatorDisplayName ?? props.movement.operatorUsername ?? accountId ?? '-'
 })
 
 const TYPE_LABELS: Record<MovementType, string> = {

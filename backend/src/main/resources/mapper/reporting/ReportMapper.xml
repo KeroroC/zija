@@ -60,27 +60,7 @@
         ORDER BY (COALESCE(SUM(sf.quantity), 0) / NULLIF(i.low_stock_threshold, 0)) ASC
     </select>
 
-    <!-- 4) 指定时间范围库存变化 -->
-    <select id="stockChanges" resultType="java.util.LinkedHashMap">
-        SELECT
-            mf.movement_id, mf.item_id, mf.item_name,
-            mf.type, mf.quantity_delta,
-            mf.from_location_id, mf.from_location_path,
-            mf.to_location_id, mf.to_location_path,
-            mf.operator_account_id, mf.operator_display_name,
-            mf.reason, mf.business_time
-        FROM reporting_movement_flat mf
-        WHERE mf.household_id = #{householdId}
-          AND mf.business_time BETWEEN #{from} AND #{to}
-        <if test="itemId != null">AND mf.item_id = #{itemId}</if>
-        <if test="locationId != null">
-            AND (mf.from_location_id = #{locationId} OR mf.to_location_id = #{locationId})
-        </if>
-        <if test="type != null">AND mf.type = #{type}</if>
-        ORDER BY mf.business_time DESC
-    </select>
-
-    <!-- 5) 按成员/类型/物品筛选流水 -->
+    <!-- 4) 按时间/物品/类型/位置或操作人筛选流水 -->
     <select id="movements" resultType="java.util.LinkedHashMap">
         SELECT
             mf.movement_id, mf.item_id, mf.item_name,
@@ -96,6 +76,13 @@
         <if test="itemId != null">AND mf.item_id = #{itemId}</if>
         <if test="type != null">AND mf.type = #{type}</if>
         <if test="operatorAccountId != null">AND mf.operator_account_id = #{operatorAccountId}</if>
+        <if test="locationIds != null">
+            AND (mf.from_location_id IN
+            <foreach collection="locationIds" item="locId" open="(" separator="," close=")">#{locId}</foreach>
+            OR mf.to_location_id IN
+            <foreach collection="locationIds" item="locId" open="(" separator="," close=")">#{locId}</foreach>
+            )
+        </if>
         ORDER BY mf.business_time DESC
     </select>
 

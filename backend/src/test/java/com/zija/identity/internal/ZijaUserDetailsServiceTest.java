@@ -25,7 +25,7 @@ class ZijaUserDetailsServiceTest {
         account.setUsernameNormalized("owner");
         account.setPasswordHash("{bcrypt}$2a$10$hash");
         account.setDisplayName("所有者");
-        account.setStatus("ACTIVE");
+        account.setStatus(AccountStatus.ACTIVE);
         when(mapper.selectByNormalizedUsername("owner")).thenReturn(Optional.of(account));
 
         var service = new ZijaUserDetailsService(mapper);
@@ -43,7 +43,7 @@ class ZijaUserDetailsServiceTest {
     void rejectsDisabledAccount() {
         var mapper = mock(AccountMapper.class);
         var account = new AccountEntity();
-        account.setStatus("DISABLED");
+        account.setStatus(AccountStatus.DISABLED);
         when(mapper.selectByNormalizedUsername("x")).thenReturn(Optional.of(account));
 
         var service = new ZijaUserDetailsService(mapper);

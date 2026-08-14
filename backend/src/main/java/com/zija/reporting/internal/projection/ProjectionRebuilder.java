@@ -1,6 +1,7 @@
 package com.zija.reporting.internal.projection;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.catalog.CatalogApi;
 import com.zija.inventory.InventoryApi;
 import com.zija.location.LocationApi;
@@ -67,7 +68,7 @@ public class ProjectionRebuilder {
 
         // 3. 写审计
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "REPORTING_PROJECTION_REBUILT", "SUCCESS", householdId, null, null, null, null,
+                SystemApi.AuditAction.REPORTING_PROJECTION_REBUILT, ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("householdId", householdId.toString())));
 
         log.info("Projection rebuild complete for household: {}", householdId);

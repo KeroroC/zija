@@ -1,5 +1,7 @@
 package com.zija.reporting.internal.projection;
 
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaErrorCodes;
 import com.zija.catalog.*;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.location.LocationChangedEvent;
@@ -26,6 +28,9 @@ public class ReportingEventRetryService {
 
     private static final Logger log = LoggerFactory.getLogger(ReportingEventRetryService.class);
     private static final int MAX_FAILURES = 10;
+    private static final long RETRY_DELAY_SECONDS = 30;
+    private static final int MAX_BACKOFF_SHIFT = 6;
+    private static final int MAX_ERROR_MESSAGE_LENGTH = 4000;
 
     private final ReportingDeadLetterMapper deadLetterMapper;
     private final ProjectionListener listener;
@@ -71,16 +76,16 @@ public class ReportingEventRetryService {
             if (newCount >= MAX_FAILURES) {
                 deadLetterMapper.markAbandoned(dl.getId());
                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                        "REPORTING_EVENT_ABANDONED", "FAILURE", null, null, null, null, null,
+                        SystemApi.AuditAction.REPORTING_EVENT_ABANDONED, ZijaAuditOutcome.FAILURE, null, null, null, null, null,
                         Map.of("eventId", dl.getEventId().toString(),
                                "eventType", dl.getEventType())));
                 log.warn("Reporting dead-letter abandoned after {} failures: eventId={}",
                         newCount, dl.getEventId());
             } else {
-                long backoffSeconds = 30L * (1L << Math.min(newCount, 6));
+                long backoffSeconds = RETRY_DELAY_SECONDS * (1L << Math.min(newCount, MAX_BACKOFF_SHIFT));
                 deadLetterMapper.incrementFailure(dl.getId(),
                         OffsetDateTime.now().plus(Duration.ofSeconds(backoffSeconds)),
-                        truncate(ex.getMessage(), 4000));
+                        truncate(ex.getMessage(), MAX_ERROR_MESSAGE_LENGTH));
             }
         }
     }
@@ -192,7 +197,7 @@ public class ReportingEventRetryService {
     }
 
     private static String truncate(String s, int max) {
-        if (s == null) return "UnknownError";
+        if (s == null) return ZijaErrorCodes.UNKNOWN_ERROR;
         return s.length() <= max ? s : s.substring(0, max);
     }
 }

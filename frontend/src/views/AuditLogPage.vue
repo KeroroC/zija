@@ -9,15 +9,15 @@
 
     <!-- 筛选栏 -->
     <div class="tl-filters">
-      <el-select v-model="filters.quickTime" placeholder="时间" clearable size="small" style="width: 120px" @change="onQuickTimeChange">
+      <el-select v-model="filters.quickTime" placeholder="时间" clearable @change="onQuickTimeChange">
         <el-option label="今天" value="today" />
         <el-option label="7 天" value="7d" />
         <el-option label="30 天" value="30d" />
       </el-select>
-      <el-select v-model="filters.action" placeholder="操作类型" clearable size="small" style="width: 130px" @change="loadData">
+      <el-select v-model="filters.action" placeholder="操作类型" clearable @change="loadData">
         <el-option v-for="opt in actionOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
       </el-select>
-      <el-select v-model="filters.outcome" placeholder="结果" clearable size="small" style="width: 90px" @change="loadData">
+      <el-select v-model="filters.outcome" placeholder="结果" clearable @change="loadData">
         <el-option v-for="opt in outcomeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
       </el-select>
       <span class="tl-count">共 {{ total }} 条</span>
@@ -192,9 +192,13 @@ onMounted(loadData);
 
 <style scoped>
 .tl-filters {
-  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-  margin-bottom: 20px; padding: 10px 12px;
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 20px; padding: 16px;
   background: var(--zj-surface-sunken); border-radius: var(--zj-radius-md);
+}
+
+.tl-filters :deep(.el-select) {
+  width: 200px;
 }
 
 .tl-count {

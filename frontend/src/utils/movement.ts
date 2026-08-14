@@ -39,3 +39,18 @@ export function movementTypeLabel(type: string): string {
 export function movementTagType(type: string): MovementTagType {
   return MOVEMENT_TAG_MAP[type as MovementType] ?? "info"
 }
+
+/** 库存增减方向由流水类型推导的集合：领用/报损为扣减。 */
+const DECREASE_TYPES: ReadonlySet<string> = new Set(["CONSUME", "LOSS"])
+
+/**
+ * 流水数量列的有符号渲染。
+ * reporting_movement_flat.quantity_delta 落库的是正数幅度，增减方向需由类型推导：
+ * 入库为加，领用/报损为减；移位/调整/冲正不是单纯增或减（或方向无法从类型推导），
+ * 显示原数值不带强制符号。
+ */
+export function signedMovementQuantity(type: string, quantityDelta: number): string {
+  if (DECREASE_TYPES.has(type)) return `-${quantityDelta}`
+  if (type === "INBOUND") return `+${quantityDelta}`
+  return String(quantityDelta)
+}

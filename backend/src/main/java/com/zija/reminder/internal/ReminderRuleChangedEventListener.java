@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -27,7 +28,7 @@ class ReminderRuleChangedEventListener {
                                      PlatformTransactionManager txManager) {
         this.expiryScanScheduler = expiryScanScheduler;
         this.requiresNewTx = new TransactionTemplate(txManager);
-        this.requiresNewTx.setPropagationBehaviorName("PROPAGATION_REQUIRES_NEW");
+        this.requiresNewTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)

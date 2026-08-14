@@ -2,6 +2,8 @@ package com.zija;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
+
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.system.SystemApi;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
@@ -42,6 +44,9 @@ import java.util.Map;
 @EnableMethodSecurity
 public class ZijaSecurityConfiguration {
 
+    private static final String SESSION_COOKIE = "ZIJA_SESSION";
+    private static final String XSRF_COOKIE = "XSRF-TOKEN";
+
     @Bean
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     SecurityFilterChain securityFilterChain(
@@ -80,13 +85,13 @@ public class ZijaSecurityConfiguration {
                         .logoutUrl("/api/v1/auth/logout")
                         .invalidateHttpSession(true)
                         .clearAuthentication(true)
-                        .deleteCookies("ZIJA_SESSION", "XSRF-TOKEN")
+                        .deleteCookies(SESSION_COOKIE, XSRF_COOKIE)
                         .logoutSuccessHandler((request, response, auth) -> {
                             if (auth != null && auth.getPrincipal() instanceof ZijaPrincipal principal) {
                                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                                        "LOGOUT", "SUCCESS", null,
+                                        SystemApi.AuditAction.LOGOUT, ZijaAuditOutcome.SUCCESS, null,
                                         principal.getAccountId(), null,
-                                        (String) request.getAttribute("zija.request-id"),
+                                        (String) request.getAttribute(ZijaRequestIdFilter.ATTRIBUTE),
                                         request.getRemoteAddr(), null
                                 ));
                             }

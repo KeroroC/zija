@@ -8,7 +8,6 @@ export const router = createRouter({
     { path: "/system", name: "system-status", component: () => import("../views/SystemStatusView.vue"), meta: { title: "系统状态" } },
     { path: "/reminders", name: "reminders", component: () => import("../views/RemindersView.vue"), meta: { title: "提醒中心" } },
     { path: "/notifications", name: "notifications", component: () => import("../views/NotificationsView.vue"), meta: { title: "通知" } },
-    { path: "/settings/reminder", name: "reminder-settings", component: () => import("../views/ReminderRulesSettingsView.vue"), meta: { title: "提醒规则" } },
     { path: "/bootstrap", name: "bootstrap", component: () => import("../views/BootstrapPage.vue"), meta: { title: "初始化" } },
     { path: "/login", name: "login", component: () => import("../views/LoginPage.vue"), meta: { title: "登录" } },
     { path: "/invitation/redeem", name: "invitation-redeem", component: () => import("../views/InvitationRedeemPage.vue"), meta: { title: "加入家庭" } },
@@ -18,7 +17,12 @@ export const router = createRouter({
     { path: "/owner-recovery", name: "owner-recovery", component: () => import("../views/OwnerRecoveryPage.vue"), meta: { title: "重置密码" } },
     { path: "/items", name: "items", component: () => import("../views/ItemsPage.vue"), meta: { title: "物品资料" } },
     { path: "/locations", name: "locations", component: () => import("../views/LocationsPage.vue"), meta: { title: "位置管理" } },
+    { path: "/settings", redirect: "/settings/catalog" },
     { path: "/settings/catalog", name: "catalog-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "目录设置" } },
+    { path: "/settings/brands", name: "brands-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "目录设置" } },
+    { path: "/settings/units", name: "units-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "目录设置" } },
+    { path: "/settings/tags", name: "tags-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "目录设置" } },
+    { path: "/settings/reminder", name: "reminder-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "提醒规则" } },
     { path: "/inventory", name: "inventory", component: () => import("../views/InventoryPage.vue"), meta: { title: "库存管理" } },
     {
       path: "/reports",
@@ -30,7 +34,6 @@ export const router = createRouter({
         { path: "stock-by-location", name: "report-stock-by-location", component: () => import("../views/reports/StockByLocationView.vue"), meta: { title: "库存分布" } },
         { path: "expiring-lots", name: "report-expiring-lots", component: () => import("../views/reports/ExpiringLotsView.vue"), meta: { title: "临期批次" } },
         { path: "low-stock", name: "report-low-stock", component: () => import("../views/reports/LowStockView.vue"), meta: { title: "低库存" } },
-        { path: "stock-changes", name: "report-stock-changes", component: () => import("../views/reports/StockChangesView.vue"), meta: { title: "库存变化" } },
         { path: "movements", name: "report-movements", component: () => import("../views/reports/MovementsView.vue"), meta: { title: "流水" } },
         { path: "settings", name: "report-settings", component: () => import("../views/reports/ReportsSettingsView.vue"), meta: { title: "报表设置" } }
       ]

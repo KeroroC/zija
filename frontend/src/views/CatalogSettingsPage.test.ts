@@ -1,6 +1,7 @@
 import ElementPlus from "element-plus";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ref } from "vue";
 import {
   fetchCategories, createCategory, renameCategory, moveCategory, archiveCategory, restoreCategory,
   fetchBrands, createBrand, renameBrand, archiveBrand, restoreBrand,
@@ -36,12 +37,20 @@ vi.mock("../api/catalog", () => ({
   restoreTag: vi.fn(),
 }));
 
+vi.mock("../api/reminder", () => ({
+  fetchRules: vi.fn(),
+  updateRules: vi.fn(),
+  fetchMailSettings: vi.fn(),
+  updateMailSettings: vi.fn(),
+}));
+
 vi.mock("../stores/session", () => ({
   useSessionStore: () => sessionState,
 }));
 
 vi.mock("vue-router", () => ({
   useRouter: () => ({ push: pushMock }),
+  useRoute: () => ({ get path() { return routeRef.value; } }),
 }));
 
 // Mock ElMessageBox.confirm to auto-resolve by default
@@ -176,6 +185,7 @@ const mockTags: Tag[] = [activeTag, archivedTag];
 // --------------- Session & router ---------------
 
 const pushMock = vi.fn();
+const routeRef = ref("/settings/catalog");
 
 const sessionState: {
   role: "OWNER" | "ADMIN" | "MEMBER" | null;
@@ -234,6 +244,11 @@ describe("CatalogSettingsPage", () => {
     restoreTagMock.mockReset().mockResolvedValue(undefined);
 
     pushMock.mockReset();
+    pushMock.mockImplementation((p: string) => {
+      routeRef.value = p;
+    });
+
+    routeRef.value = "/settings/catalog";
 
     sessionState.role = "ADMIN";
     sessionState.currentMember = {
@@ -268,6 +283,7 @@ describe("CatalogSettingsPage", () => {
     expect(text).toContain("品牌");
     expect(text).toContain("单位");
     expect(text).toContain("标签");
+    expect(text).toContain("提醒规则");
   });
 
   it("displays category tree with root and child nodes", async () => {
@@ -428,5 +444,16 @@ describe("CatalogSettingsPage", () => {
     expect(archiveUnitMock).toHaveBeenCalledWith("unit-1", 1);
     // After archive, units are reloaded
     expect(fetchUnitsMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("switches the page title and active tab to 提醒规则 on /settings/reminder deep link", async () => {
+    routeRef.value = "/settings/reminder";
+    wrapper = mount(CatalogSettingsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    // Page heading follows the active tab
+    expect(wrapper.find(".page-title").text()).toBe("提醒规则");
+    // The reminder tab is the active one
+    expect(wrapper.find(".el-tabs__item.is-active").text()).toBe("提醒规则");
   });
 });

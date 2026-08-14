@@ -73,3 +73,25 @@ export function formatDateOnly(value: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return value;
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+/**
+ * 将 Element Plus 日期范围（"YYYY-MM-DD" 数组）转换为后端 OffsetDateTime 需要的
+ * UTC 瞬时（ISO-8601，"2026-08-13T00:00:00.000Z"）。
+ *
+ * 含义：起始日 00:00 → 结束日 23:59:59.999（含结束日整天），均按浏览器本地时区解释后
+ * 再转 UTC，与后端把业务时间存为 UTC 瞬时一致。
+ * 参数为空数组或非法值 → 返回空对象（不传该过滤条件）。
+ */
+export function dateRangeToIsoBounds(
+  range: string[] | null | undefined,
+): { from?: string; to?: string } {
+  if (!range || range.length !== 2) return {};
+  const [fromDate, toDate] = range;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+    return {};
+  }
+  const start = new Date(`${fromDate}T00:00:00`);
+  const end = new Date(`${toDate}T23:59:59.999`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return {};
+  return { from: start.toISOString(), to: end.toISOString() };
+}

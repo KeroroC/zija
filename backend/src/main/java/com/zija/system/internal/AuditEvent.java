@@ -1,5 +1,6 @@
 package com.zija.system.internal;
 
+import com.zija.shared.ZijaAuditOutcome;
 import java.util.Map;
 import java.util.UUID;
 
@@ -15,7 +16,7 @@ public record AuditEvent(
 ) {
     public AuditEvent {
         if (outcome == null
-                || (!outcome.equals("SUCCESS") && !outcome.equals("FAILURE"))) {
+                || (!outcome.equals(ZijaAuditOutcome.SUCCESS) && !outcome.equals(ZijaAuditOutcome.FAILURE))) {
             throw new IllegalArgumentException("outcome must be SUCCESS or FAILURE");
         }
     }

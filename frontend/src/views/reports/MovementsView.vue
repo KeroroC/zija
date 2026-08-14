@@ -46,6 +46,16 @@
           :value="opt.value"
         />
       </el-select>
+      <el-tree-select
+        v-model="filters.locationId"
+        :data="locationTree"
+        node-key="id"
+        :props="{ label: 'name', children: 'children' }"
+        placeholder="位置"
+        clearable
+        check-strictly
+        @change="onFilter"
+      />
       <el-select
         v-model="filters.operatorAccountId"
         placeholder="操作人"
@@ -79,7 +89,7 @@
       </el-table-column>
       <el-table-column prop="quantity_delta" label="数量" width="90" align="right">
         <template #default="{ row }">
-          <span class="numeric-cell">{{ row.quantity_delta > 0 ? '+' : '' }}{{ row.quantity_delta }}</span>
+          <span class="numeric-cell">{{ signedMovementQuantity(row.type, row.quantity_delta) }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="from_location_path" label="来源" min-width="180" show-overflow-tooltip>
@@ -126,11 +136,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { getReport, buildExportUrl } from '../../api/reporting'
 import { fetchItems } from '../../api/catalog'
+import { fetchLocationTree } from '../../api/location'
 import { memberApi } from '../../api/member'
 import { useSessionStore } from '../../stores/session'
-import { formatDateTime } from '../../utils/date'
-import { movementTypeLabel, movementTagType } from '../../utils/movement'
+import { formatDateTime, dateRangeToIsoBounds } from '../../utils/date'
+import { movementTypeLabel, movementTagType, signedMovementQuantity } from '../../utils/movement'
 import type { MovementRow } from '../../types/reporting'
+import type { LocationNode } from '../../types/location'
 
 const sessionStore = useSessionStore()
 const canExport = computed(() => {
@@ -148,10 +160,12 @@ const dateRange = ref<string[] | null>(null)
 const filters = ref<Record<string, string | undefined>>({
   itemId: undefined,
   type: undefined,
+  locationId: undefined,
   operatorAccountId: undefined,
 })
 
 const itemNameMap = ref<Map<string, string>>(new Map())
+const locationTree = ref<LocationNode[]>([])
 const operatorNameMap = ref<Map<string, string>>(new Map())
 
 const typeOptions: { value: string; label: string }[] = [
@@ -164,8 +178,9 @@ const typeOptions: { value: string; label: string }[] = [
 ]
 
 async function loadNameMaps() {
-  const [itemsResp, members] = await Promise.all([
+  const [itemsResp, locTree, members] = await Promise.all([
     fetchItems({ pageSize: 1000 }),
+    fetchLocationTree(),
     memberApi.list(),
   ])
   const iMap = new Map<string, string>()
@@ -173,6 +188,8 @@ async function loadNameMaps() {
     iMap.set(item.id, item.name)
   }
   itemNameMap.value = iMap
+
+  locationTree.value = locTree.roots
 
   const oMap = new Map<string, string>()
   for (const member of members) {
@@ -187,8 +204,7 @@ async function loadData() {
     const result = await getReport<MovementRow>('movements', {
       page: page.value,
       pageSize: pageSize.value,
-      from: dateRange.value?.[0] || undefined,
-      to: dateRange.value?.[1] || undefined,
+      ...dateRangeToIsoBounds(dateRange.value),
       ...filters.value,
     })
     rows.value = result.items
@@ -210,8 +226,7 @@ function onPageSizeChange() {
 
 function doExport() {
   const url = buildExportUrl('movements', {
-    from: dateRange.value?.[0] || undefined,
-    to: dateRange.value?.[1] || undefined,
+    ...dateRangeToIsoBounds(dateRange.value),
     ...filters.value,
     scope: 'current-filter',
   })
@@ -236,7 +251,8 @@ onMounted(async () => {
 .filter-bar :deep(.el-date-editor) {
   width: 300px;
 }
-.filter-bar :deep(.el-select) {
+.filter-bar :deep(.el-select),
+.filter-bar :deep(.el-tree-select) {
   width: 200px;
 }
 .report-table {

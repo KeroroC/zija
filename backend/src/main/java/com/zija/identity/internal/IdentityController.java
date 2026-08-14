@@ -1,5 +1,7 @@
 package com.zija.identity.internal;
 
+import com.zija.ZijaRequestIdFilter;
+import com.zija.shared.ZijaAuditOutcome;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.identity.IdentityApi;
@@ -86,9 +88,9 @@ class IdentityController {
             rateLimiter.recordSuccess(normalized);
             var principal = ZijaSessionAuthenticationSupport.requirePrincipal(authentication);
             systemApi.recordAudit(new SystemApi.AuditEvent(
-                    "LOGIN_SUCCESS", "SUCCESS", null,
+                    SystemApi.AuditAction.LOGIN_SUCCESS, ZijaAuditOutcome.SUCCESS, null,
                     principal.getAccountId(), null,
-                    (String) httpRequest.getAttribute("zija.request-id"),
+                    (String) httpRequest.getAttribute(ZijaRequestIdFilter.ATTRIBUTE),
                     ip, Map.of("username", principal.getUsername())
             ));
             return new SessionInfo(true, principal.getAccountId(),
@@ -101,9 +103,9 @@ class IdentityController {
                 rateLimit = rateEx;
             }
             systemApi.recordAudit(new SystemApi.AuditEvent(
-                    "LOGIN_FAILURE", "FAILURE", null,
+                    SystemApi.AuditAction.LOGIN_FAILURE, ZijaAuditOutcome.FAILURE, null,
                     null, null,
-                    (String) httpRequest.getAttribute("zija.request-id"),
+                    (String) httpRequest.getAttribute(ZijaRequestIdFilter.ATTRIBUTE),
                     ip, Map.of("username", normalized)
             ));
             if (rateLimit != null) {
@@ -128,8 +130,8 @@ class IdentityController {
         response.setStatus(HttpServletResponse.SC_NO_CONTENT);
         if (accountId != null) {
             systemApi.recordAudit(new SystemApi.AuditEvent(
-                    "LOGOUT", "SUCCESS", null, accountId, null,
-                    (String) request.getAttribute("zija.request-id"),
+                    SystemApi.AuditAction.LOGOUT, ZijaAuditOutcome.SUCCESS, null, accountId, null,
+                    (String) request.getAttribute(ZijaRequestIdFilter.ATTRIBUTE),
                     resolveClientIp(request), null
             ));
         }
@@ -182,9 +184,9 @@ class IdentityController {
                 new IdentityApi.ChangePasswordCommand(
                         request.currentPassword(), request.newPassword()));
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "PASSWORD_CHANGED", "SUCCESS", null,
+                SystemApi.AuditAction.PASSWORD_CHANGED, ZijaAuditOutcome.SUCCESS, null,
                 principal.getAccountId(), principal.getAccountId(),
-                (String) httpRequest.getAttribute("zija.request-id"),
+                (String) httpRequest.getAttribute(ZijaRequestIdFilter.ATTRIBUTE),
                 resolveClientIp(httpRequest), null
         ));
     }
@@ -212,9 +214,9 @@ class IdentityController {
         sessionAuth.refreshPrincipal(refreshed, httpRequest, httpResponse);
         httpResponse.setStatus(HttpServletResponse.SC_NO_CONTENT);
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "DISPLAY_NAME_CHANGED", "SUCCESS", null,
+                SystemApi.AuditAction.DISPLAY_NAME_CHANGED, ZijaAuditOutcome.SUCCESS, null,
                 principal.getAccountId(), principal.getAccountId(),
-                (String) httpRequest.getAttribute("zija.request-id"),
+                (String) httpRequest.getAttribute(ZijaRequestIdFilter.ATTRIBUTE),
                 resolveClientIp(httpRequest), Map.of("displayName", updated.displayName())
         ));
     }
