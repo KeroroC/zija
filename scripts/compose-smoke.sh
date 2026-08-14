@@ -44,18 +44,23 @@ if [ "$LIVENESS_STATUS" != "UP" ]; then
 fi
 echo "OK: liveness UP"
 
-# 安全 Cookie 断言（prod profile 下会话和 CSRF cookie 应带 Secure 标志）
+# 安全 Cookie 断言：Secure 标志由传输层决定（app 侧 request.isSecure()，
+# 跟随反代 X-Forwarded-Proto），仅在 HTTPS 下出现；纯 HTTP smoke 下断言无意义。
+# 仅当 BASE_URL 为 https 时才检查 Secure。
 echo "Checking security cookies ..."
 CSRF_HEADERS=$(curl -si "$BASE_URL/api/v1/auth/csrf" 2>/dev/null || true)
-if echo "${ZIJA_PROFILES_ACTIVE:-}" | grep -q "prod"; then
-  if ! echo "$CSRF_HEADERS" | grep -qi "Secure"; then
-    echo "FAIL: prod profile but Set-Cookie missing Secure flag" >&2
-    exit 1
-  fi
-  echo "OK: Secure cookie flag present in prod profile"
-else
-  echo "SKIP: not running in prod profile, cookie Secure check skipped"
-fi
+case "$BASE_URL" in
+  https://*)
+    if ! echo "$CSRF_HEADERS" | grep -qi "Secure"; then
+      echo "FAIL: HTTPS endpoint but Set-Cookie missing Secure flag" >&2
+      exit 1
+    fi
+    echo "OK: Secure cookie flag present over HTTPS"
+    ;;
+  *)
+    echo "SKIP: plain HTTP smoke, Secure flag check skipped (Secure requires HTTPS)"
+    ;;
+esac
 
 echo "compose smoke passed"
 exit 0
