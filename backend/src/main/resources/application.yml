@@ -1,6 +1,9 @@
 spring:
   application:
     name: zija
+  # 激活的 Profile（如 prod）；通过 ZIJA_PROFILES_ACTIVE 环境变量控制
+  profiles:
+    active: ${ZIJA_PROFILES_ACTIVE:}
   datasource:
     url: ${ZIJA_DB_URL:jdbc:postgresql://localhost:5432/zija}
     username: ${ZIJA_DB_USERNAME:zija}
