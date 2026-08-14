@@ -1,10 +1,11 @@
 package com.zija.shared;
 
 /**
- * 家庭成员 / 账户状态常量。
+ * 家庭成员状态常量。
  * <p>
- * 适用于 household 模块成员记录与 identity 模块账户记录的 {@code status} 字段，
- * 二者共享同一取值域。
+ * 仅适用于 household 模块成员记录的 {@code status} 字段。
+ * identity 模块账户状态使用独立的 AccountStatus（ACTIVE/DISABLED），
+ * 与成员状态（ACTIVE/DEACTIVATED）取值域不同，不可混用。
  */
 public final class ZijaMemberStatus {
 

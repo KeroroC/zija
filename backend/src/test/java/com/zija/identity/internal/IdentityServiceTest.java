@@ -45,7 +45,7 @@ class IdentityServiceTest {
         verify(accountMapper).insert(captor.capture());
         assertThat(captor.getValue().getUsername()).isEqualTo("Owner");
         assertThat(captor.getValue().getUsernameNormalized()).isEqualTo("owner");
-        assertThat(captor.getValue().getStatus()).isEqualTo("ACTIVE");
+        assertThat(captor.getValue().getStatus()).isEqualTo(AccountStatus.ACTIVE);
     }
 
     @Test

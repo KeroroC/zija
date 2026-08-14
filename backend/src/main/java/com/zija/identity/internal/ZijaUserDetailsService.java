@@ -1,6 +1,5 @@
 package com.zija.identity.internal;
 
-import com.zija.shared.ZijaMemberStatus;
 import com.zija.ZijaPrincipal;
 import com.zija.identity.internal.persistence.AccountMapper;
 import org.jspecify.annotations.NonNull;
@@ -38,7 +37,7 @@ class ZijaUserDetailsService implements UserDetailsService {
         var normalized = username.trim().toLowerCase(Locale.ROOT);
         var account = accountMapper.selectByNormalizedUsername(normalized)
                 .orElseThrow(() -> new UsernameNotFoundException("not found"));
-        if (!ZijaMemberStatus.ACTIVE.equals(account.getStatus())) {
+        if (!AccountStatus.ACTIVE.equals(account.getStatus())) {
             throw new UsernameNotFoundException("not active");
         }
         return new ZijaPrincipal(

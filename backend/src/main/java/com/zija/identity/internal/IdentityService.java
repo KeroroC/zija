@@ -1,6 +1,5 @@
 package com.zija.identity.internal;
 
-import com.zija.shared.ZijaMemberStatus;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.identity.IdentityApi;
 import com.zija.identity.internal.exception.AccountVersionConflictException;
@@ -67,7 +66,7 @@ class IdentityService implements IdentityApi {
         entity.setPasswordHash(passwordEncoder.encode(command.password()));
         entity.setDisplayName(command.displayName().trim());
         entity.setEmail(command.email());
-        entity.setStatus(ZijaMemberStatus.ACTIVE);
+        entity.setStatus(AccountStatus.ACTIVE);
         entity.setVersion(0);
         accountMapper.insert(entity);
 
@@ -184,7 +183,7 @@ class IdentityService implements IdentityApi {
     @Transactional(readOnly = true)
     public void requireActive(UUID accountId) {
         var account = accountMapper.selectById(accountId);
-        if (account == null || !ZijaMemberStatus.ACTIVE.equals(account.getStatus())) {
+        if (account == null || !AccountStatus.ACTIVE.equals(account.getStatus())) {
             throw new InvalidCredentialsException();
         }
     }
