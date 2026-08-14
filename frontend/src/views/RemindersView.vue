@@ -8,12 +8,12 @@
     </header>
 
     <div class="filter-bar">
-      <el-select v-model="filter.kind" placeholder="类型" clearable size="small" @change="reload">
+      <el-select v-model="filter.kind" placeholder="类型" clearable @change="reload">
         <el-option label="全部" value="" />
         <el-option label="临期" value="EXPIRY" />
         <el-option label="低库存" value="LOW_STOCK" />
       </el-select>
-      <el-select v-model="filter.status" placeholder="状态" clearable size="small" @change="reload">
+      <el-select v-model="filter.status" placeholder="状态" clearable @change="reload">
         <el-option label="全部" value="" />
         <el-option label="待处理" value="OPEN" />
         <el-option label="已延后" value="SNOOZED" />
@@ -181,13 +181,16 @@ function formatDate(s: string) {
 
 <style scoped>
 .filter-bar {
-  background: var(--zj-surface-sunken);
-  padding: 12px 16px;
-  border-radius: var(--zj-radius-sm);
-  margin-bottom: 16px;
   display: flex;
   gap: 12px;
-  align-items: center;
+  flex-wrap: wrap;
+  padding: 16px;
+  background: var(--zj-surface-sunken);
+  border-radius: var(--zj-radius-md);
+  margin-bottom: 16px;
+}
+.filter-bar :deep(.el-select) {
+  width: 200px;
 }
 
 .tasks-table {
