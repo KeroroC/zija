@@ -17,18 +17,41 @@
         ORDER BY created_at
     </select>
 
-    <select id="findPage" resultType="com.zija.inventory.internal.persistence.MovementEntity">
-        SELECT id, household_id, lot_id, item_id, type, quantity, from_location_id, to_location_id,
-               reason, memo, operator_account_id, business_time, created_at, idempotency_key, reversal_of
-        FROM inventory_movement
+    <select id="findPage" resultType="com.zija.inventory.internal.persistence.MovementWithDetails">
+        SELECT m.id,
+               m.household_id AS "householdId",
+               m.lot_id AS "lotId",
+               m.item_id AS "itemId",
+               m.type,
+               m.quantity,
+               m.from_location_id AS "fromLocationId",
+               m.to_location_id AS "toLocationId",
+               m.reason,
+               m.memo,
+               m.operator_account_id AS "operatorAccountId",
+               m.business_time AS "businessTime",
+               m.created_at AS "createdAt",
+               m.idempotency_key AS "idempotencyKey",
+               m.reversal_of AS "reversalOf",
+               i.name AS "itemName",
+               u.name AS "unitName",
+               fl.name AS "fromLocationName",
+               tl.name AS "toLocationName",
+               a.display_name AS "operatorDisplayName"
+        FROM inventory_movement m
+        JOIN catalog_item i ON i.id = m.item_id
+        LEFT JOIN catalog_unit u ON u.id = i.unit_id
+        LEFT JOIN location fl ON fl.id = m.from_location_id
+        LEFT JOIN location tl ON tl.id = m.to_location_id
+        LEFT JOIN account a ON a.id = m.operator_account_id
         <where>
-            household_id = #{householdId}
-            <if test="type != null and type != ''">AND type = #{type}</if>
-            <if test="itemId != null">AND item_id = #{itemId}</if>
-            <if test="locationId != null">AND (from_location_id = #{locationId} OR to_location_id = #{locationId})</if>
-            <if test="operatorAccountId != null">AND operator_account_id = #{operatorAccountId}</if>
-            <if test="from != null">AND business_time &gt;= #{from}</if>
-            <if test="to != null">AND business_time &lt; #{to}</if>
+            m.household_id = #{householdId}
+            <if test="type != null and type != ''">AND m.type = #{type}</if>
+            <if test="itemId != null">AND m.item_id = #{itemId}</if>
+            <if test="locationId != null">AND (m.from_location_id = #{locationId} OR m.to_location_id = #{locationId})</if>
+            <if test="operatorAccountId != null">AND m.operator_account_id = #{operatorAccountId}</if>
+            <if test="from != null">AND m.business_time &gt;= #{from}</if>
+            <if test="to != null">AND m.business_time &lt; #{to}</if>
         </where>
         ORDER BY ${orderBy}
     </select>

@@ -184,11 +184,11 @@ class InventoryController {
             return response;
         }
 
-        var pageObj = new Page<com.zija.inventory.internal.persistence.MovementEntity>(page, pageSize);
-        var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, null, fromDt, toDt, "created_at DESC");
+        var pageObj = new Page<com.zija.inventory.internal.persistence.MovementWithDetails>(page, pageSize);
+        var result = movementMapper.findPage(pageObj, member.householdId(), type, itemId, locationId, null, fromDt, toDt, "m.created_at DESC");
 
         return pagedResponse(
-                result.getRecords().stream().map(this::toMovementEntityResponse).toList(),
+                result.getRecords().stream().map(this::toMovementWithDetailsResponse).toList(),
                 result.getTotal(), page, pageSize);
     }
 
@@ -578,24 +578,29 @@ class InventoryController {
     }
 
     /**
-     * 流水列表 DTO：{@link MovementEntity} → HTTP 响应。剥离 householdId 等实体内部字段。
+     * 流水列表 DTO：{@link MovementWithDetails} → HTTP 响应。剥离 householdId 等实体内部字段，附带展示用名称。
      */
-    private Map<String, Object> toMovementEntityResponse(MovementEntity m) {
+    private Map<String, Object> toMovementWithDetailsResponse(MovementWithDetails m) {
         var map = new LinkedHashMap<String, Object>();
-        map.put("id", m.getId());
-        map.put("lotId", m.getLotId());
-        map.put("itemId", m.getItemId());
-        map.put("type", m.getType());
-        map.put("quantity", m.getQuantity());
-        map.put("fromLocationId", m.getFromLocationId());
-        map.put("toLocationId", m.getToLocationId());
-        map.put("reason", m.getReason());
-        map.put("memo", m.getMemo());
-        map.put("operatorAccountId", m.getOperatorAccountId());
-        map.put("businessTime", m.getBusinessTime());
-        map.put("createdAt", m.getCreatedAt());
-        map.put("idempotencyKey", m.getIdempotencyKey());
-        map.put("reversalOf", m.getReversalOf());
+        map.put("id", m.id());
+        map.put("lotId", m.lotId());
+        map.put("itemId", m.itemId());
+        map.put("type", m.type());
+        map.put("quantity", m.quantity());
+        map.put("fromLocationId", m.fromLocationId());
+        map.put("toLocationId", m.toLocationId());
+        map.put("reason", m.reason());
+        map.put("memo", m.memo());
+        map.put("operatorAccountId", m.operatorAccountId());
+        map.put("businessTime", m.businessTime());
+        map.put("createdAt", m.createdAt());
+        map.put("idempotencyKey", m.idempotencyKey());
+        map.put("reversalOf", m.reversalOf());
+        map.put("itemName", m.itemName());
+        map.put("unitName", m.unitName());
+        map.put("fromLocationName", m.fromLocationName());
+        map.put("toLocationName", m.toLocationName());
+        map.put("operatorDisplayName", m.operatorDisplayName());
         return map;
     }
 

@@ -12,6 +12,10 @@ vi.mock("../api/reminder", () => ({
 vi.mock("../api/inventory", () => ({
   fetchStocktakes: vi.fn(),
   fetchMovements: vi.fn(),
+  reverseMovement: vi.fn(),
+}));
+vi.mock("../stores/session", () => ({
+  useSessionStore: () => ({ role: "OWNER" }),
 }));
 
 import HomeView from "./HomeView.vue";
@@ -65,7 +69,9 @@ beforeEach(() => {
         toLocationName: "冰箱",
         reason: null,
         memo: null,
+        operatorAccountId: "a1",
         operatorUsername: "admin",
+        operatorDisplayName: "所有者",
         businessTime: "2026-07-27T10:00:00Z",
         createdAt: "2026-07-27T10:00:00Z",
         idempotencyKey: "k1",
@@ -101,9 +107,24 @@ describe("HomeView", () => {
     expect(w.text()).toContain("「牛奶」还有 3 天到期");
   });
 
-  it("renders recent movements", async () => {
+  it("renders recent movements with item, unit, location and operator", async () => {
     const w = mountHome();
     await flushPromises();
     expect(w.text()).toContain("入库");
+    expect(w.text()).toContain("牛奶");
+    expect(w.text()).toContain("盒");
+    expect(w.text()).toContain("冰箱");
+    expect(w.text()).toContain("所有者");
+  });
+
+  it("opens movement detail drawer when a movement row is clicked", async () => {
+    const w = mountHome();
+    await flushPromises();
+
+    await w.find(".movement-row").trigger("click");
+    await flushPromises();
+
+    expect(w.text()).toContain("流水详情");
+    expect(w.text()).toContain("牛奶");
   });
 });

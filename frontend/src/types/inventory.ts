@@ -75,7 +75,9 @@ export interface Movement {
   toLocationName: string | null
   reason: string | null
   memo: string | null
+  operatorAccountId?: string | null
   operatorUsername: string | null
+  operatorDisplayName?: string | null
   businessTime: string
   createdAt: string
   idempotencyKey: string

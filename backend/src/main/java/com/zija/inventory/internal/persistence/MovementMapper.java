@@ -20,15 +20,15 @@ public interface MovementMapper extends BaseMapper<MovementEntity> {
     /** 按 (household, lot) 聚合签名（健壮重建用）。 */
     List<MovementEntity> findByLot(@Param("householdId") UUID householdId, @Param("lotId") UUID lotId);
 
-    IPage<MovementEntity> findPage(Page<MovementEntity> page,
-                                   @Param("householdId") UUID householdId,
-                                   @Param("type") String type,
-                                   @Param("itemId") UUID itemId,
-                                   @Param("locationId") UUID locationId,
-                                   @Param("operatorAccountId") UUID operatorAccountId,
-                                   @Param("from") OffsetDateTime from,
-                                   @Param("to") OffsetDateTime to,
-                                   @Param("orderBy") String orderBy);
+    IPage<MovementWithDetails> findPage(Page<MovementWithDetails> page,
+                                        @Param("householdId") UUID householdId,
+                                        @Param("type") String type,
+                                        @Param("itemId") UUID itemId,
+                                        @Param("locationId") UUID locationId,
+                                        @Param("operatorAccountId") UUID operatorAccountId,
+                                        @Param("from") OffsetDateTime from,
+                                        @Param("to") OffsetDateTime to,
+                                        @Param("orderBy") String orderBy);
 
     /** 按 created_at 增量拉取（游标分批），供 reporting 投影重建。 */
     List<InventoryApi.MovementDump> dumpMovements(@Param("householdId") UUID householdId,
