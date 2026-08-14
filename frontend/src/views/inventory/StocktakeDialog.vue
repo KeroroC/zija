@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     title="盘点"
-    width="800px"
+    width="900px"
     :close-on-click-modal="false"
     @update:model-value="$emit('update:modelValue', $event)"
     @open="onOpen"
@@ -35,9 +35,14 @@
     <div v-if="currentStep === 1">
       <div v-loading="detailLoading">
         <el-table :data="editItems" style="width: 100%" size="small">
-          <el-table-column label="批次号" min-width="100">
+          <el-table-column label="物品名称" min-width="120">
             <template #default="{ row }">
-              {{ lotNameMap.get(row.lotId) ?? row.lotId }}
+              {{ displayName(row) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="批次号" min-width="110">
+            <template #default="{ row }">
+              {{ displayBatch(row) }}
             </template>
           </el-table-column>
           <el-table-column label="账面数量" min-width="80">
@@ -57,7 +62,12 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="差异原因" min-width="160">
+          <el-table-column label="单位" min-width="70">
+            <template #default="{ row }">
+              {{ displayUnit(row) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="差异原因" min-width="150">
             <template #default="{ row }">
               <el-input
                 v-model="row.reason"
@@ -126,13 +136,23 @@
           style="margin-bottom: 16px"
         />
         <el-table :data="previewItems" style="width: 100%" size="small">
-          <el-table-column label="批次" min-width="100">
+          <el-table-column label="物品名称" min-width="120">
             <template #default="{ row }">
-              {{ lotNameMap.get(row.lotId) ?? row.lotId }}
+              {{ displayName(row) }}
             </template>
           </el-table-column>
-          <el-table-column label="账面" min-width="60" prop="bookQuantity" />
-          <el-table-column label="实际" min-width="60" prop="actualQuantity" />
+          <el-table-column label="批次号" min-width="110">
+            <template #default="{ row }">
+              {{ displayBatch(row) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="账面" min-width="70" prop="bookQuantity" />
+          <el-table-column label="实际" min-width="70" prop="actualQuantity" />
+          <el-table-column label="单位" min-width="70">
+            <template #default="{ row }">
+              {{ displayUnit(row) }}
+            </template>
+          </el-table-column>
           <el-table-column label="差异" min-width="80">
             <template #default="{ row }">
               {{ computeDiff(row) }}
@@ -242,7 +262,6 @@ const cancelLoading = ref(false)
 
 const stocktakeDetail = ref<StocktakeDetail | null>(null)
 const editItems = ref<(Omit<StocktakeItem, 'actualQuantity'> & { actualQuantity: number })[]>([])
-const lotNameMap = ref<Map<string, string>>(new Map())
 
 // Backfill state
 const showBackfill = ref(false)
@@ -254,6 +273,18 @@ const availableBackfillLots = ref<LotSummary[]>([])
 const isStale = ref(false)
 
 const previewItems = computed(() => editItems.value)
+
+function displayName(row: { itemName?: string | null }): string {
+  return row.itemName && row.itemName.length ? row.itemName : '—'
+}
+
+function displayBatch(row: { lotNumber?: string | null }): string {
+  return row.lotNumber && row.lotNumber.length ? row.lotNumber : '—'
+}
+
+function displayUnit(row: { unitName?: string | null }): string {
+  return row.unitName && row.unitName.length ? row.unitName : '—'
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function computeDiff(row: any): string {
@@ -285,13 +316,6 @@ async function loadStocktakeDetail(id: string) {
   try {
     const detail = await fetchStocktake(id)
     stocktakeDetail.value = detail
-
-    // Build lot name map from items
-    const lMap = new Map<string, string>()
-    for (const item of detail.items) {
-      lMap.set(item.lotId, item.lotId.substring(0, 8))
-    }
-    lotNameMap.value = lMap
 
     editItems.value = detail.items.map((item) => ({
       ...item,
@@ -331,15 +355,10 @@ function addBackfillItem() {
     bookQuantity: '0',
     actualQuantity: backfillQuantity.value,
     reason: backfillReason.value || null,
+    itemName: lot?.itemName,
+    lotNumber: lot?.lotNumber ?? null,
+    unitName: lot?.unitName,
   })
-
-  // Update lot name map
-  if (lot) {
-    lotNameMap.value.set(
-      lot.lotId,
-      lot.lotNumber ?? lot.lotId.substring(0, 8),
-    )
-  }
 
   // Reset backfill form
   backfillLotId.value = ''
@@ -512,7 +531,6 @@ function resetState() {
   selectedLocationId.value = ''
   stocktakeDetail.value = null
   editItems.value = []
-  lotNameMap.value = new Map()
   isStale.value = false
   showBackfill.value = false
   backfillLotId.value = ''

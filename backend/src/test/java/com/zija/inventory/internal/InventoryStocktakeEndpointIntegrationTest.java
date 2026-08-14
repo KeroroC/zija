@@ -436,7 +436,10 @@ class InventoryStocktakeEndpointIntegrationTest {
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].lotId").value(lotId.toString()))
                 .andExpect(jsonPath("$.items[0].bookQuantity").value(10))
-                .andExpect(jsonPath("$.items[0].actualQuantity").value(10));
+                .andExpect(jsonPath("$.items[0].actualQuantity").value(10))
+                .andExpect(jsonPath("$.items[0].itemName").isNotEmpty())
+                .andExpect(jsonPath("$.items[0].unitName").isNotEmpty())
+                .andExpect(jsonPath("$.items[0].lotNumber").isNotEmpty());
     }
 
     @Test

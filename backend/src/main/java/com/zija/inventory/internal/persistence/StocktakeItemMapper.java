@@ -18,6 +18,11 @@ public interface StocktakeItemMapper extends BaseMapper<StocktakeItemEntity> {
     List<StocktakeItemEntity> findByStocktake(@Param("householdId") UUID householdId,
                                               @Param("stocktakeId") UUID stocktakeId);
 
+    /** 按盘点单 id 查询所有行项，附带物品名称、批次号、单位等展示信息。 */
+    List<StocktakeItemWithDetails> findByStocktakeWithDetails(
+            @Param("householdId") UUID householdId,
+            @Param("stocktakeId") UUID stocktakeId);
+
     /** 删除指定盘点单的所有行项。 */
     int deleteByStocktake(@Param("stocktakeId") UUID stocktakeId);
 

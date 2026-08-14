@@ -617,15 +617,18 @@ class InventoryController {
         return map;
     }
 
-    private Map<String, Object> toStocktakeItemResponse(StocktakeItemEntity item) {
+    private Map<String, Object> toStocktakeItemResponse(StocktakeItemWithDetails item) {
         var map = new LinkedHashMap<String, Object>();
-        map.put("id", item.getId());
-        map.put("lotId", item.getLotId());
-        map.put("locationId", item.getLocationId());
-        map.put("bookQuantity", item.getBookQuantity());
-        map.put("actualQuantity", item.getActualQuantity());
-        map.put("positionRevision", item.getPositionRevision());
-        map.put("reason", item.getReason());
+        map.put("id", item.id());
+        map.put("lotId", item.lotId());
+        map.put("locationId", item.locationId());
+        map.put("bookQuantity", item.bookQuantity());
+        map.put("actualQuantity", item.actualQuantity());
+        map.put("positionRevision", item.positionRevision());
+        map.put("reason", item.reason());
+        map.put("itemName", item.itemName());
+        map.put("lotNumber", item.lotNumber());
+        map.put("unitName", item.unitName());
         return map;
     }
 

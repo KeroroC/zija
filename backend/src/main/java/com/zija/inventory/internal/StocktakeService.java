@@ -16,6 +16,7 @@ import com.zija.inventory.internal.persistence.StockPositionMapper;
 import com.zija.inventory.internal.persistence.StocktakeEntity;
 import com.zija.inventory.internal.persistence.StocktakeItemEntity;
 import com.zija.inventory.internal.persistence.StocktakeItemMapper;
+import com.zija.inventory.internal.persistence.StocktakeItemWithDetails;
 import com.zija.inventory.internal.persistence.StocktakeMapper;
 import com.zija.location.LocationApi;
 import com.zija.system.SystemApi;
@@ -217,6 +218,14 @@ class StocktakeService {
     @Transactional(readOnly = true)
     public List<StocktakeItemEntity> draftItems(UUID householdId, UUID stocktakeId) {
         return stocktakeItemMapper.findByStocktake(householdId, stocktakeId);
+    }
+
+    /**
+     * 查询盘点草稿的所有行项，附带物品名称、批次号、单位等展示信息。
+     */
+    @Transactional(readOnly = true)
+    public List<StocktakeItemWithDetails> draftItemsWithDetails(UUID householdId, UUID stocktakeId) {
+        return stocktakeItemMapper.findByStocktakeWithDetails(householdId, stocktakeId);
     }
 
     /**

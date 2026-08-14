@@ -160,6 +160,9 @@ const stocktakeDetail: StocktakeDetail = {
       bookQuantity: "5",
       actualQuantity: "5",
       reason: null,
+      itemName: "大米",
+      lotNumber: "LOT-001",
+      unitName: "袋",
     },
     {
       lotId: "lot-2",
@@ -167,6 +170,9 @@ const stocktakeDetail: StocktakeDetail = {
       bookQuantity: "10",
       actualQuantity: "10",
       reason: null,
+      itemName: "酱油",
+      lotNumber: null,
+      unitName: "瓶",
     },
   ],
 }
@@ -431,11 +437,40 @@ describe("StocktakeDialog", () => {
     const wrapper = await mountDialog("st-1", 1)
     await flushPromises()
 
+    expect(wrapper.text()).toContain("物品名称")
+    expect(wrapper.text()).toContain("批次号")
     expect(wrapper.text()).toContain("账面数量")
     expect(wrapper.text()).toContain("实际数量")
+    expect(wrapper.text()).toContain("单位")
     expect(wrapper.text()).toContain("差异原因")
+    // Display fields from enriched detail
+    expect(wrapper.text()).toContain("大米")
+    expect(wrapper.text()).toContain("LOT-001")
+    expect(wrapper.text()).toContain("酱油")
+    expect(wrapper.text()).toContain("瓶")
+    // Batch null falls back to "—"
+    expect(wrapper.text()).toContain("—")
     expect(wrapper.text()).toContain("5")
     expect(wrapper.text()).toContain("10")
+    wrapper.unmount()
+  })
+
+  it("shows enriched detail columns on confirm preview (step 2)", async () => {
+    fetchStocktakeMock.mockResolvedValue(stocktakeDetail)
+
+    const wrapper = await mountDialog("st-1", 2)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("物品名称")
+    expect(wrapper.text()).toContain("批次号")
+    expect(wrapper.text()).toContain("单位")
+    expect(wrapper.text()).toContain("账面")
+    expect(wrapper.text()).toContain("实际")
+    expect(wrapper.text()).toContain("差异")
+    expect(wrapper.text()).toContain("大米")
+    expect(wrapper.text()).toContain("LOT-001")
+    expect(wrapper.text()).toContain("酱油")
+    expect(wrapper.text()).toContain("瓶")
     wrapper.unmount()
   })
 

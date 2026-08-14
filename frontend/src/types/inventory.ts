@@ -118,6 +118,12 @@ export interface StocktakeItem {
   bookQuantity: string
   actualQuantity: string
   reason: string | null
+  /** 物品名称（读时 join 补齐，缺失时前端兜底显示「—」） */
+  itemName?: string | null
+  /** 批次号（可为 null，前端兜底显示「—」） */
+  lotNumber?: string | null
+  /** 单位（可为 null，前端兜底显示「—」） */
+  unitName?: string | null
 }
 
 export interface StocktakeDetail extends StocktakeSummary {
