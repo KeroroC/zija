@@ -123,7 +123,7 @@ import { getReport, buildExportUrl } from '../../api/reporting'
 import { fetchItems } from '../../api/catalog'
 import { fetchLocationTree } from '../../api/location'
 import { useSessionStore } from '../../stores/session'
-import { formatDateTime } from '../../utils/date'
+import { formatDateTime, dateRangeToIsoBounds } from '../../utils/date'
 import { movementTypeLabel, movementTagType, signedMovementQuantity } from '../../utils/movement'
 import type { StockChangeRow } from '../../types/reporting'
 import type { LocationNode } from '../../types/location'
@@ -189,8 +189,7 @@ async function loadData() {
     const result = await getReport<StockChangeRow>('stock-changes', {
       page: page.value,
       pageSize: pageSize.value,
-      from: dateRange.value?.[0] || undefined,
-      to: dateRange.value?.[1] || undefined,
+      ...dateRangeToIsoBounds(dateRange.value),
       ...filters.value,
     })
     rows.value = result.items
@@ -212,8 +211,7 @@ function onPageSizeChange() {
 
 function doExport() {
   const url = buildExportUrl('stock-changes', {
-    from: dateRange.value?.[0] || undefined,
-    to: dateRange.value?.[1] || undefined,
+    ...dateRangeToIsoBounds(dateRange.value),
     ...filters.value,
     scope: 'current-filter',
   })

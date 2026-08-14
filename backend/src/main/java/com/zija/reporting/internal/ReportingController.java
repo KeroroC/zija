@@ -108,8 +108,8 @@ class ReportingController {
             @AuthenticationPrincipal ZijaPrincipal principal,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam OffsetDateTime from,
-            @RequestParam OffsetDateTime to,
+            @RequestParam(required = false) OffsetDateTime from,
+            @RequestParam(required = false) OffsetDateTime to,
             @RequestParam(required = false) UUID itemId,
             @RequestParam(required = false) UUID locationId,
             @RequestParam(required = false) String type) {

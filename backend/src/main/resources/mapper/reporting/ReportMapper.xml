@@ -71,7 +71,8 @@
             mf.reason, mf.business_time
         FROM reporting_movement_flat mf
         WHERE mf.household_id = #{householdId}
-          AND mf.business_time BETWEEN #{from} AND #{to}
+        <if test="from != null">AND mf.business_time &gt;= #{from}</if>
+        <if test="to != null">AND mf.business_time &lt;= #{to}</if>
         <if test="itemId != null">AND mf.item_id = #{itemId}</if>
         <if test="locationId != null">
             AND (mf.from_location_id = #{locationId} OR mf.to_location_id = #{locationId})

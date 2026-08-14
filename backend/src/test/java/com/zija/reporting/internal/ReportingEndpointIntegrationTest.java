@@ -202,6 +202,20 @@ class ReportingEndpointIntegrationTest {
         assertThat(outOfRange.get("total").asInt()).isEqualTo(0);
     }
 
+    /**
+     * 回归：无时间范围（未选日期）时，库存变化接口应返回全部数据，而不是 400。
+     * 与「流水」接口保持一致 —— from/to 为可选参数。
+     */
+    @Test
+    void stockChanges_withoutTimeRange_returnsAll() throws Exception {
+        inbound(itemLow, 5, kitchenId, todayPlus(365), null);
+        inbound(itemHigh, 12, cabinetId, todayPlus(365), null);
+
+        var resp = getJson("/api/v1/reporting/reports/stock-changes");
+        assertThat(resp.get("total").asInt()).isEqualTo(2);
+        assertThat(resp.get("items")).hasSize(2);
+    }
+
     // ==================== 流水（movements 类型/操作人过滤 SQL） ====================
 
     @Test
