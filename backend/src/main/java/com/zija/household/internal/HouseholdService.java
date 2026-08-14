@@ -35,6 +35,8 @@ class HouseholdService implements HouseholdApi {
     private final IdentityApi identityApi;
     private final SystemApi systemApi;
 
+    private static final String DEFAULT_TIMEZONE = "Asia/Shanghai";
+
     HouseholdService(
             HouseholdMapper householdMapper,
             MemberMapper memberMapper,
@@ -90,7 +92,7 @@ class HouseholdService implements HouseholdApi {
         household.setSingletonKey((short) 1);
         household.setId(UUID.randomUUID());
         household.setName(command.householdName());
-        household.setTimezone("Asia/Shanghai");
+        household.setTimezone(DEFAULT_TIMEZONE);
         household.setVersion(0);
 
         try {
@@ -113,7 +115,7 @@ class HouseholdService implements HouseholdApi {
         memberMapper.insert(member);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "HOUSEHOLD_INITIALIZED", ZijaAuditOutcome.SUCCESS,
+                SystemApi.AuditAction.HOUSEHOLD_INITIALIZED, ZijaAuditOutcome.SUCCESS,
                 household.getId(), account.id(), account.id(),
                 null, null, null));
 

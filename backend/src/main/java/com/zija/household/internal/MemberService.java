@@ -80,7 +80,7 @@ class MemberService {
         requireSingleMemberUpdate(memberMapper.updateRole(
                 targetMemberId, newRole, target.getVersion()));
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "ROLE_CHANGED", ZijaAuditOutcome.SUCCESS, target.getHouseholdId(),
+                SystemApi.AuditAction.ROLE_CHANGED, ZijaAuditOutcome.SUCCESS, target.getHouseholdId(),
                 actorAccountId, target.getAccountId(), null, null,
                 java.util.Map.of("oldRole", target.getRole(), "newRole", newRole)));
     }
@@ -121,7 +121,8 @@ class MemberService {
             identityApi.activateAccount(target.getAccountId());
         }
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                ZijaMemberStatus.DEACTIVATED.equals(newStatus) ? "MEMBER_DEACTIVATED" : "MEMBER_REACTIVATED",
+                ZijaMemberStatus.DEACTIVATED.equals(newStatus)
+                        ? SystemApi.AuditAction.MEMBER_DEACTIVATED : SystemApi.AuditAction.MEMBER_REACTIVATED,
                 ZijaAuditOutcome.SUCCESS, target.getHouseholdId(),
                 actorAccountId, target.getAccountId(), null, null, null));
     }
@@ -157,7 +158,7 @@ class MemberService {
         sessionInvalidator.invalidateAllForAccount(currentOwner.getAccountId());
         sessionInvalidator.invalidateAllForAccount(target.getAccountId());
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "OWNERSHIP_TRANSFERRED", ZijaAuditOutcome.SUCCESS, household,
+                SystemApi.AuditAction.OWNERSHIP_TRANSFERRED, ZijaAuditOutcome.SUCCESS, household,
                 currentOwnerAccountId, target.getAccountId(), null, null,
                 java.util.Map.of("oldOwner", currentOwner.getAccountId().toString(),
                         "newOwner", target.getAccountId().toString())));

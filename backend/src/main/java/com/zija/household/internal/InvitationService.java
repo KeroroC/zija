@@ -1,6 +1,7 @@
 package com.zija.household.internal;
 
 import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaDigests;
 import com.zija.shared.ZijaMemberRole;
 import com.zija.shared.ZijaMemberStatus;
 import com.zija.household.HouseholdApi;
@@ -95,7 +96,7 @@ class InvitationService {
         invitationMapper.insert(entity);
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVITATION_CREATED", ZijaAuditOutcome.SUCCESS, householdId, createdBy, null,
+                SystemApi.AuditAction.INVITATION_CREATED, ZijaAuditOutcome.SUCCESS, householdId, createdBy, null,
                 null, null, null));
         return new CreateResult(entity.getId(), rawToken, digest, role, entity.getExpiresAt());
     }
@@ -130,10 +131,10 @@ class InvitationService {
         invitationMapper.markConsumed(invitation.getId(), account.id());
 
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "MEMBER_JOINED", ZijaAuditOutcome.SUCCESS, invitation.getHouseholdId(),
+                SystemApi.AuditAction.MEMBER_JOINED, ZijaAuditOutcome.SUCCESS, invitation.getHouseholdId(),
                 account.id(), account.id(), null, null, null));
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVITATION_REDEEMED", ZijaAuditOutcome.SUCCESS, invitation.getHouseholdId(),
+                SystemApi.AuditAction.INVITATION_REDEEMED, ZijaAuditOutcome.SUCCESS, invitation.getHouseholdId(),
                 account.id(), account.id(), null, null, null));
     }
 
@@ -158,7 +159,7 @@ class InvitationService {
      */
     static String sha256Hex(String input) {
         try {
-            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            var digest = java.security.MessageDigest.getInstance(ZijaDigests.SHA_256);
             var hash = digest.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             var sb = new StringBuilder();
             for (byte b : hash) sb.append(String.format("%02x", b));
