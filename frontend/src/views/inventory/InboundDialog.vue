@@ -24,7 +24,7 @@
         </el-form-item>
 
         <!-- Item selection (both modes) -->
-        <el-form-item label="物品">
+        <el-form-item label="物品" required>
           <div class="item-select-row">
             <el-select
               ref="itemSelectRef"
@@ -54,7 +54,7 @@
         </el-form-item>
 
         <!-- Lot selection (existing mode only) -->
-        <el-form-item v-if="mode === 'existing'" label="批次">
+        <el-form-item v-if="mode === 'existing'" label="批次" required>
           <el-select
             v-model="form.lotId"
             filterable
@@ -73,7 +73,7 @@
         </el-form-item>
 
         <!-- Quantity -->
-        <el-form-item label="数量">
+        <el-form-item label="数量" required>
           <el-input-number
             v-model="form.quantity"
             :min="0.01"
@@ -124,7 +124,7 @@
           <el-form-item label="序列号">
             <el-input
               v-model="form.serialNumber"
-              placeholder="可选"
+              placeholder="耐用品每件独立编号"
               @change="resetIdempotencyKey"
             />
           </el-form-item>
@@ -133,14 +133,14 @@
               v-model="form.memo"
               type="textarea"
               :rows="2"
-              placeholder="可选"
+              placeholder=""
               @change="resetIdempotencyKey"
             />
           </el-form-item>
         </template>
 
         <!-- Location selection -->
-        <el-form-item label="入库位置">
+        <el-form-item label="入库位置" required>
           <el-tree-select
             v-model="form.locationId"
             :data="locationTreeData"

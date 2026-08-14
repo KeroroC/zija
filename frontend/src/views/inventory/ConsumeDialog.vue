@@ -16,7 +16,7 @@
     <!-- Step 0: Select item -->
     <div v-if="currentStep === 0">
       <el-form label-width="80px" v-loading="formLoading">
-        <el-form-item label="物品">
+        <el-form-item label="物品" required>
           <el-select
             v-model="form.itemId"
             filterable
@@ -82,7 +82,7 @@
     <!-- Step 2: Quantity + reason/memo -->
     <div v-if="currentStep === 2">
       <el-form label-width="80px">
-        <el-form-item label="数量">
+        <el-form-item label="数量" required>
           <el-input-number
             v-model="form.quantity"
             :min="0.01"
@@ -101,7 +101,7 @@
         <el-form-item label="原因">
           <el-input
             v-model="form.reason"
-            placeholder="可选"
+            placeholder=""
             @change="resetIdempotencyKey"
           />
         </el-form-item>
@@ -110,7 +110,7 @@
             v-model="form.memo"
             type="textarea"
             :rows="2"
-            placeholder="可选"
+            placeholder=""
             @change="resetIdempotencyKey"
           />
         </el-form-item>
