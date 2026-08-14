@@ -19,8 +19,11 @@ import java.time.ZoneId;
  * 拿到家庭时区的 Clock，与提醒/报表口径统一。
  */
 @Configuration(proxyBeanMethods = false)
-class ClockConfig {
-    @Bean
+public class ClockConfig {
+
+    public static final String REMINDER_CLOCK = "reminderClock";
+
+    @Bean(name = REMINDER_CLOCK)
     @Primary
     Clock reminderClock(@Value("${zija.schedule.zone:Asia/Shanghai}") String zone) {
         return Clock.system(ZoneId.of(zone));

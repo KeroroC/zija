@@ -1,9 +1,10 @@
 package com.zija.reminder.internal;
 
-import com.zija.shared.ZijaAuditOutcome;
 import com.zija.inventory.StockChangedEvent;
 import com.zija.reminder.internal.persistence.DeadLetterEntity;
 import com.zija.reminder.internal.persistence.DeadLetterMapper;
+import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaErrorCodes;
 import com.zija.system.SystemApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,10 @@ class EventRetryService {
 
     private static final Logger log = LoggerFactory.getLogger(EventRetryService.class);
     private static final int MAX_FAILURES = 10;
+    /** 死信重投基础延迟，指数退避基数（秒）。 */
+    private static final long RETRY_DELAY_SECONDS = 30;
+    private static final int MAX_BACKOFF_SHIFT = 6;
+    private static final int MAX_ERROR_MESSAGE_LENGTH = 4000;
 
     private final DeadLetterMapper deadLetterMapper;
     private final ReminderEventListener listener;
@@ -69,13 +74,13 @@ class EventRetryService {
         // 将 failureCount 推到 MAX_FAILURES
         while (dl.getFailureCount() < MAX_FAILURES) {
             deadLetterMapper.incrementFailure(dlId,
-                    OffsetDateTime.now().plusSeconds(30),
+                    OffsetDateTime.now().plusSeconds(RETRY_DELAY_SECONDS),
                     "forced fail");
             dl.setFailureCount(dl.getFailureCount() + 1);
         }
         deadLetterMapper.markAbandoned(dlId);
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "REMINDER_EVENT_POISON", ZijaAuditOutcome.FAILURE, null, null, null, null, null,
+                SystemApi.AuditAction.REMINDER_EVENT_POISON, ZijaAuditOutcome.FAILURE, null, null, null, null, null,
                 Map.of("eventId", dl.getEventId().toString())));
     }
 
@@ -92,21 +97,21 @@ class EventRetryService {
             if (newCount >= MAX_FAILURES) {
                 deadLetterMapper.markAbandoned(dl.getId());
                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                        "REMINDER_EVENT_POISON", ZijaAuditOutcome.FAILURE, null, null, null, null, null,
+                        SystemApi.AuditAction.REMINDER_EVENT_POISON, ZijaAuditOutcome.FAILURE, null, null, null, null, null,
                         Map.of("eventId", dl.getEventId().toString())));
                 log.warn("Dead-letter abandoned after {} failures: eventId={}", newCount, dl.getEventId());
             } else {
                 // 指数退避：30s * 2^count（上限 2^6 = 64x = 1920s ≈ 32min）
-                long backoffSeconds = 30L * (1L << Math.min(newCount, 6));
+                long backoffSeconds = RETRY_DELAY_SECONDS * (1L << Math.min(newCount, MAX_BACKOFF_SHIFT));
                 deadLetterMapper.incrementFailure(dl.getId(),
                         OffsetDateTime.now().plus(Duration.ofSeconds(backoffSeconds)),
-                        truncate(ex.getMessage(), 4000));
+                        truncate(ex.getMessage(), MAX_ERROR_MESSAGE_LENGTH));
             }
         }
     }
 
     private static String truncate(String s, int max) {
-        if (s == null) return "UnknownError";
+        if (s == null) return ZijaErrorCodes.UNKNOWN_ERROR;
         return s.length() <= max ? s : s.substring(0, max);
     }
 

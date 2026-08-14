@@ -4,11 +4,13 @@ import com.zija.inventory.StockChangedEvent;
 import com.zija.reminder.internal.persistence.DeadLetterEntity;
 import com.zija.reminder.internal.persistence.DeadLetterMapper;
 import com.zija.reminder.internal.persistence.ProcessedEventMapper;
+import com.zija.shared.ZijaErrorCodes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -26,6 +28,9 @@ import java.util.UUID;
 class ReminderEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(ReminderEventListener.class);
+    /** 死信重投基础延迟，指数退避基数（秒）。 */
+    private static final long RETRY_DELAY_SECONDS = 30;
+    private static final int MAX_ERROR_MESSAGE_LENGTH = 4000;
 
     private final ProcessedEventMapper processedEventMapper;
     private final DeadLetterMapper deadLetterMapper;
@@ -40,7 +45,7 @@ class ReminderEventListener {
         this.deadLetterMapper = deadLetterMapper;
         this.reconciler = reconciler;
         this.requiresNewTx = new TransactionTemplate(txManager);
-        this.requiresNewTx.setPropagationBehaviorName("PROPAGATION_REQUIRES_NEW");
+        this.requiresNewTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /**
@@ -102,8 +107,8 @@ class ReminderEventListener {
             dl.setEventId(evt.eventId());
             dl.setPayload(toMap(evt));
             dl.setFailureCount(1);
-            dl.setNextRetryAt(OffsetDateTime.now().plusSeconds(30));
-            dl.setLastError(truncate(err.getMessage(), 4000));
+            dl.setNextRetryAt(OffsetDateTime.now().plusSeconds(RETRY_DELAY_SECONDS));
+            dl.setLastError(truncate(err.getMessage(), MAX_ERROR_MESSAGE_LENGTH));
             dl.setAbandoned(false);
             dl.setCreatedAt(OffsetDateTime.now());
             try {
@@ -115,7 +120,7 @@ class ReminderEventListener {
     }
 
     private static String truncate(String s, int max) {
-        if (s == null) return "UnknownError";
+        if (s == null) return ZijaErrorCodes.UNKNOWN_ERROR;
         return s.length() <= max ? s : s.substring(0, max);
     }
 

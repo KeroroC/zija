@@ -23,7 +23,7 @@ class DashboardService {
     private final CatalogApi catalogApi;
     private final Clock clock;
 
-    DashboardService(TaskMapper taskMapper, CatalogApi catalogApi, @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
+    DashboardService(TaskMapper taskMapper, CatalogApi catalogApi, @org.springframework.beans.factory.annotation.Qualifier(ClockConfig.REMINDER_CLOCK) Clock clock) {
         this.taskMapper = taskMapper;
         this.catalogApi = catalogApi;
         this.clock = clock;
@@ -76,8 +76,8 @@ class DashboardService {
     private DashboardItem toItem(TaskEntity t, Map<UUID, String> names) {
         String itemName = names.getOrDefault(t.getItemId(), t.getItemId().toString());
         String title = switch (t.getKind()) {
-            case "EXPIRY" -> expiryTitle(itemName, t.getDueAt());
-            case "LOW_STOCK" -> lowStockTitle(itemName, t);
+            case TaskKind.EXPIRY -> expiryTitle(itemName, t.getDueAt());
+            case TaskKind.LOW_STOCK -> lowStockTitle(itemName, t);
             default -> itemName;
         };
         return new DashboardItem(t.getId(), t.getKind(), t.getSeverity(),

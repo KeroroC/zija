@@ -64,7 +64,7 @@ public class MailSettingService {
         e.setId(UUID.randomUUID());
         e.setHouseholdId(householdId);
         e.setDigestEnabled(false);
-        e.setDigestFrequency("DAILY");
+        e.setDigestFrequency(DigestFrequency.DAILY);
         e.setUrgentEnabled(true);
         e.setRecipientRoles(List.of(ZijaMemberRole.OWNER));
         e.setCreatedAt(OffsetDateTime.now());
@@ -96,15 +96,15 @@ public class MailSettingService {
         int rows = mailSettingMapper.updateById(current); // optimistic lock
         if (rows == 0) throw new MailSettingVersionConflictException();
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "MAIL_SETTING_UPDATE", ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
+                SystemApi.AuditAction.MAIL_SETTING_UPDATE, ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("version", String.valueOf(update.version()))));
         return toView(current);
     }
 
     private void validateUpdate(MailSettingUpdate u) {
         if (u.digestFrequency() == null ||
-            (!u.digestFrequency().equals("DAILY") && !u.digestFrequency().equals("WEEKLY"))) {
-            throw new IllegalArgumentException("digestFrequency must be DAILY or WEEKLY");
+            (!u.digestFrequency().equals(DigestFrequency.DAILY) && !u.digestFrequency().equals(DigestFrequency.WEEKLY))) {
+            throw new IllegalArgumentException("digestFrequency must be " + DigestFrequency.DAILY + " or " + DigestFrequency.WEEKLY);
         }
         if (u.recipientRoles() == null || u.recipientRoles().isEmpty()) {
             throw new IllegalArgumentException("recipientRoles must not be empty");

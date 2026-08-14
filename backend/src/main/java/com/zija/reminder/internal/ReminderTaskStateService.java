@@ -23,7 +23,7 @@ class ReminderTaskStateService {
     private final SystemApi systemApi;
     private final Clock clock;
 
-    ReminderTaskStateService(TaskMapper taskMapper, SystemApi systemApi, @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
+    ReminderTaskStateService(TaskMapper taskMapper, SystemApi systemApi, @org.springframework.beans.factory.annotation.Qualifier(ClockConfig.REMINDER_CLOCK) Clock clock) {
         this.taskMapper = taskMapper;
         this.systemApi = systemApi;
         this.clock = clock;
@@ -32,29 +32,29 @@ class ReminderTaskStateService {
     @Transactional
     public void snooze(UUID householdId, UUID taskId, OffsetDateTime until) {
         var now = OffsetDateTime.now(clock);
-        if (!until.isAfter(now.plusMinutes(1)) || until.isAfter(now.plusDays(3650))) {
+        if (!until.isAfter(now.plusMinutes(ReminderLimits.MIN_SNOOZE_FUTURE_MINUTES)) || until.isAfter(now.plusDays(ReminderLimits.MAX_SNOOZE_DAYS))) {
             throw new ReminderTaskSnoozeUntilInvalidException();
         }
         requireTask(householdId, taskId);
-        int rows = taskMapper.snooze(householdId, taskId, List.of("OPEN", "SNOOZED"), until);
+        int rows = taskMapper.snooze(householdId, taskId, List.of(TaskStatus.OPEN, TaskStatus.SNOOZED), until);
         if (rows == 0) throw new ReminderTaskInvalidTransitionException();
-        audit(householdId, taskId, "REMINDER_TASK_SNOOZED");
+        audit(householdId, taskId, SystemApi.AuditAction.REMINDER_TASK_SNOOZED);
     }
 
     @Transactional
     public void complete(UUID householdId, UUID taskId) {
         requireTask(householdId, taskId);
-        int rows = taskMapper.transitionTo(householdId, taskId, List.of("OPEN", "SNOOZED"), "DONE");
+        int rows = taskMapper.transitionTo(householdId, taskId, List.of(TaskStatus.OPEN, TaskStatus.SNOOZED), TaskStatus.DONE);
         if (rows == 0) throw new ReminderTaskInvalidTransitionException();
-        audit(householdId, taskId, "REMINDER_TASK_COMPLETED");
+        audit(householdId, taskId, SystemApi.AuditAction.REMINDER_TASK_COMPLETED);
     }
 
     @Transactional
     public void ignore(UUID householdId, UUID taskId) {
         requireTask(householdId, taskId);
-        int rows = taskMapper.transitionTo(householdId, taskId, List.of("OPEN", "SNOOZED"), "IGNORED");
+        int rows = taskMapper.transitionTo(householdId, taskId, List.of(TaskStatus.OPEN, TaskStatus.SNOOZED), TaskStatus.IGNORED);
         if (rows == 0) throw new ReminderTaskInvalidTransitionException();
-        audit(householdId, taskId, "REMINDER_TASK_IGNORED");
+        audit(householdId, taskId, SystemApi.AuditAction.REMINDER_TASK_IGNORED);
     }
 
     @Transactional
@@ -62,7 +62,7 @@ class ReminderTaskStateService {
         requireTask(householdId, taskId);
         int rows = taskMapper.reopen(householdId, taskId);
         if (rows == 0) throw new ReminderTaskInvalidTransitionException();
-        audit(householdId, taskId, "REMINDER_TASK_REOPENED");
+        audit(householdId, taskId, SystemApi.AuditAction.REMINDER_TASK_REOPENED);
     }
 
     private TaskEntity requireTask(UUID householdId, UUID taskId) {

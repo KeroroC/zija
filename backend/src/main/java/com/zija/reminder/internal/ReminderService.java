@@ -65,7 +65,7 @@ class ReminderService {
         e.setId(UUID.randomUUID());
         e.setHouseholdId(householdId);
         e.setExpiryDisabled(false);
-        e.setExpiryReminderDays(List.of((short) 30, (short) 7, (short) 1));
+        e.setExpiryReminderDays(ReminderLimits.DEFAULT_EXPIRY_REMINDER_DAYS);
         e.setLowStockDisabled(false);
         e.setLowStockThreshold(BigDecimal.ONE);
         e.setCreatedAt(OffsetDateTime.now());
@@ -101,7 +101,7 @@ class ReminderService {
         if (rows == 0) throw new ReminderRuleVersionConflictException();
         writeRuleChangedNotification(householdId);
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "REMINDER_RULE_UPDATE", ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
+                SystemApi.AuditAction.REMINDER_RULE_UPDATE, ZijaAuditOutcome.SUCCESS, householdId, null, null, null, null,
                 Map.of("version", String.valueOf(update.version()))));
         if (changed) {
             eventPublisher.publishEvent(new ReminderRuleChangedEvent(householdId));
@@ -116,7 +116,7 @@ class ReminderService {
             // 1..3650, unique
             var days = u.expiryReminderDays().stream().distinct().toList();
             if (days.size() != u.expiryReminderDays().size()) throw new ReminderRuleExpiryDaysInvalidException();
-            for (short d : days) if (d < 1 || d > 3650) throw new ReminderRuleExpiryDaysInvalidException();
+            for (short d : days) if (d < ReminderLimits.MIN_EXPIRY_REMINDER_DAYS || d > ReminderLimits.MAX_EXPIRY_REMINDER_DAYS) throw new ReminderRuleExpiryDaysInvalidException();
             // descending
             for (int i = 1; i < days.size(); i++) {
                 if (days.get(i - 1) <= days.get(i)) throw new ReminderRuleExpiryDaysInvalidException();
@@ -132,7 +132,7 @@ class ReminderService {
         var n = new NotificationEntity();
         n.setId(UUID.randomUUID());
         n.setHouseholdId(householdId);
-        n.setScope("RULE_CHANGED");
+        n.setScope(NotificationScope.RULE_CHANGED);
         n.setTitle("家庭默认提醒规则已更新");
         n.setRead(false);
         n.setCreatedAt(OffsetDateTime.now());

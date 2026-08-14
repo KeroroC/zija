@@ -29,6 +29,10 @@ import java.util.*;
 class ReminderReconciler {
 
     private static final Logger log = LoggerFactory.getLogger(ReminderReconciler.class);
+    private static final String REASON_LOT_CONSUMED = "LOT_CONSUMED";
+    private static final String REASON_LOT_RECOVERED = "LOT_RECOVERED";
+    private static final String REASON_OUT_OF_WINDOW = "OUT_OF_WINDOW";
+    private static final String REASON_RECOVERED = "RECOVERED";
 
     private final ReminderService reminderService;
     private final CatalogApi catalogApi;
@@ -48,7 +52,7 @@ class ReminderReconciler {
                                MailService mailService, MailSettingService mailSettingService,
                                MailTemplateRenderer templateRenderer, SystemApi systemApi,
                                MemberEmails memberEmails,
-                               @org.springframework.beans.factory.annotation.Qualifier("reminderClock") Clock clock) {
+                               @org.springframework.beans.factory.annotation.Qualifier(ClockConfig.REMINDER_CLOCK) Clock clock) {
         this.reminderService = reminderService; this.catalogApi = catalogApi;
         this.inventoryApi = inventoryApi; this.taskMapper = taskMapper;
         this.notificationMapper = notificationMapper;
@@ -86,7 +90,7 @@ class ReminderReconciler {
         var lot = lotMap.get(lotId);
         if (lot == null || lot.totalQuantity().signum() <= 0) {
             // Lot consumed or not found: auto-close any open expiry task
-            closeExistingTask(householdId, "EXPIRY", lotId, null, now, "LOT_CONSUMED", "临期任务已自动关闭");
+            closeExistingTask(householdId, TaskKind.EXPIRY, lotId, null, now, REASON_LOT_CONSUMED, "临期任务已自动关闭");
             return;
         }
         if (lot.expiryDate() == null) return;
@@ -94,7 +98,7 @@ class ReminderReconciler {
         var eff = ReminderRuleResolver.resolveExpiry(item, rule);
         if (!eff.enabled()) {
             // Rule disabled: auto-close if there's an existing task
-            closeExistingTask(householdId, "EXPIRY", lotId, null, now, "LOT_RECOVERED", "临期任务已自动关闭");
+            closeExistingTask(householdId, TaskKind.EXPIRY, lotId, null, now, REASON_LOT_RECOVERED, "临期任务已自动关闭");
             return;
         }
         long daysLeft = ChronoUnit.DAYS.between(today, lot.expiryDate());
@@ -102,11 +106,11 @@ class ReminderReconciler {
         String severity = SeverityClassifier.expiry(maxDay, daysLeft);
         if (severity == null) {
             // 不在提醒窗口（如规则窗口收窄后批次落出窗口）：关闭既有 OPEN 任务，避免残留过期任务
-            closeExistingTask(householdId, "EXPIRY", lotId, null, now, "OUT_OF_WINDOW", "临期任务已自动关闭");
+            closeExistingTask(householdId, TaskKind.EXPIRY, lotId, null, now, REASON_OUT_OF_WINDOW, "临期任务已自动关闭");
             return;
         }
 
-        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "EXPIRY", lotId, null);
+        var existing = taskMapper.lockOpenByKindAndTarget(householdId, TaskKind.EXPIRY, lotId, null);
         if (existing != null) {
             existing.setDueAt(lot.expiryDate().atStartOfDay().atOffset(ZoneOffset.UTC));
             existing.setSeverity(severity);
@@ -117,8 +121,8 @@ class ReminderReconciler {
         } else {
             var t = new TaskEntity();
             t.setId(UUID.randomUUID()); t.setHouseholdId(householdId);
-            t.setKind("EXPIRY"); t.setLotId(lotId); t.setItemId(lot.itemId());
-            t.setStatus("OPEN");
+            t.setKind(TaskKind.EXPIRY); t.setLotId(lotId); t.setItemId(lot.itemId());
+            t.setStatus(TaskStatus.OPEN);
             t.setDueAt(lot.expiryDate().atStartOfDay().atOffset(ZoneOffset.UTC));
             t.setSeverity(severity);
             t.setThresholdSnapshot(Map.of("days", eff.days().toString()));
@@ -127,7 +131,7 @@ class ReminderReconciler {
             catch (org.springframework.dao.DuplicateKeyException ignored) {
                 return; // concurrent creation
             }
-            writeNotification(householdId, "TASK_CREATED", t.getId(),
+            writeNotification(householdId, NotificationScope.TASK_CREATED, t.getId(),
                     "「" + item.name() + "」批次将在 " + daysLeft + " 天内到期");
             triggerUrgentMail(householdId, severity, item.name(), t.getId());
         }
@@ -137,14 +141,14 @@ class ReminderReconciler {
                                    OffsetDateTime now, String reason, String message) {
         var existing = taskMapper.lockOpenByKindAndTarget(householdId, kind, lotId, itemId);
         if (existing == null) return;
-        existing.setStatus("DONE");
+        existing.setStatus(TaskStatus.DONE);
         var snap = existing.getThresholdSnapshot() == null ? new HashMap<String, Object>() : new HashMap<>(existing.getThresholdSnapshot());
         snap.put("autoClosed", true); snap.put("reason", reason);
         existing.setThresholdSnapshot(snap);
         existing.setSnoozedUntil(null);
         existing.setLastReconciledAt(now); existing.setUpdatedAt(now);
         taskMapper.updateForReconcile(existing);
-        writeNotification(householdId, "TASK_CLOSED", existing.getId(), message);
+        writeNotification(householdId, NotificationScope.TASK_CLOSED, existing.getId(), message);
     }
 
     private void reconcileLowStockItem(UUID householdId, UUID itemId, ReminderService.RuleView rule, OffsetDateTime now) {
@@ -153,14 +157,14 @@ class ReminderReconciler {
         BigDecimal qty = inventoryApi.currentTotalStockOfItem(householdId, itemId);
 
         if (!eff.enabled()) {
-            closeExistingTask(householdId, "LOW_STOCK", null, itemId, now, "RECOVERED", "低库存任务已自动关闭");
+            closeExistingTask(householdId, TaskKind.LOW_STOCK, null, itemId, now, REASON_RECOVERED, "低库存任务已自动关闭");
             return;
         }
         BigDecimal threshold = eff.threshold();
         boolean belowThreshold = qty.compareTo(threshold) < 0;
 
         // LOW_STOCK：每户每个 item 一条未完成任务（唯一索引 uq_reminder_task_lowstock_open）。
-        var existing = taskMapper.lockOpenByKindAndTarget(householdId, "LOW_STOCK", null, itemId);
+        var existing = taskMapper.lockOpenByKindAndTarget(householdId, TaskKind.LOW_STOCK, null, itemId);
         if (belowThreshold) {
             String severity = SeverityClassifier.lowStock(qty, threshold);
             if (existing != null) {
@@ -174,20 +178,20 @@ class ReminderReconciler {
             } else {
                 var t = new TaskEntity();
                 t.setId(UUID.randomUUID()); t.setHouseholdId(householdId);
-                t.setKind("LOW_STOCK"); t.setLotId(null); t.setItemId(itemId);
-                t.setStatus("OPEN"); t.setDueAt(now); t.setSeverity(severity);
+                t.setKind(TaskKind.LOW_STOCK); t.setLotId(null); t.setItemId(itemId);
+                t.setStatus(TaskStatus.OPEN); t.setDueAt(now); t.setSeverity(severity);
                 t.setQtySnapshot(qty);
                 t.setThresholdSnapshot(Map.of("threshold", threshold.toString()));
                 t.setLastReconciledAt(now); t.setCreatedAt(now); t.setUpdatedAt(now); t.setVersion(0);
                 try { taskMapper.insert(t); }
                 catch (org.springframework.dao.DuplicateKeyException ignored) { return; }
-                writeNotification(householdId, "TASK_CREATED", t.getId(),
+                writeNotification(householdId, NotificationScope.TASK_CREATED, t.getId(),
                         "「" + item.name() + "」库存仅剩 " + qty + "，低于阈值 " + threshold);
                 triggerUrgentMail(householdId, severity, item.name(), t.getId());
             }
         } else {
             // Stock recovered, auto-close
-            closeExistingTask(householdId, "LOW_STOCK", null, itemId, now, "RECOVERED", "低库存任务已自动关闭");
+            closeExistingTask(householdId, TaskKind.LOW_STOCK, null, itemId, now, REASON_RECOVERED, "低库存任务已自动关闭");
         }
     }
 
@@ -203,7 +207,7 @@ class ReminderReconciler {
      * URGENT 任务创建后触发紧急邮件（失败不阻塞主流程）。
      */
     private void triggerUrgentMail(UUID householdId, String severity, String itemName, UUID taskId) {
-        if (!"URGENT".equals(severity) || !mailService.isConfigured()) return;
+        if (!TaskSeverity.URGENT.equals(severity) || !mailService.isConfigured()) return;
         try {
             var mailSetting = mailSettingService.getOrCreate(householdId);
             if (!mailSetting.urgentEnabled()) return;
@@ -226,7 +230,7 @@ class ReminderReconciler {
             log.warn("Urgent mail trigger failed for task {}: {}", taskId, ex.getMessage());
             try {
                 systemApi.recordAudit(new SystemApi.AuditEvent(
-                        "MAIL_SEND_FAILED", ZijaAuditOutcome.FAILURE,
+                        SystemApi.AuditAction.MAIL_SEND_FAILED, ZijaAuditOutcome.FAILURE,
                         householdId, null, null, null, null,
                         Map.of("taskId", taskId.toString(), "reason",
                                 ex.getMessage() != null ? ex.getMessage() : "unknown")));
