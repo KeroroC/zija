@@ -1,13 +1,6 @@
 <template>
-  <div class="page-container-narrow">
-    <header class="page-header">
-      <div>
-        <h2 class="page-title">提醒规则</h2>
-        <p class="page-subtitle">家庭默认值（物品级可覆盖）</p>
-      </div>
-    </header>
-
-    <el-form :model="form" label-width="120px" v-if="canEdit">
+  <div class="reminder-tab">
+    <el-form :model="form" label-width="120px" v-if="canEdit" class="rule-form">
       <el-form-item label="临期提醒">
         <el-switch
           v-model="form.expiryDisabled"
@@ -53,7 +46,7 @@
     <el-divider v-if="canEdit" />
     <div v-if="canEdit" class="mail-section">
       <h3 class="section-title">邮件提醒</h3>
-      <el-form :model="mailForm" label-width="120px">
+      <el-form :model="mailForm" label-width="120px" class="rule-form">
         <el-form-item label="SMTP 状态">
           <span :class="['zj-badge', mailForm.smtpConfigured ? 'zj-badge-pine' : 'zj-badge-plain']">
             {{ mailForm.smtpConfigured ? "已配置" : "未配置" }}
@@ -94,10 +87,10 @@ import {
   updateRules,
   fetchMailSettings,
   updateMailSettings,
-} from "../api/reminder";
-import type { MailSetting } from "../api/reminder";
-import { useSessionStore } from "../stores/session";
-import { ApiError } from "../api/http";
+} from "../../api/reminder";
+import type { MailSetting } from "../../api/reminder";
+import { useSessionStore } from "../../stores/session";
+import { ApiError } from "../../api/http";
 
 const session = useSessionStore();
 const canEdit = computed(
@@ -204,6 +197,9 @@ async function saveMail() {
 </script>
 
 <style scoped>
+.rule-form {
+  max-width: 460px;
+}
 .hint {
   margin-left: 12px;
   color: var(--zj-ink-400);

@@ -56,17 +56,13 @@
           <el-icon><Document /></el-icon>
           <span>系统状态</span>
         </el-menu-item>
-        <el-menu-item v-if="session.role === 'OWNER' || session.role === 'ADMIN'" index="/settings/catalog">
+        <el-menu-item v-if="session.role === 'OWNER' || session.role === 'ADMIN'" index="/settings">
           <el-icon><Setting /></el-icon>
           <span>家庭设置</span>
         </el-menu-item>
         <el-menu-item v-else index="/settings" disabled>
           <el-icon><Setting /></el-icon>
           <span>家庭设置</span>
-        </el-menu-item>
-        <el-menu-item v-if="session.role === 'OWNER' || session.role === 'ADMIN'" index="/settings/reminder">
-          <el-icon><AlarmClock /></el-icon>
-          <span>提醒规则</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -145,7 +141,6 @@ import {
   Postcard,
   Setting,
   ArrowDown,
-  AlarmClock,
   SwitchButton
 } from "@element-plus/icons-vue";
 import { useSessionStore } from "../stores/session";
@@ -155,11 +150,14 @@ const router = useRouter();
 const route = useRoute();
 const session = useSessionStore();
 
-// el-menu 激活态按 index 精确匹配；报表子页（/reports/*）共用扁平项 /reports，
+// el-menu 激活态按 index 精确匹配；
+// 报表（/reports/*）与家庭设置（/settings/*）共用扁平项 /reports 与 /settings，
 // 需把子路径归一到父级入口，其余路由保持精确匹配。
-const activeMenuPath = computed(() =>
-  route.path.startsWith("/reports/") ? "/reports" : route.path
-);
+const activeMenuPath = computed(() => {
+  if (route.path.startsWith("/reports/")) return "/reports";
+  if (route.path.startsWith("/settings/")) return "/settings";
+  return route.path;
+});
 // The store already resolves the current member on login and on session
 // restore, so the name is reactive and correct without a separate fetch.
 const householdName = computed(() => session.currentMember?.householdName || "我的家");
