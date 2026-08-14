@@ -104,7 +104,7 @@ public class StockCommandService {
         movement.setHouseholdId(householdId);
         movement.setLotId(lotId);
         movement.setItemId(cmd.itemId());
-        movement.setType("INBOUND");
+        movement.setType(MovementType.INBOUND);
         movement.setQuantity(validatedQty);
         movement.setFromLocationId(null);
         movement.setToLocationId(locationId);
@@ -125,7 +125,7 @@ public class StockCommandService {
 
         // 8. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_INBOUND", ZijaAuditOutcome.SUCCESS,
+                SystemApi.AuditAction.INVENTORY_INBOUND, ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", cmd.itemId(),
                         "locationId", locationId, "quantity", validatedQty)));
@@ -133,7 +133,7 @@ public class StockCommandService {
         // 9. Publish event
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, cmd.itemId(),
-                "INBOUND", validatedQty, null, locationId,
+                MovementType.INBOUND, validatedQty, null, locationId,
                 OffsetDateTime.now(), movementId, idempotencyKeyUuid,
                 accountId, null, null));
 
@@ -198,7 +198,7 @@ public class StockCommandService {
         movement.setHouseholdId(householdId);
         movement.setLotId(lotId);
         movement.setItemId(itemId);
-        movement.setType("INBOUND");
+        movement.setType(MovementType.INBOUND);
         movement.setQuantity(validatedQty);
         movement.setFromLocationId(null);
         movement.setToLocationId(locationId);
@@ -219,7 +219,7 @@ public class StockCommandService {
 
         // 9. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_INBOUND", ZijaAuditOutcome.SUCCESS,
+                SystemApi.AuditAction.INVENTORY_INBOUND, ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", itemId,
                         "locationId", locationId, "quantity", validatedQty)));
@@ -227,7 +227,7 @@ public class StockCommandService {
         // 10. Publish event
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, itemId,
-                "INBOUND", validatedQty, null, locationId,
+                MovementType.INBOUND, validatedQty, null, locationId,
                 OffsetDateTime.now(), movementId, idempotencyKeyUuid,
                 accountId, null, null));
 
@@ -266,7 +266,7 @@ public class StockCommandService {
 
         // 7. Insert CONSUME movement
         UUID movementId = insertDeductionMovement(
-                householdId, accountId, lotId, itemId, "CONSUME",
+                householdId, accountId, lotId, itemId, MovementType.CONSUME,
                 validatedQty, locationId, reason, memo, idempotencyKey);
         UUID idempotencyKeyUuid = idempotencyKey != null ? UUID.fromString(idempotencyKey) : UUID.randomUUID();
 
@@ -278,7 +278,7 @@ public class StockCommandService {
 
         // 9. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_CONSUME", ZijaAuditOutcome.SUCCESS,
+                SystemApi.AuditAction.INVENTORY_CONSUME, ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", itemId,
                         "locationId", locationId, "quantity", validatedQty)));
@@ -286,7 +286,7 @@ public class StockCommandService {
         // 10. Publish event
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, itemId,
-                "CONSUME", validatedQty, locationId, null,
+                MovementType.CONSUME, validatedQty, locationId, null,
                 OffsetDateTime.now(), movementId, idempotencyKeyUuid,
                 accountId, reason, null));
 
@@ -327,7 +327,7 @@ public class StockCommandService {
 
         // 7. Insert LOSS movement
         UUID movementId = insertDeductionMovement(
-                householdId, accountId, lotId, itemId, "LOSS",
+                householdId, accountId, lotId, itemId, MovementType.LOSS,
                 validatedQty, locationId, reason, memo, idempotencyKey);
         UUID idempotencyKeyUuid = idempotencyKey != null ? UUID.fromString(idempotencyKey) : UUID.randomUUID();
 
@@ -339,7 +339,7 @@ public class StockCommandService {
 
         // 9. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_LOSS", ZijaAuditOutcome.SUCCESS,
+                SystemApi.AuditAction.INVENTORY_LOSS, ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", itemId,
                         "locationId", locationId, "quantity", validatedQty)));
@@ -347,7 +347,7 @@ public class StockCommandService {
         // 10. Publish event
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, itemId,
-                "LOSS", validatedQty, locationId, null,
+                MovementType.LOSS, validatedQty, locationId, null,
                 OffsetDateTime.now(), movementId, idempotencyKeyUuid,
                 accountId, reason, null));
 
@@ -452,7 +452,7 @@ public class StockCommandService {
         movement.setHouseholdId(householdId);
         movement.setLotId(lotId);
         movement.setItemId(itemId);
-        movement.setType("TRANSFER");
+        movement.setType(MovementType.TRANSFER);
         movement.setQuantity(validatedQty);
         movement.setFromLocationId(fromLocationId);
         movement.setToLocationId(toLocationId);
@@ -473,7 +473,7 @@ public class StockCommandService {
 
         // 11. Audit
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_TRANSFER", ZijaAuditOutcome.SUCCESS,
+                SystemApi.AuditAction.INVENTORY_TRANSFER, ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("lotId", lotId, "itemId", itemId,
                         "fromLocationId", fromLocationId, "toLocationId", toLocationId,
@@ -482,7 +482,7 @@ public class StockCommandService {
         // 12. Publish event
         eventPublisher.publish(new StockChangedEvent(
                 UUID.randomUUID(), householdId, lotId, itemId,
-                "TRANSFER", validatedQty, fromLocationId, toLocationId,
+                MovementType.TRANSFER, validatedQty, fromLocationId, toLocationId,
                 OffsetDateTime.now(), movementId, idempotencyKeyUuid,
                 accountId, null, null));
 

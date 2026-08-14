@@ -78,7 +78,7 @@ class StocktakeService {
         StocktakeEntity stocktake = new StocktakeEntity();
         stocktake.setId(UUID.randomUUID());
         stocktake.setHouseholdId(householdId);
-        stocktake.setStatus("DRAFT");
+        stocktake.setStatus(StocktakeStatus.DRAFT);
         stocktake.setCreatedBy(accountId);
         stocktakeMapper.insert(stocktake);
 
@@ -239,13 +239,13 @@ class StocktakeService {
     public void cancel(UUID householdId, UUID stocktakeId, int clientVersion) {
         // 1. 锁定盘点单，校验草稿状态
         StocktakeEntity stocktake = stocktakeMapper.lockById(householdId, stocktakeId);
-        if (stocktake == null || !"DRAFT".equals(stocktake.getStatus())) {
+        if (stocktake == null || !StocktakeStatus.DRAFT.equals(stocktake.getStatus())) {
             throw new StocktakeNotDraftException();
         }
 
         // 2. 乐观锁更新盘点单状态 → CANCELLED
         stocktake.setVersion(clientVersion);
-        stocktake.setStatus("CANCELLED");
+        stocktake.setStatus(StocktakeStatus.CANCELLED);
         int rows = stocktakeMapper.updateById(stocktake);
         if (rows == 0) {
             throw new InventoryLotVersionConflictException();
@@ -256,7 +256,7 @@ class StocktakeService {
 
         // 4. 审计
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_STOCKTAKE_CANCEL", ZijaAuditOutcome.SUCCESS,
+                SystemApi.AuditAction.INVENTORY_STOCKTAKE_CANCEL, ZijaAuditOutcome.SUCCESS,
                 householdId, null, null, null, null,
                 Map.of("stocktakeId", stocktakeId)));
     }
@@ -356,7 +356,7 @@ class StocktakeService {
             movement.setHouseholdId(householdId);
             movement.setLotId(lotId);
             movement.setItemId(itemId);
-            movement.setType("ADJUSTMENT");
+            movement.setType(MovementType.ADJUSTMENT);
             movement.setQuantity(delta.abs());
             movement.setFromLocationId(cmp < 0 ? locId : null);
             movement.setToLocationId(cmp > 0 ? locId : null);
@@ -372,7 +372,7 @@ class StocktakeService {
             // 发布库存变更事件
             eventPublisher.publish(new StockChangedEvent(
                     UUID.randomUUID(), householdId, lotId, itemId,
-                    "ADJUSTMENT", delta.abs(),
+                    MovementType.ADJUSTMENT, delta.abs(),
                     cmp < 0 ? locId : null, cmp > 0 ? locId : null,
                     now, movementId, UUID.fromString(movement.getIdempotencyKey()),
                     accountId, item.getReason(), null));
@@ -381,13 +381,13 @@ class StocktakeService {
         }
 
         // 5. 盘点单状态 → COMPLETED
-        stocktake.setStatus("COMPLETED");
+        stocktake.setStatus(StocktakeStatus.COMPLETED);
         stocktake.setCompletedAt(now);
         stocktakeMapper.updateById(stocktake);
 
         // 6. 审计
         systemApi.recordAudit(new SystemApi.AuditEvent(
-                "INVENTORY_STOCKTAKE_CONFIRM", ZijaAuditOutcome.SUCCESS,
+                SystemApi.AuditAction.INVENTORY_STOCKTAKE_CONFIRM, ZijaAuditOutcome.SUCCESS,
                 householdId, accountId, null, null, null,
                 Map.of("stocktakeId", stocktakeId, "adjustedCount", adjustedCount)));
 
@@ -402,7 +402,7 @@ class StocktakeService {
      */
     private StocktakeEntity lockDraftAndBumpVersion(UUID householdId, UUID stocktakeId, int clientVersion) {
         StocktakeEntity stocktake = stocktakeMapper.lockById(householdId, stocktakeId);
-        if (stocktake == null || !"DRAFT".equals(stocktake.getStatus())) {
+        if (stocktake == null || !StocktakeStatus.DRAFT.equals(stocktake.getStatus())) {
             throw new StocktakeNotDraftException();
         }
         stocktake.setVersion(clientVersion);

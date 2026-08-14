@@ -57,6 +57,15 @@ import java.util.UUID;
 @RequestMapping("/api/v1/inventory")
 class InventoryController {
 
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int DEFAULT_PAGE = 1;
+
+    /** to 为闭区间日期，上界取次日零点。 */
+    private static final long RANGE_INCLUSIVE_END_OFFSET_DAYS = 1;
+
     private final InventoryService inventoryService;
     private final InventoryApi inventoryApi;
     private final HouseholdApi householdApi;
@@ -96,9 +105,9 @@ class InventoryController {
             @RequestParam(defaultValue = "20") int pageSize
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        if (pageSize > 100) pageSize = 100;
-        if (pageSize < 1) pageSize = 20;
-        if (page < 1) page = 1;
+        if (pageSize > MAX_PAGE_SIZE) pageSize = MAX_PAGE_SIZE;
+        if (pageSize < 1) pageSize = DEFAULT_PAGE_SIZE;
+        if (page < 1) page = DEFAULT_PAGE;
 
         var pageObj = new Page<StockPositionWithDetails>(page, pageSize);
         var result = stockPositionMapper.findPage(pageObj, member.householdId(), itemId, locationId, "sp.updated_at DESC");
@@ -120,9 +129,9 @@ class InventoryController {
             @RequestParam(defaultValue = "20") int pageSize
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        if (pageSize > 100) pageSize = 100;
-        if (pageSize < 1) pageSize = 20;
-        if (page < 1) page = 1;
+        if (pageSize > MAX_PAGE_SIZE) pageSize = MAX_PAGE_SIZE;
+        if (pageSize < 1) pageSize = DEFAULT_PAGE_SIZE;
+        if (page < 1) page = DEFAULT_PAGE;
 
         var pageObj = new Page<com.zija.inventory.internal.persistence.LotWithDetails>(page, pageSize);
         var result = lotMapper.findPage(pageObj, member.householdId(), itemId);
@@ -166,12 +175,12 @@ class InventoryController {
             @RequestParam(defaultValue = "20") int pageSize
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        if (pageSize > 100) pageSize = 100;
-        if (pageSize < 1) pageSize = 20;
-        if (page < 1) page = 1;
+        if (pageSize > MAX_PAGE_SIZE) pageSize = MAX_PAGE_SIZE;
+        if (pageSize < 1) pageSize = DEFAULT_PAGE_SIZE;
+        if (page < 1) page = DEFAULT_PAGE;
 
         OffsetDateTime fromDt = from != null ? from.atStartOfDay().atOffset(java.time.ZoneOffset.UTC) : null;
-        OffsetDateTime toDt = to != null ? to.plusDays(1).atStartOfDay().atOffset(java.time.ZoneOffset.UTC) : null;
+        OffsetDateTime toDt = to != null ? to.plusDays(RANGE_INCLUSIVE_END_OFFSET_DAYS).atStartOfDay().atOffset(java.time.ZoneOffset.UTC) : null;
 
         // If lotId is specified, use the simple findByLot; otherwise use paged query
         if (lotId != null) {
@@ -228,7 +237,7 @@ class InventoryController {
     Map<String, Object> inboundNewLot(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody InboundNewLotRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var cmd = new StockCommandService.InboundNewLotCommand(
@@ -249,7 +258,7 @@ class InventoryController {
     Map<String, Object> inboundExistingLot(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody InboundExistingLotRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = inventoryService.inboundExistingLot(
@@ -267,7 +276,7 @@ class InventoryController {
     Map<String, Object> consume(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody ConsumeRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = inventoryService.consume(
@@ -285,7 +294,7 @@ class InventoryController {
     Map<String, Object> loss(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody LossRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = inventoryService.loss(
@@ -303,7 +312,7 @@ class InventoryController {
     Map<String, Object> transfer(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @Valid @RequestBody TransferRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = inventoryService.transfer(
@@ -322,7 +331,7 @@ class InventoryController {
             @AuthenticationPrincipal ZijaPrincipal principal,
             @PathVariable UUID id,
             @Valid @RequestBody ReverseRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = inventoryService.reverse(
@@ -461,9 +470,9 @@ class InventoryController {
             @RequestParam(defaultValue = "20") int pageSize
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        if (pageSize > 100) pageSize = 100;
-        if (pageSize < 1) pageSize = 20;
-        if (page < 1) page = 1;
+        if (pageSize > MAX_PAGE_SIZE) pageSize = MAX_PAGE_SIZE;
+        if (pageSize < 1) pageSize = DEFAULT_PAGE_SIZE;
+        if (page < 1) page = DEFAULT_PAGE;
 
         var pageObj = new Page<StocktakeEntity>(page, pageSize);
         var result = stocktakeMapper.findPage(pageObj, member.householdId(), status, "created_at DESC");
