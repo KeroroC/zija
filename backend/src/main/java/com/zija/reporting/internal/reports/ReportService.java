@@ -3,6 +3,7 @@ package com.zija.reporting.internal.reports;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.reporting.internal.LocationScopeResolver;
+import com.zija.reporting.internal.ReportingClockConfig;
 import com.zija.reporting.internal.persistence.ReportMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -22,7 +23,7 @@ public class ReportService {
     private final Clock clock;
 
     public ReportService(ReportMapper reportMapper, LocationScopeResolver locationScopeResolver,
-                         @Qualifier("reportingClock") Clock clock) {
+                         @Qualifier(ReportingClockConfig.REPORTING_CLOCK) Clock clock) {
         this.reportMapper = reportMapper;
         this.locationScopeResolver = locationScopeResolver;
         this.clock = clock;

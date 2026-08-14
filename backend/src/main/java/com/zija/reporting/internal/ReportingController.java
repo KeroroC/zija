@@ -23,7 +23,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/reporting")
-class ReportingController {
+public class ReportingController {
 
     private final SearchService searchService;
     private final ReportService reportService;
@@ -40,6 +40,9 @@ class ReportingController {
         this.projectionRebuilder = projectionRebuilder;
         this.householdApi = householdApi;
     }
+
+    // 移动/审计等报表默认近 N 天窗口；@RequestParam defaultValue 注解因需编译期字符串常量仍写 "30"，与此保持一致
+    public static final int DEFAULT_WITHIN_DAYS = 30;
 
     // --- 全局搜索（成员可读） ---
 

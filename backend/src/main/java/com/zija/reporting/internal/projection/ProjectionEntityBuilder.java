@@ -35,7 +35,7 @@ public class ProjectionEntityBuilder {
     SearchIndexEntity buildItemSearchIndex(UUID householdId, CatalogApi.ItemFlat item) {
         var e = new SearchIndexEntity();
         e.setHouseholdId(householdId);
-        e.setEntityType("ITEM");
+        e.setEntityType(SearchEntityType.ITEM);
         e.setEntityId(item.itemId());
         e.setItemName(item.name());
         e.setBrandName(item.brandName());
@@ -49,7 +49,7 @@ public class ProjectionEntityBuilder {
     SearchIndexEntity buildLocationSearchIndex(UUID householdId, LocationApi.LocationFlat loc) {
         var e = new SearchIndexEntity();
         e.setHouseholdId(householdId);
-        e.setEntityType("LOCATION");
+        e.setEntityType(SearchEntityType.LOCATION);
         e.setEntityId(loc.locationId());
         e.setLocationName(loc.name());
         e.setLocationPath(loc.path());
