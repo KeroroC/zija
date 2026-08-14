@@ -16,21 +16,21 @@ class LocationExceptionHandler {
 
     @ExceptionHandler(LocationVersionConflictException.class)
     ProblemDetail handleVersionConflict(HttpServletRequest request) {
-        return ZijaProblems.of(request, HttpStatus.CONFLICT, "版本冲突", "LOCATION_VERSION_CONFLICT");
+        return ZijaProblems.of(request, HttpStatus.CONFLICT, "版本冲突", ErrorCodes.LOCATION_VERSION_CONFLICT);
     }
 
     @ExceptionHandler(LocationCycleException.class)
     ProblemDetail handleCycle(HttpServletRequest request) {
-        return ZijaProblems.of(request, HttpStatus.CONFLICT, "移动会导致循环", "LOCATION_CYCLE");
+        return ZijaProblems.of(request, HttpStatus.CONFLICT, "移动会导致循环", ErrorCodes.LOCATION_CYCLE);
     }
 
     @ExceptionHandler(LocationHasChildrenException.class)
     ProblemDetail handleHasChildren(HttpServletRequest request) {
-        return ZijaProblems.of(request, HttpStatus.CONFLICT, "位置包含子节点", "LOCATION_HAS_CHILDREN");
+        return ZijaProblems.of(request, HttpStatus.CONFLICT, "位置包含子节点", ErrorCodes.LOCATION_HAS_CHILDREN);
     }
 
     @ExceptionHandler(LocationReferencedException.class)
     ProblemDetail handleReferenced(HttpServletRequest request) {
-        return ZijaProblems.of(request, HttpStatus.CONFLICT, "位置已被库存引用", "LOCATION_REFERENCED");
+        return ZijaProblems.of(request, HttpStatus.CONFLICT, "位置已被库存引用", ErrorCodes.LOCATION_REFERENCED);
     }
 }

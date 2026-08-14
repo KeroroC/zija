@@ -2,6 +2,7 @@ package com.zija.location.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaChangeType;
 import com.zija.location.LocationApi;
 import com.zija.location.internal.event.LocationEventPublisher;
 import com.zija.location.internal.exception.LocationCycleException;
@@ -102,8 +103,8 @@ class LocationService implements LocationApi {
         entity.setEverReferenced(false);
         entity.setVersion(0);
         locationMapper.insert(entity);
-        audit(householdId, "LOCATION_CREATED", entity.getId());
-        eventPublisher.publishLocationChanged(householdId, entity.getId(), "CREATED", parentId);
+        audit(householdId, SystemApi.AuditAction.LOCATION_CREATED, entity.getId());
+        eventPublisher.publishLocationChanged(householdId, entity.getId(), ZijaChangeType.CREATED, parentId);
         return entity;
     }
 
@@ -115,8 +116,8 @@ class LocationService implements LocationApi {
         if (locationMapper.updateById(entity) == 0) {
             throw new LocationVersionConflictException();
         }
-        audit(householdId, "LOCATION_RENAMED", id);
-        eventPublisher.publishLocationChanged(householdId, id, "RENAMED", entity.getParentId());
+        audit(householdId, SystemApi.AuditAction.LOCATION_RENAMED, id);
+        eventPublisher.publishLocationChanged(householdId, id, ZijaChangeType.RENAMED, entity.getParentId());
         return entity;
     }
 
@@ -140,8 +141,8 @@ class LocationService implements LocationApi {
         if (locationMapper.updateById(entity) == 0) {
             throw new LocationVersionConflictException();
         }
-        audit(householdId, "LOCATION_MOVED", id);
-        eventPublisher.publishLocationChanged(householdId, id, "MOVED", targetParentId);
+        audit(householdId, SystemApi.AuditAction.LOCATION_MOVED, id);
+        eventPublisher.publishLocationChanged(householdId, id, ZijaChangeType.MOVED, targetParentId);
     }
 
     /**
@@ -159,8 +160,8 @@ class LocationService implements LocationApi {
             throw new LocationReferencedException();
         }
         locationMapper.deleteById(id);
-        audit(householdId, "LOCATION_DELETED", id);
-        eventPublisher.publishLocationChanged(householdId, id, "DELETED", entity.getParentId());
+        audit(householdId, SystemApi.AuditAction.LOCATION_DELETED, id);
+        eventPublisher.publishLocationChanged(householdId, id, ZijaChangeType.DELETED, entity.getParentId());
     }
 
     // --- Helpers ---
