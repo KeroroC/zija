@@ -76,8 +76,12 @@
         <if test="itemId != null">AND mf.item_id = #{itemId}</if>
         <if test="type != null">AND mf.type = #{type}</if>
         <if test="operatorAccountId != null">AND mf.operator_account_id = #{operatorAccountId}</if>
-        <if test="locationId != null">
-            AND (mf.from_location_id = #{locationId} OR mf.to_location_id = #{locationId})
+        <if test="locationIds != null">
+            AND (mf.from_location_id IN
+            <foreach collection="locationIds" item="locId" open="(" separator="," close=")">#{locId}</foreach>
+            OR mf.to_location_id IN
+            <foreach collection="locationIds" item="locId" open="(" separator="," close=")">#{locId}</foreach>
+            )
         </if>
         ORDER BY mf.business_time DESC
     </select>

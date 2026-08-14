@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 
@@ -46,5 +47,5 @@ public interface ReportMapper {
             @Param("itemId") UUID itemId,
             @Param("type") String type,
             @Param("operatorAccountId") UUID operatorAccountId,
-            @Param("locationId") UUID locationId);
+            @Param("locationIds") Collection<UUID> locationIds);
 }

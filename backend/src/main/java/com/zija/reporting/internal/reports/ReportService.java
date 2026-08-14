@@ -2,6 +2,7 @@ package com.zija.reporting.internal.reports;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.reporting.internal.LocationScopeResolver;
 import com.zija.reporting.internal.persistence.ReportMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -17,10 +18,13 @@ import java.util.UUID;
 public class ReportService {
 
     private final ReportMapper reportMapper;
+    private final LocationScopeResolver locationScopeResolver;
     private final Clock clock;
 
-    public ReportService(ReportMapper reportMapper, @Qualifier("reportingClock") Clock clock) {
+    public ReportService(ReportMapper reportMapper, LocationScopeResolver locationScopeResolver,
+                         @Qualifier("reportingClock") Clock clock) {
         this.reportMapper = reportMapper;
+        this.locationScopeResolver = locationScopeResolver;
         this.clock = clock;
     }
 
@@ -51,7 +55,9 @@ public class ReportService {
                                                    OffsetDateTime from, OffsetDateTime to,
                                                    UUID itemId, String type, UUID operatorAccountId,
                                                    UUID locationId) {
+        var locationIds = locationId != null
+                ? locationScopeResolver.expandWithDescendants(householdId, locationId) : null;
         return reportMapper.movements(new Page<>(page, pageSize),
-                householdId, from, to, itemId, type, operatorAccountId, locationId);
+                householdId, from, to, itemId, type, operatorAccountId, locationIds);
     }
 }

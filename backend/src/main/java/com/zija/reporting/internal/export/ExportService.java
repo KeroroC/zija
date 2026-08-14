@@ -2,6 +2,7 @@ package com.zija.reporting.internal.export;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.reporting.internal.LocationScopeResolver;
 import com.zija.reporting.internal.exception.ExportTooLargeException;
 import com.zija.reporting.internal.persistence.ReportMapper;
 import com.zija.reporting.internal.persistence.SearchMapper;
@@ -31,13 +32,16 @@ public class ExportService {
     private final ReportMapper reportMapper;
     private final SearchMapper searchMapper;
     private final SystemApi systemApi;
+    private final LocationScopeResolver locationScopeResolver;
     private final Clock clock;
 
     public ExportService(ReportMapper reportMapper, SearchMapper searchMapper, SystemApi systemApi,
+                         LocationScopeResolver locationScopeResolver,
                          @Qualifier("reportingClock") Clock clock) {
         this.reportMapper = reportMapper;
         this.searchMapper = searchMapper;
         this.systemApi = systemApi;
+        this.locationScopeResolver = locationScopeResolver;
         this.clock = clock;
     }
 
@@ -82,14 +86,19 @@ public class ExportService {
             case "low-stock" -> fetchAllPaged(
                     page -> reportMapper.lowStock(page, householdId,
                             parseUuid(params, "categoryId")));
-            case "movements" -> fetchAllPaged(
-                    page -> reportMapper.movements(page, householdId,
-                            parseOffsetDateTime(params, "from"),
-                            parseOffsetDateTime(params, "to"),
-                            parseUuid(params, "itemId"),
-                            params.get("type"),
-                            parseUuid(params, "operatorAccountId"),
-                            parseUuid(params, "locationId")));
+            case "movements" -> {
+                UUID locationId = parseUuid(params, "locationId");
+                var locationIds = locationId != null
+                        ? locationScopeResolver.expandWithDescendants(householdId, locationId) : null;
+                yield fetchAllPaged(
+                        page -> reportMapper.movements(page, householdId,
+                                parseOffsetDateTime(params, "from"),
+                                parseOffsetDateTime(params, "to"),
+                                parseUuid(params, "itemId"),
+                                params.get("type"),
+                                parseUuid(params, "operatorAccountId"),
+                                locationIds));
+            }
             case "items-full" -> fetchAllSearch(
                     (q, limit) -> searchMapper.searchItems(householdId, q, limit),
                     params.getOrDefault("q", ""));

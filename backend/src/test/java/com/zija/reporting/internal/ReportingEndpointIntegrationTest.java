@@ -235,6 +235,37 @@ class ReportingEndpointIntegrationTest {
         assertThat(unrelated.get("total").asInt()).isEqualTo(0);
     }
 
+    /** 位置过滤包含子级：选中父级位置（厨房）时，其下子位置（冰箱）的流水也一并命中。 */
+    @Test
+    void movements_locationFilterIncludesDescendantLocations() throws Exception {
+        UUID kitchen = seedLocation(householdId, "备用厨房");
+        UUID fridge = seedLocation(householdId, "备用冰箱", kitchen);
+        UUID child = seedLocation(householdId, "备用橱柜", fridge);
+        UUID other = seedLocation(householdId, "备用阳台");
+
+        // 在 fridge（子位置）与 other（无关位置）各入库一次
+        inbound(itemLow, 5, fridge, todayPlus(365), null);
+        inbound(itemHigh, 12, other, todayPlus(365), null);
+
+        // 选厨房 → 命中厨下的冰箱流水，不含阳台
+        var kitchenResp = getJson("/api/v1/reporting/reports/movements?locationId=" + kitchen);
+        assertThat(kitchenResp.get("total").asInt()).isEqualTo(1);
+        assertThat(kitchenResp.get("items").get(0).get("item_name").asText()).isEqualTo("洗衣液");
+
+        // 直接选冰箱 → 命中冰箱自身流水
+        var fridgeResp = getJson("/api/v1/reporting/reports/movements?locationId=" + fridge);
+        assertThat(fridgeResp.get("total").asInt()).isEqualTo(1);
+
+        // 选无关位置 → 为空
+        var otherResp = getJson("/api/v1/reporting/reports/movements?locationId=" + other);
+        assertThat(otherResp.get("total").asInt()).isEqualTo(1);
+        assertThat(otherResp.get("items").get(0).get("item_name").asText()).isEqualTo("洗洁精");
+
+        // 选中子级橱柜（无流水）→ 仅其自身，无数据
+        var childResp = getJson("/api/v1/reporting/reports/movements?locationId=" + child);
+        assertThat(childResp.get("total").asInt()).isEqualTo(0);
+    }
+
     @Test
     void movements_filtersByTypeAndOperator() throws Exception {
         inbound(itemLow, 5, kitchenId, todayPlus(365), null);
@@ -525,11 +556,15 @@ class ReportingEndpointIntegrationTest {
     }
 
     private UUID seedLocation(UUID householdId, String name) {
+        return seedLocation(householdId, name, null);
+    }
+
+    private UUID seedLocation(UUID householdId, String name, UUID parentId) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO location (id, household_id, name, name_normalized, sort_order, ever_referenced, version)
-                VALUES (?, ?, ?, ?, 0, false, 0)
-                """, id, householdId, name, name);
+                INSERT INTO location (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, ?, ?, 0, false, 0)
+                """, id, householdId, parentId, name, name);
         return id;
     }
 

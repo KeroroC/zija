@@ -2,6 +2,7 @@ package com.zija.reporting.internal.reports;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.reporting.internal.LocationScopeResolver;
 import com.zija.reporting.internal.persistence.ReportMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import static org.mockito.Mockito.*;
 class ReportServiceTest {
 
     private ReportMapper reportMapper;
+    private LocationScopeResolver locationScopeResolver;
     private ReportService reportService;
 
     private final UUID householdId = UUID.randomUUID();
@@ -28,7 +30,8 @@ class ReportServiceTest {
     @BeforeEach
     void setUp() {
         reportMapper = mock(ReportMapper.class);
-        reportService = new ReportService(reportMapper, fixedClock);
+        locationScopeResolver = mock(LocationScopeResolver.class);
+        reportService = new ReportService(reportMapper, locationScopeResolver, fixedClock);
     }
 
     // --- stockByLocation ---
@@ -102,11 +105,15 @@ class ReportServiceTest {
     void movementsAcceptsMemberTypeAndLocationFilter() {
         UUID operatorId = UUID.randomUUID();
         UUID locationId = UUID.randomUUID();
+        UUID childId = UUID.randomUUID();
         var page = new Page<Map<String, Object>>(1, 20);
         page.setRecords(List.of());
         page.setTotal(0);
+        when(locationScopeResolver.expandWithDescendants(eq(householdId), eq(locationId)))
+                .thenReturn(List.of(locationId, childId));
         when(reportMapper.movements(any(Page.class), eq(householdId),
-                isNull(), isNull(), isNull(), eq("INBOUND"), eq(operatorId), eq(locationId)))
+                isNull(), isNull(), isNull(), eq("INBOUND"), eq(operatorId),
+                eq(List.of(locationId, childId))))
                 .thenReturn(page);
 
         var result = reportService.movements(householdId, 1, 20,
@@ -114,7 +121,24 @@ class ReportServiceTest {
 
         assertThat(result.getRecords()).isEmpty();
         verify(reportMapper).movements(any(Page.class), eq(householdId),
-                isNull(), isNull(), isNull(), eq("INBOUND"), eq(operatorId), eq(locationId));
+                isNull(), isNull(), isNull(), eq("INBOUND"), eq(operatorId),
+                eq(List.of(locationId, childId)));
+    }
+
+    /** 未选位置时，不应展开位置集合，直接把 null 传给 mapper。 */
+    @Test
+    void movementsWithoutLocationFilterPassesNullScope() {
+        var page = new Page<Map<String, Object>>(1, 20);
+        page.setRecords(List.of());
+        page.setTotal(0);
+        when(reportMapper.movements(any(Page.class), eq(householdId),
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull())).thenReturn(page);
+
+        var result = reportService.movements(householdId, 1, 20,
+                null, null, null, null, null, null);
+
+        assertThat(result.getRecords()).isEmpty();
+        verify(locationScopeResolver, never()).expandWithDescendants(any(), any());
     }
 
     // --- pagination ---
