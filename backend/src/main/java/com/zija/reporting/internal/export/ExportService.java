@@ -82,20 +82,14 @@ public class ExportService {
             case "low-stock" -> fetchAllPaged(
                     page -> reportMapper.lowStock(page, householdId,
                             parseUuid(params, "categoryId")));
-            case "stock-changes" -> fetchAllPaged(
-                    page -> reportMapper.stockChanges(page, householdId,
-                            parseOffsetDateTime(params, "from"),
-                            parseOffsetDateTime(params, "to"),
-                            parseUuid(params, "itemId"),
-                            parseUuid(params, "locationId"),
-                            params.get("type")));
             case "movements" -> fetchAllPaged(
                     page -> reportMapper.movements(page, householdId,
                             parseOffsetDateTime(params, "from"),
                             parseOffsetDateTime(params, "to"),
                             parseUuid(params, "itemId"),
                             params.get("type"),
-                            parseUuid(params, "operatorAccountId")));
+                            parseUuid(params, "operatorAccountId"),
+                            parseUuid(params, "locationId")));
             case "items-full" -> fetchAllSearch(
                     (q, limit) -> searchMapper.searchItems(householdId, q, limit),
                     params.getOrDefault("q", ""));
@@ -128,7 +122,7 @@ public class ExportService {
 
     private static final Set<String> SUPPORTED_REPORT_KEYS = Set.of(
             "stock-by-location", "expiring-lots", "low-stock",
-            "stock-changes", "movements", "items-full", "locations-full");
+            "movements", "items-full", "locations-full");
 
     /** 校验 reportKey 是否在支持范围内。控制器须在写入响应头之前调用，避免未校验输入进入响应头。 */
     public boolean isSupportedReportKey(String reportKey) {
@@ -142,9 +136,6 @@ public class ExportService {
             case "expiring-lots" -> List.of("lot_number", "serial_number", "item_name",
                     "location_path", "quantity", "expiry_date", "days_until_expiry");
             case "low-stock" -> List.of("item_name", "total_quantity", "low_stock_threshold");
-            case "stock-changes" -> List.of("item_name", "type", "quantity_delta",
-                    "from_location_path", "to_location_path", "operator_display_name",
-                    "reason", "business_time");
             case "movements" -> List.of("item_name", "type", "quantity_delta",
                     "from_location_path", "to_location_path", "operator_display_name",
                     "reason", "reversal_of", "business_time");

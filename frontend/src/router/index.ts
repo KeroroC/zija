@@ -30,7 +30,6 @@ export const router = createRouter({
         { path: "stock-by-location", name: "report-stock-by-location", component: () => import("../views/reports/StockByLocationView.vue"), meta: { title: "库存分布" } },
         { path: "expiring-lots", name: "report-expiring-lots", component: () => import("../views/reports/ExpiringLotsView.vue"), meta: { title: "临期批次" } },
         { path: "low-stock", name: "report-low-stock", component: () => import("../views/reports/LowStockView.vue"), meta: { title: "低库存" } },
-        { path: "stock-changes", name: "report-stock-changes", component: () => import("../views/reports/StockChangesView.vue"), meta: { title: "库存变化" } },
         { path: "movements", name: "report-movements", component: () => import("../views/reports/MovementsView.vue"), meta: { title: "流水" } },
         { path: "settings", name: "report-settings", component: () => import("../views/reports/ReportsSettingsView.vue"), meta: { title: "报表设置" } }
       ]

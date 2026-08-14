@@ -11,6 +11,10 @@ vi.mock("../../../api/catalog", () => ({
   fetchItems: vi.fn(),
 }));
 
+vi.mock("../../../api/location", () => ({
+  fetchLocationTree: vi.fn(),
+}));
+
 vi.mock("../../../api/member", () => ({
   memberApi: {
     list: vi.fn(),
@@ -27,11 +31,13 @@ vi.mock("../../../stores/session", () => ({
 import MovementsView from "../MovementsView.vue";
 import { getReport, buildExportUrl } from "../../../api/reporting";
 import { fetchItems } from "../../../api/catalog";
+import { fetchLocationTree } from "../../../api/location";
 import { memberApi } from "../../../api/member";
 
 const mockGetReport = vi.mocked(getReport);
 const mockBuildExportUrl = vi.mocked(buildExportUrl);
 const mockFetchItems = vi.mocked(fetchItems);
+const mockFetchLocationTree = vi.mocked(fetchLocationTree);
 const mockMemberList = vi.mocked(memberApi.list);
 
 function row(overrides: Record<string, unknown> = {}) {
@@ -58,6 +64,9 @@ function defaultMocks() {
     total: 1,
     page: 1,
     pageSize: 1000,
+  });
+  mockFetchLocationTree.mockResolvedValue({
+    roots: [{ id: "loc1", name: "厨房" } as any],
   });
   mockMemberList.mockResolvedValue([
     { accountId: "a1", displayName: "所有者" } as any,

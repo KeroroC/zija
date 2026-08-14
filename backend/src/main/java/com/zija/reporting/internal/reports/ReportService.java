@@ -47,18 +47,11 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
-    public IPage<Map<String, Object>> stockChanges(UUID householdId, int page, int pageSize,
-                                                      OffsetDateTime from, OffsetDateTime to,
-                                                      UUID itemId, UUID locationId, String type) {
-        return reportMapper.stockChanges(new Page<>(page, pageSize),
-                householdId, from, to, itemId, locationId, type);
-    }
-
-    @Transactional(readOnly = true)
     public IPage<Map<String, Object>> movements(UUID householdId, int page, int pageSize,
                                                    OffsetDateTime from, OffsetDateTime to,
-                                                   UUID itemId, String type, UUID operatorAccountId) {
+                                                   UUID itemId, String type, UUID operatorAccountId,
+                                                   UUID locationId) {
         return reportMapper.movements(new Page<>(page, pageSize),
-                householdId, from, to, itemId, type, operatorAccountId);
+                householdId, from, to, itemId, type, operatorAccountId, locationId);
     }
 }

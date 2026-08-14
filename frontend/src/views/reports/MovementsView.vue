@@ -47,6 +47,20 @@
         />
       </el-select>
       <el-select
+        v-model="filters.locationId"
+        placeholder="位置"
+        clearable
+        filterable
+        @change="onFilter"
+      >
+        <el-option
+          v-for="[id, name] in locationNameMap"
+          :key="id"
+          :label="name"
+          :value="id"
+        />
+      </el-select>
+      <el-select
         v-model="filters.operatorAccountId"
         placeholder="操作人"
         clearable
@@ -126,11 +140,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { getReport, buildExportUrl } from '../../api/reporting'
 import { fetchItems } from '../../api/catalog'
+import { fetchLocationTree } from '../../api/location'
 import { memberApi } from '../../api/member'
 import { useSessionStore } from '../../stores/session'
 import { formatDateTime, dateRangeToIsoBounds } from '../../utils/date'
 import { movementTypeLabel, movementTagType, signedMovementQuantity } from '../../utils/movement'
 import type { MovementRow } from '../../types/reporting'
+import type { LocationNode } from '../../types/location'
 
 const sessionStore = useSessionStore()
 const canExport = computed(() => {
@@ -148,10 +164,12 @@ const dateRange = ref<string[] | null>(null)
 const filters = ref<Record<string, string | undefined>>({
   itemId: undefined,
   type: undefined,
+  locationId: undefined,
   operatorAccountId: undefined,
 })
 
 const itemNameMap = ref<Map<string, string>>(new Map())
+const locationNameMap = ref<Map<string, string>>(new Map())
 const operatorNameMap = ref<Map<string, string>>(new Map())
 
 const typeOptions: { value: string; label: string }[] = [
@@ -163,9 +181,21 @@ const typeOptions: { value: string; label: string }[] = [
   { value: 'REVERSAL', label: '冲正' },
 ]
 
+function flattenLocations(nodes: LocationNode[]): [string, string][] {
+  const result: [string, string][] = []
+  for (const node of nodes) {
+    result.push([node.id, node.name])
+    if (node.children?.length) {
+      result.push(...flattenLocations(node.children))
+    }
+  }
+  return result
+}
+
 async function loadNameMaps() {
-  const [itemsResp, members] = await Promise.all([
+  const [itemsResp, locTree, members] = await Promise.all([
     fetchItems({ pageSize: 1000 }),
+    fetchLocationTree(),
     memberApi.list(),
   ])
   const iMap = new Map<string, string>()
@@ -173,6 +203,8 @@ async function loadNameMaps() {
     iMap.set(item.id, item.name)
   }
   itemNameMap.value = iMap
+
+  locationNameMap.value = new Map(flattenLocations(locTree.roots))
 
   const oMap = new Map<string, string>()
   for (const member of members) {

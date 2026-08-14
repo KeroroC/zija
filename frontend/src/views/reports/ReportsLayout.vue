@@ -6,7 +6,6 @@
       <el-tab-pane label="库存分布" name="stock-by-location" />
       <el-tab-pane label="临期批次" name="expiring-lots" />
       <el-tab-pane label="低库存" name="low-stock" />
-      <el-tab-pane label="库存变化" name="stock-changes" />
       <el-tab-pane label="流水" name="movements" />
       <el-tab-pane label="报表设置" name="settings" />
     </el-tabs>

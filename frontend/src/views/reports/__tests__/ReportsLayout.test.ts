@@ -20,7 +20,6 @@ function createTestRouter() {
           { path: "stock-by-location", name: "report-stock-by-location", component: { render: placeholder } },
           { path: "expiring-lots", name: "report-expiring-lots", component: { render: placeholder } },
           { path: "low-stock", name: "report-low-stock", component: { render: placeholder } },
-          { path: "stock-changes", name: "report-stock-changes", component: { render: placeholder } },
           { path: "movements", name: "report-movements", component: { render: placeholder } },
           { path: "settings", name: "report-settings", component: { render: placeholder } }
         ]
@@ -60,7 +59,6 @@ describe("ReportsLayout", () => {
       "库存分布",
       "临期批次",
       "低库存",
-      "库存变化",
       "流水",
       "报表设置"
     ]);

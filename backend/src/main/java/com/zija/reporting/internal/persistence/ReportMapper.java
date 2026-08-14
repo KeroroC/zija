@@ -37,17 +37,7 @@ public interface ReportMapper {
             @Param("householdId") UUID householdId,
             @Param("categoryId") UUID categoryId);
 
-    /** 指定时间范围库存变化。 */
-    IPage<Map<String, Object>> stockChanges(
-            Page<?> page,
-            @Param("householdId") UUID householdId,
-            @Param("from") OffsetDateTime from,
-            @Param("to") OffsetDateTime to,
-            @Param("itemId") UUID itemId,
-            @Param("locationId") UUID locationId,
-            @Param("type") String type);
-
-    /** 按成员/类型/物品筛选流水。 */
+    /** 按时间/物品/类型/位置或操作人筛选流水。位置对来源或目标任一命中即出（移位取两向）。 */
     IPage<Map<String, Object>> movements(
             Page<?> page,
             @Param("householdId") UUID householdId,
@@ -55,5 +45,6 @@ public interface ReportMapper {
             @Param("to") OffsetDateTime to,
             @Param("itemId") UUID itemId,
             @Param("type") String type,
-            @Param("operatorAccountId") UUID operatorAccountId);
+            @Param("operatorAccountId") UUID operatorAccountId,
+            @Param("locationId") UUID locationId);
 }

@@ -103,24 +103,6 @@ class ReportingController {
     }
 
     @RequireMember
-    @GetMapping("/reports/stock-changes")
-    Map<String, Object> stockChanges(
-            @AuthenticationPrincipal ZijaPrincipal principal,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) OffsetDateTime from,
-            @RequestParam(required = false) OffsetDateTime to,
-            @RequestParam(required = false) UUID itemId,
-            @RequestParam(required = false) UUID locationId,
-            @RequestParam(required = false) String type) {
-        var member = householdApi.requireActiveMember(principal.getAccountId());
-        var result = reportService.stockChanges(member.householdId(),
-                Math.max(page, 1), Math.clamp(pageSize, 1, 100),
-                from, to, itemId, locationId, type);
-        return toPageResponse(result);
-    }
-
-    @RequireMember
     @GetMapping("/reports/movements")
     Map<String, Object> movements(
             @AuthenticationPrincipal ZijaPrincipal principal,
@@ -130,11 +112,12 @@ class ReportingController {
             @RequestParam(required = false) OffsetDateTime to,
             @RequestParam(required = false) UUID itemId,
             @RequestParam(required = false) String type,
-            @RequestParam(required = false) UUID operatorAccountId) {
+            @RequestParam(required = false) UUID operatorAccountId,
+            @RequestParam(required = false) UUID locationId) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         var result = reportService.movements(member.householdId(),
                 Math.max(page, 1), Math.clamp(pageSize, 1, 100),
-                from, to, itemId, type, operatorAccountId);
+                from, to, itemId, type, operatorAccountId, locationId);
         return toPageResponse(result);
     }
 

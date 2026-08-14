@@ -84,6 +84,7 @@ class ReportingEndpointIntegrationTest {
     private UUID itemHigh;
     private UUID kitchenId;
     private UUID cabinetId;
+    private UUID otherLocationId;
     private ZijaPrincipal ownerPrincipal;
     private ZijaPrincipal memberPrincipal;
 
@@ -103,6 +104,7 @@ class ReportingEndpointIntegrationTest {
         itemHigh = seedItem(householdId, categoryId, unitId, "洗洁精", "CUSTOM", "5");
         kitchenId = seedLocation(householdId, "厨房A");
         cabinetId = seedLocation(householdId, "储物柜B");
+        otherLocationId = seedLocation(householdId, "阳台C");
 
         ownerPrincipal = new ZijaPrincipal(ownerAccountId, "owner", "所有者", "hash", true);
         memberPrincipal = new ZijaPrincipal(memberAccountId, "member", "成员", "hash", true);
@@ -183,40 +185,55 @@ class ReportingEndpointIntegrationTest {
         assertThat(row.get("low_stock_threshold").decimalValue()).isEqualByComparingTo("10");
     }
 
-    // ==================== 库存变化（stockChanges 时间窗 SQL） ====================
+    // ==================== 流水（movements：时间窗 + 类型/操作人/位置过滤 SQL） ====================
 
     @Test
-    void stockChanges_filtersByBusinessTimeRange() throws Exception {
+    void movements_filtersByBusinessTimeRange() throws Exception {
         inbound(itemLow, 5, kitchenId, todayPlus(365), null);
 
         var fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
         String from = OffsetDateTime.now(java.time.ZoneOffset.UTC).minusDays(1).format(fmt);
         String to = OffsetDateTime.now(java.time.ZoneOffset.UTC).plusDays(1).format(fmt);
-        var inRange = getJson("/api/v1/reporting/reports/stock-changes?from=" + from + "&to=" + to);
+        var inRange = getJson("/api/v1/reporting/reports/movements?from=" + from + "&to=" + to);
         assertThat(inRange.get("total").asInt()).isEqualTo(1);
         assertThat(inRange.get("items").get(0).get("type").asText()).isEqualTo("INBOUND");
         assertThat(inRange.get("items").get(0).get("item_name").asText()).isEqualTo("洗衣液");
 
-        var outOfRange = getJson("/api/v1/reporting/reports/stock-changes"
+        var outOfRange = getJson("/api/v1/reporting/reports/movements"
                 + "?from=2020-01-01T00:00:00Z&to=2020-01-31T00:00:00Z");
         assertThat(outOfRange.get("total").asInt()).isEqualTo(0);
     }
 
     /**
-     * 回归：无时间范围（未选日期）时，库存变化接口应返回全部数据，而不是 400。
-     * 与「流水」接口保持一致 —— from/to 为可选参数。
+     * 回归：无时间范围（未选日期）时，流水应返回全部数据，而不是 400。
+     * from/to 为可选参数。
      */
     @Test
-    void stockChanges_withoutTimeRange_returnsAll() throws Exception {
+    void movements_withoutTimeRange_returnsAll() throws Exception {
         inbound(itemLow, 5, kitchenId, todayPlus(365), null);
         inbound(itemHigh, 12, cabinetId, todayPlus(365), null);
 
-        var resp = getJson("/api/v1/reporting/reports/stock-changes");
+        var resp = getJson("/api/v1/reporting/reports/movements");
         assertThat(resp.get("total").asInt()).isEqualTo(2);
         assertThat(resp.get("items")).hasSize(2);
     }
 
-    // ==================== 流水（movements 类型/操作人过滤 SQL） ====================
+    /** 位置过滤：来源或目标任一命中该位置的流水都出（含移位双向量）。 */
+    @Test
+    void movements_filtersByLocation_FromOrTo() throws Exception {
+        // INBOUND 目标位 kitchenId；再在 kitchen -> cabinet 之间做一次移位
+        inbound(itemLow, 5, kitchenId, todayPlus(365), null);
+        transfer(itemLow, kitchenId, cabinetId, 2);
+
+        var target = getJson("/api/v1/reporting/reports/movements?locationId=" + kitchenId);
+        assertThat(target.get("total").asInt()).isEqualTo(2); // INBOUND 目标位 + 移位来源位
+
+        var source = getJson("/api/v1/reporting/reports/movements?locationId=" + cabinetId);
+        assertThat(source.get("total").asInt()).isEqualTo(1); // 移位目标位
+
+        var unrelated = getJson("/api/v1/reporting/reports/movements?locationId=" + otherLocationId);
+        assertThat(unrelated.get("total").asInt()).isEqualTo(0);
+    }
 
     @Test
     void movements_filtersByTypeAndOperator() throws Exception {
@@ -366,6 +383,33 @@ class ReportingEndpointIntegrationTest {
         awaitProjection("lot " + itemId, () -> jdbc.queryForObject(
                 "SELECT COUNT(*) FROM reporting_stock_flat WHERE item_id = ?",
                 Integer.class, itemId) >= 1);
+    }
+
+    /** 在 from -> to 之间做一次移位，返回产生的 movement 用于断言。 */
+    private void transfer(UUID itemId, UUID fromLocId, UUID toLocId, long qty)
+            throws Exception {
+        UUID lotId = jdbc.queryForObject(
+                "SELECT lot_id FROM reporting_stock_flat WHERE item_id = ? LIMIT 1",
+                UUID.class, itemId);
+        String body = """
+                {
+                    "lotId": "%s",
+                    "fromLocationId": "%s",
+                    "toLocationId": "%s",
+                    "quantity": %s,
+                    "memo": null
+                }
+                """.formatted(lotId, fromLocId, toLocId, qty);
+
+        mockMvc.perform(post("/api/v1/inventory/transfer")
+                        .with(auth(ownerPrincipal)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        awaitProjection("transfer " + itemId, () -> jdbc.queryForObject(
+                "SELECT COUNT(*) FROM reporting_movement_flat WHERE type = 'TRANSFER'",
+                Integer.class) >= 1);
     }
 
     private JsonNode getJson(String path) throws Exception {
