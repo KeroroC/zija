@@ -46,20 +46,16 @@
           :value="opt.value"
         />
       </el-select>
-      <el-select
+      <el-tree-select
         v-model="filters.locationId"
+        :data="locationTree"
+        node-key="id"
+        :props="{ label: 'name', children: 'children' }"
         placeholder="位置"
         clearable
-        filterable
+        check-strictly
         @change="onFilter"
-      >
-        <el-option
-          v-for="[id, name] in locationNameMap"
-          :key="id"
-          :label="name"
-          :value="id"
-        />
-      </el-select>
+      />
       <el-select
         v-model="filters.operatorAccountId"
         placeholder="操作人"
@@ -169,7 +165,7 @@ const filters = ref<Record<string, string | undefined>>({
 })
 
 const itemNameMap = ref<Map<string, string>>(new Map())
-const locationNameMap = ref<Map<string, string>>(new Map())
+const locationTree = ref<LocationNode[]>([])
 const operatorNameMap = ref<Map<string, string>>(new Map())
 
 const typeOptions: { value: string; label: string }[] = [
@@ -180,17 +176,6 @@ const typeOptions: { value: string; label: string }[] = [
   { value: 'TRANSFER', label: '移位' },
   { value: 'REVERSAL', label: '冲正' },
 ]
-
-function flattenLocations(nodes: LocationNode[]): [string, string][] {
-  const result: [string, string][] = []
-  for (const node of nodes) {
-    result.push([node.id, node.name])
-    if (node.children?.length) {
-      result.push(...flattenLocations(node.children))
-    }
-  }
-  return result
-}
 
 async function loadNameMaps() {
   const [itemsResp, locTree, members] = await Promise.all([
@@ -204,7 +189,7 @@ async function loadNameMaps() {
   }
   itemNameMap.value = iMap
 
-  locationNameMap.value = new Map(flattenLocations(locTree.roots))
+  locationTree.value = locTree.roots
 
   const oMap = new Map<string, string>()
   for (const member of members) {
@@ -266,7 +251,8 @@ onMounted(async () => {
 .filter-bar :deep(.el-date-editor) {
   width: 300px;
 }
-.filter-bar :deep(.el-select) {
+.filter-bar :deep(.el-select),
+.filter-bar :deep(.el-tree-select) {
   width: 200px;
 }
 .report-table {

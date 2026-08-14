@@ -162,4 +162,39 @@ describe("MovementsView 数量符号", () => {
 
     expect(wrapper.text()).toContain("8");
   });
+
+  it("位置筛选以层级树的形式展示位置", async () => {
+    mockFetchLocationTree.mockResolvedValue({
+      roots: [
+        {
+          id: "root1",
+          parentId: null,
+          name: "家",
+          sortOrder: 1,
+          everReferenced: true,
+          version: 0,
+          children: [
+            {
+              id: "loc1",
+              parentId: "root1",
+              name: "厨房",
+              sortOrder: 1,
+              everReferenced: true,
+              version: 0,
+              children: [],
+            },
+          ],
+        },
+      ],
+    } as any);
+    wrapper = mountV();
+    await flushPromises();
+
+    const treeSelect = wrapper.findComponent({ name: "ElTreeSelect" });
+    expect(treeSelect.exists()).toBe(true);
+    // 树数据应保留层级关系：位置是父节点，叶子是子位置
+    const data = treeSelect.props("data") as any[];
+    expect(data[0].name).toBe("家");
+    expect(data[0].children[0].name).toBe("厨房");
+  });
 });
