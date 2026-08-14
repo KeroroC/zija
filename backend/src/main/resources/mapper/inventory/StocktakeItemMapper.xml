@@ -31,9 +31,9 @@
                l.lot_number AS "lotNumber",
                u.name AS "unitName"
         FROM inventory_stocktake_item sti
-        JOIN inventory_lot l ON l.id = sti.lot_id
-        JOIN catalog_item i ON i.id = l.item_id
-        JOIN catalog_unit u ON u.id = i.unit_id
+        LEFT JOIN inventory_lot l ON l.id = sti.lot_id
+        LEFT JOIN catalog_item i ON i.id = l.item_id
+        LEFT JOIN catalog_unit u ON u.id = i.unit_id
         WHERE sti.household_id = #{householdId} AND sti.stocktake_id = #{stocktakeId}
         ORDER BY sti.id
     </select>

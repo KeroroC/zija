@@ -696,6 +696,65 @@ class StocktakeServiceIntegrationTest {
     // (ck_inventory_stocktake_actual_nonneg, ck_inventory_stock_position_nonneg), so it is
     // covered by StocktakeServiceDefensiveTest using a mocked mapper rather than an integration test.
 
+    // --- Details query: rows must never vanish when joins miss ---
+
+    @Test
+    void draftItemsWithDetails_missingLotKeepsRowWithNullNames() {
+        // inventory_stocktake_item 无指向 lot/item/unit 的外键，孤儿引用可行。
+        // 详情查询必须返回该行（名称兜底为 null），与 confirm/cancel 的全量语义一致。
+        UUID stocktakeId = UUID.randomUUID();
+        UUID orphanLotId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stocktake (id, household_id, status, created_by)
+                VALUES (?, ?, 'DRAFT', ?)
+                """, stocktakeId, householdId, accountId);
+        jdbc.update("""
+                INSERT INTO inventory_stocktake_item
+                    (id, stocktake_id, household_id, lot_id, location_id,
+                     book_quantity, actual_quantity, position_revision)
+                VALUES (?, ?, ?, ?, ?, 10, 10, 1)
+                """, UUID.randomUUID(), stocktakeId, householdId, orphanLotId, locationId);
+
+        var items = newTx().execute(s ->
+                stocktakeService.draftItemsWithDetails(householdId, stocktakeId));
+
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).lotId()).isEqualTo(orphanLotId);
+        assertThat(items.get(0).itemName()).isNull();
+        assertThat(items.get(0).lotNumber()).isNull();
+        assertThat(items.get(0).unitName()).isNull();
+    }
+
+    @Test
+    void draftItemsWithDetails_joinsDisplayNames() {
+        UUID unitId = seedUnit(householdId);
+        UUID itemId = seedItem(householdId, unitId);
+        UUID lotId = seedLot(householdId, itemId);
+        UUID stocktakeId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO inventory_stocktake (id, household_id, status, created_by)
+                VALUES (?, ?, 'DRAFT', ?)
+                """, stocktakeId, householdId, accountId);
+        jdbc.update("""
+                INSERT INTO inventory_stocktake_item
+                    (id, stocktake_id, household_id, lot_id, location_id,
+                     book_quantity, actual_quantity, position_revision)
+                VALUES (?, ?, ?, ?, ?, 10, 10, 1)
+                """, UUID.randomUUID(), stocktakeId, householdId, lotId, locationId);
+
+        var items = newTx().execute(s ->
+                stocktakeService.draftItemsWithDetails(householdId, stocktakeId));
+
+        String expectedItemName = jdbc.queryForObject(
+                "SELECT name FROM catalog_item WHERE id = ?", String.class, itemId);
+        String expectedUnitName = jdbc.queryForObject(
+                "SELECT name FROM catalog_unit WHERE id = ?", String.class, unitId);
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).itemName()).isEqualTo(expectedItemName);
+        assertThat(items.get(0).lotNumber()).isEqualTo("LOT-" + lotId.toString().substring(0, 8));
+        assertThat(items.get(0).unitName()).isEqualTo(expectedUnitName);
+    }
+
     // --- Helpers ---
 
     private UUID seedHousehold() {
