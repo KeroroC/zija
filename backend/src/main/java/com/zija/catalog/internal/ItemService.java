@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaChangeType;
 import com.zija.shared.ZijaRecordStatus;
+import com.zija.shared.ZijaReminderMode;
 import com.zija.catalog.CatalogApi;
 import com.zija.catalog.internal.event.CatalogEventPublisher;
 import com.zija.catalog.internal.exception.CatalogArchivedDictionaryException;
@@ -157,7 +159,7 @@ class ItemService implements CatalogApi {
                 requireActiveDictionary(tagMapper, tagId, householdId, "tag");
             }
         }
-        if ("CUSTOM".equals(lowStockMode) && lowStockThreshold != null) {
+        if (ZijaReminderMode.CUSTOM.equals(lowStockMode) && lowStockThreshold != null) {
             int scale = lowStockThreshold.stripTrailingZeros().scale();
             if (scale > unit.getDecimalScale()) {
                 throw new CatalogUnitPrecisionInvalidException(scale, unit.getDecimalScale());
@@ -187,8 +189,8 @@ class ItemService implements CatalogApi {
             }
         }
 
-        audit(householdId, "ITEM_CREATED", entity.getId());
-        eventPublisher.publishItemChanged(householdId, entity.getId(), "CREATED");
+        audit(householdId, SystemApi.AuditAction.ITEM_CREATED, entity.getId());
+        eventPublisher.publishItemChanged(householdId, entity.getId(), ZijaChangeType.CREATED);
         return entity;
     }
 
@@ -204,7 +206,7 @@ class ItemService implements CatalogApi {
         if (itemMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "ITEM_ARCHIVED", id);
+        audit(householdId, SystemApi.AuditAction.ITEM_ARCHIVED, id);
         eventPublisher.publishItemChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
@@ -217,8 +219,8 @@ class ItemService implements CatalogApi {
         if (itemMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "ITEM_RESTORED", id);
-        eventPublisher.publishItemChanged(householdId, id, "RESTORED");
+        audit(householdId, SystemApi.AuditAction.ITEM_RESTORED, id);
+        eventPublisher.publishItemChanged(householdId, id, ZijaChangeType.RESTORED);
     }
 
     @Transactional(readOnly = true)
@@ -291,7 +293,7 @@ class ItemService implements CatalogApi {
             entity.setExpiryReminderDays(expiryReminderDays);
         }
         if (lowStockMode != null) {
-            if ("CUSTOM".equals(lowStockMode) && lowStockThreshold != null) {
+            if (ZijaReminderMode.CUSTOM.equals(lowStockMode) && lowStockThreshold != null) {
                 var unit = requireActiveUnit(householdId, entity.getUnitId());
                 int scale = lowStockThreshold.stripTrailingZeros().scale();
                 if (scale > unit.getDecimalScale()) {
@@ -313,8 +315,8 @@ class ItemService implements CatalogApi {
                 itemMapper.insertItemTag(householdId, id, tagId);
             }
         }
-        audit(householdId, "ITEM_UPDATED", id);
-        eventPublisher.publishItemChanged(householdId, id, "UPDATED");
+        audit(householdId, SystemApi.AuditAction.ITEM_UPDATED, id);
+        eventPublisher.publishItemChanged(householdId, id, ZijaChangeType.UPDATED);
         return itemMapper.findByIdFull(id);
     }
 
@@ -357,7 +359,7 @@ class ItemService implements CatalogApi {
             fileApi.release(householdId, oldCoverFileId);
         }
 
-        audit(householdId, "ITEM_COVER_UPLOADED", itemId);
+        audit(householdId, SystemApi.AuditAction.ITEM_COVER_UPLOADED, itemId);
         return new CoverResult(newFileInfo, version + 1);
     }
 
@@ -391,7 +393,7 @@ class ItemService implements CatalogApi {
         // 2. 更新成功后，释放旧文件
         fileApi.release(householdId, oldCoverFileId);
 
-        audit(householdId, "ITEM_COVER_REMOVED", itemId);
+        audit(householdId, SystemApi.AuditAction.ITEM_COVER_REMOVED, itemId);
     }
 
     // --- Private helpers ---

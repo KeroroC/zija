@@ -2,6 +2,7 @@ package com.zija.catalog.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zija.shared.ZijaAuditOutcome;
+import com.zija.shared.ZijaChangeType;
 import com.zija.shared.ZijaRecordStatus;
 import com.zija.catalog.internal.event.CatalogEventPublisher;
 import com.zija.catalog.internal.exception.CatalogCategoryHasChildrenException;
@@ -70,8 +71,8 @@ class CatalogDictionaryService {
         entity.setSortOrder(sortOrder);
         entity.setVersion(0);
         categoryMapper.insert(entity);
-        audit(householdId, "CATEGORY_CREATED", entity.getId());
-        eventPublisher.publishCategoryChanged(householdId, entity.getId(), "CREATED");
+        audit(householdId, SystemApi.AuditAction.CATEGORY_CREATED, entity.getId());
+        eventPublisher.publishCategoryChanged(householdId, entity.getId(), ZijaChangeType.CREATED);
         return entity;
     }
 
@@ -91,7 +92,7 @@ class CatalogDictionaryService {
         if (categoryMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "CATEGORY_ARCHIVED", id);
+        audit(householdId, SystemApi.AuditAction.CATEGORY_ARCHIVED, id);
         eventPublisher.publishCategoryChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
@@ -102,8 +103,8 @@ class CatalogDictionaryService {
         if (categoryMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "CATEGORY_RESTORED", id);
-        eventPublisher.publishCategoryChanged(householdId, id, "RESTORED");
+        audit(householdId, SystemApi.AuditAction.CATEGORY_RESTORED, id);
+        eventPublisher.publishCategoryChanged(householdId, id, ZijaChangeType.RESTORED);
     }
 
     @Transactional
@@ -116,8 +117,8 @@ class CatalogDictionaryService {
         if (categoryMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "CATEGORY_UPDATED", id);
-        eventPublisher.publishCategoryChanged(householdId, id, "UPDATED");
+        audit(householdId, SystemApi.AuditAction.CATEGORY_UPDATED, id);
+        eventPublisher.publishCategoryChanged(householdId, id, ZijaChangeType.UPDATED);
     }
 
     /**
@@ -140,8 +141,8 @@ class CatalogDictionaryService {
         if (categoryMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "CATEGORY_MOVED", id);
-        eventPublisher.publishCategoryChanged(householdId, id, "MOVED");
+        audit(householdId, SystemApi.AuditAction.CATEGORY_MOVED, id);
+        eventPublisher.publishCategoryChanged(householdId, id, ZijaChangeType.MOVED);
     }
 
     // --- Brands ---
@@ -158,8 +159,8 @@ class CatalogDictionaryService {
         entity.setStatus(ZijaRecordStatus.ACTIVE);
         entity.setVersion(0);
         brandMapper.insert(entity);
-        audit(householdId, "BRAND_CREATED", entity.getId());
-        eventPublisher.publishBrandChanged(householdId, entity.getId(), "CREATED");
+        audit(householdId, SystemApi.AuditAction.BRAND_CREATED, entity.getId());
+        eventPublisher.publishBrandChanged(householdId, entity.getId(), ZijaChangeType.CREATED);
         return entity;
     }
 
@@ -170,7 +171,7 @@ class CatalogDictionaryService {
         if (brandMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "BRAND_ARCHIVED", id);
+        audit(householdId, SystemApi.AuditAction.BRAND_ARCHIVED, id);
         eventPublisher.publishBrandChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
@@ -181,8 +182,8 @@ class CatalogDictionaryService {
         if (brandMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "BRAND_RESTORED", id);
-        eventPublisher.publishBrandChanged(householdId, id, "RESTORED");
+        audit(householdId, SystemApi.AuditAction.BRAND_RESTORED, id);
+        eventPublisher.publishBrandChanged(householdId, id, ZijaChangeType.RESTORED);
     }
 
     @Transactional
@@ -195,8 +196,8 @@ class CatalogDictionaryService {
         if (brandMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "BRAND_UPDATED", id);
-        eventPublisher.publishBrandChanged(householdId, id, "UPDATED");
+        audit(householdId, SystemApi.AuditAction.BRAND_UPDATED, id);
+        eventPublisher.publishBrandChanged(householdId, id, ZijaChangeType.UPDATED);
     }
 
     // --- Units ---
@@ -217,8 +218,8 @@ class CatalogDictionaryService {
         entity.setStatus(ZijaRecordStatus.ACTIVE);
         entity.setVersion(0);
         unitMapper.insert(entity);
-        audit(householdId, "UNIT_CREATED", entity.getId());
-        eventPublisher.publishUnitChanged(householdId, entity.getId(), "CREATED");
+        audit(householdId, SystemApi.AuditAction.UNIT_CREATED, entity.getId());
+        eventPublisher.publishUnitChanged(householdId, entity.getId(), ZijaChangeType.CREATED);
         return entity;
     }
 
@@ -232,8 +233,8 @@ class CatalogDictionaryService {
         if (unitMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "UNIT_UPDATED", id);
-        eventPublisher.publishUnitChanged(householdId, id, "UPDATED");
+        audit(householdId, SystemApi.AuditAction.UNIT_UPDATED, id);
+        eventPublisher.publishUnitChanged(householdId, id, ZijaChangeType.UPDATED);
     }
 
     @Transactional
@@ -243,7 +244,7 @@ class CatalogDictionaryService {
         if (unitMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "UNIT_ARCHIVED", id);
+        audit(householdId, SystemApi.AuditAction.UNIT_ARCHIVED, id);
         eventPublisher.publishUnitChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
@@ -254,8 +255,8 @@ class CatalogDictionaryService {
         if (unitMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "UNIT_RESTORED", id);
-        eventPublisher.publishUnitChanged(householdId, id, "RESTORED");
+        audit(householdId, SystemApi.AuditAction.UNIT_RESTORED, id);
+        eventPublisher.publishUnitChanged(householdId, id, ZijaChangeType.RESTORED);
     }
 
     /**
@@ -296,8 +297,8 @@ class CatalogDictionaryService {
         if (unitMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "UNIT_DECIMAL_SCALE_UPDATED", id);
-        eventPublisher.publishUnitChanged(householdId, id, "UPDATED");
+        audit(householdId, SystemApi.AuditAction.UNIT_DECIMAL_SCALE_UPDATED, id);
+        eventPublisher.publishUnitChanged(householdId, id, ZijaChangeType.UPDATED);
         return Map.of("affectedItems", affectedItems);
     }
 
@@ -315,8 +316,8 @@ class CatalogDictionaryService {
         entity.setStatus(ZijaRecordStatus.ACTIVE);
         entity.setVersion(0);
         tagMapper.insert(entity);
-        audit(householdId, "TAG_CREATED", entity.getId());
-        eventPublisher.publishTagChanged(householdId, entity.getId(), "CREATED");
+        audit(householdId, SystemApi.AuditAction.TAG_CREATED, entity.getId());
+        eventPublisher.publishTagChanged(householdId, entity.getId(), ZijaChangeType.CREATED);
         return entity;
     }
 
@@ -327,7 +328,7 @@ class CatalogDictionaryService {
         if (tagMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "TAG_ARCHIVED", id);
+        audit(householdId, SystemApi.AuditAction.TAG_ARCHIVED, id);
         eventPublisher.publishTagChanged(householdId, id, ZijaRecordStatus.ARCHIVED);
     }
 
@@ -341,8 +342,8 @@ class CatalogDictionaryService {
         if (tagMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "TAG_UPDATED", id);
-        eventPublisher.publishTagChanged(householdId, id, "UPDATED");
+        audit(householdId, SystemApi.AuditAction.TAG_UPDATED, id);
+        eventPublisher.publishTagChanged(householdId, id, ZijaChangeType.UPDATED);
     }
 
     @Transactional
@@ -352,8 +353,8 @@ class CatalogDictionaryService {
         if (tagMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-        audit(householdId, "TAG_RESTORED", id);
-        eventPublisher.publishTagChanged(householdId, id, "RESTORED");
+        audit(householdId, SystemApi.AuditAction.TAG_RESTORED, id);
+        eventPublisher.publishTagChanged(householdId, id, ZijaChangeType.RESTORED);
     }
 
     // --- Query ---
