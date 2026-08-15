@@ -790,6 +790,45 @@ describe("ItemsPage", () => {
     expect(firstRow.text()).not.toContain("tag-3");
   });
 
+  it("refreshes dictionaries before refetching items after save (no bare id race)", async () => {
+    wrapper = mount(ItemsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    // 编辑物品时新建了一个标签 tag-3，保存后物品带上新标签 id
+    const freshItem: CatalogItem = { ...activeItem, tagIds: ["tag-1", "tag-3"] };
+    fetchItemsMock.mockReset().mockResolvedValue({
+      items: [freshItem],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+
+    // 让字典刷新挂起：若列表拉取与字典刷新并行，列表先返回时 tag-3 无处解析为裸 id
+    let resolveTags!: (v: Tag[]) => void;
+    fetchTagsMock.mockReset().mockReturnValue(
+      new Promise<Tag[]>((resolve) => { resolveTags = resolve; }),
+    );
+    fetchCategoriesMock.mockReset().mockResolvedValue([category]);
+    fetchBrandsMock.mockReset().mockResolvedValue([brand]);
+    fetchUnitsMock.mockReset().mockResolvedValue([unit]);
+
+    const formDrawer = wrapper.findComponent({ name: "ItemFormDrawer" });
+    formDrawer.vm.$emit("saved", freshItem);
+    await flushPromises();
+
+    // 字典尚未返回时不应重拉列表（否则 tag-3 以裸 id 渲染）
+    expect(fetchItemsMock).not.toHaveBeenCalled();
+
+    // 字典返回后才重拉列表
+    resolveTags([tag, tag2, { ...tag, id: "tag-3", name: "常用紧急" }]);
+    await flushPromises();
+
+    expect(fetchItemsMock).toHaveBeenCalled();
+    const firstRow = wrapper.findAll("tbody tr")[0];
+    expect(firstRow.text()).toContain("常用紧急");
+    expect(firstRow.text()).not.toContain("tag-3");
+  });
+
   it("refreshes the item after remounting the current cover so the drawer stops showing the stale cover", async () => {
     mockItemWithCover();
     // 服务器：封面附件改挂到家庭后清除封面指定并递增版本

@@ -430,12 +430,13 @@ function openEdit(item: CatalogItem) {
   formDrawerVisible.value = true
 }
 
-function onFormSaved() {
+async function onFormSaved() {
   formDrawerVisible.value = false
   // 抽屉里可能新建了标签/品牌/单位：先刷新字典，再重拉列表，
   // 否则新字典项的 id 在 tagMap/brandMap/unitMap 中找不到名字，表格只显示裸 id。
-  loadDictionaries()
-  fetchItems()
+  // 必须 await 字典刷新完成后再拉列表，否则两个请求并行时列表先返回仍会裸 id。
+  await loadDictionaries()
+  await fetchItems()
 }
 
 async function openDetail(item: CatalogItem) {
