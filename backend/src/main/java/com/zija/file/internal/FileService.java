@@ -208,6 +208,16 @@ class FileService implements FileApi {
     @Override
     @Transactional
     public AttachmentInfo recycle(UUID householdId, UUID fileId) {
+        return doRecycle(householdId, fileId, true);
+    }
+
+    @Override
+    @Transactional
+    public AttachmentInfo recycleSilently(UUID householdId, UUID fileId) {
+        return doRecycle(householdId, fileId, false);
+    }
+
+    private AttachmentInfo doRecycle(UUID householdId, UUID fileId, boolean publishEvent) {
         var entity = requireEntity(householdId, fileId);
         if (entity == null) {
             return null;
@@ -218,8 +228,10 @@ class FileService implements FileApi {
         }
         entity.setDeletedAt(OffsetDateTime.now());
         storedFileMapper.updateById(entity);
-        eventPublisher.publishRecycled(
-                householdId, fileId, entity.getMountType(), entity.getMountId());
+        if (publishEvent) {
+            eventPublisher.publishRecycled(
+                    householdId, fileId, entity.getMountType(), entity.getMountId());
+        }
         audit(householdId, SystemApi.AuditAction.FILE_DELETED, fileId);
         return toAttachment(entity, householdId);
     }

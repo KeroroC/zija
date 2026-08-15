@@ -121,6 +121,34 @@ class FileServiceTest {
     }
 
     @Test
+    void recycleSilentlySetsDeletedAtWithoutPublishingEvent() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg", null);
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+
+        var result = service.recycleSilently(householdId, fileId);
+
+        assertThat(result.deletedAt()).isNotNull();
+        verify(storedFileMapper).updateById(entity);
+        verify(eventPublisher, never()).publishRecycled(any(), any(), any(), any());
+        assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_DELETED);
+    }
+
+    @Test
+    void recycleSilentlyIsIdempotentForAlreadyRecycled() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",
+                OffsetDateTime.now());
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+
+        var result = service.recycleSilently(householdId, fileId);
+
+        assertThat(result.deletedAt()).isNotNull();
+        verify(storedFileMapper, never()).updateById(any(StoredFileEntity.class));
+        verify(eventPublisher, never()).publishRecycled(any(), any(), any(), any());
+    }
+
+    @Test
     void restoreClearsDeletedAtAndKeepsMount() {
         UUID fileId = UUID.randomUUID();
         var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",

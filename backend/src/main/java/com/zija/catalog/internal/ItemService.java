@@ -407,6 +407,12 @@ class ItemService implements CatalogApi {
 
     /**
      * 上传一张新图片并指定为封面（「传封面」与「先当附件再指定」是同一件事）。
+     *
+     * <p>{@code oldCoverAction=RECYCLE} 时旧封面即将释放名字：若新图与旧封面同名，
+     * 先上传会撞名字唯一性检查与数据库部分唯一索引（旧行尚未标记删除），抛
+     * {@code FILE_NAME_DUPLICATE}。因此换封面时先在同一事务内静默回收旧封面——
+     * 不发布回收事件，避免监听器清除封面指定并自增物品版本，破坏紧随其后的
+     * 乐观锁指定；任一步失败整个事务回滚，旧封面不受影响。</p>
      */
     @Transactional
     public CoverResult uploadCover(
@@ -414,6 +420,11 @@ class ItemService implements CatalogApi {
             byte[] fileContent, String originalFilename, String contentType,
             String oldCoverAction, Integer version
     ) {
+        var entity = requireItemEntity(householdId, itemId);
+        if (entity.getCoverFileId() != null && COVER_ACTION_RECYCLE.equals(oldCoverAction)) {
+            // 旧封面名字即将被释放：先静默回收（同一事务，不发布事件），再上传新图
+            fileApi.recycleSilently(householdId, entity.getCoverFileId());
+        }
         var attachment = uploadAttachment(householdId, itemId, fileContent, originalFilename, contentType);
         return designateCover(householdId, itemId, attachment.id(), oldCoverAction, version);
     }

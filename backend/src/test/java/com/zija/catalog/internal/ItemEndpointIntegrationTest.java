@@ -437,6 +437,80 @@ class ItemEndpointIntegrationTest {
     }
 
     @Test
+    void replaceCoverWithRecycleAllowsSameFilename() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+
+        var v = itemService.findItem(householdId, item.getId()).getVersion();
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(new MockMultipartFile("file", "cover1.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(v))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        var afterFirst = itemService.findItem(householdId, item.getId());
+        String oldCoverId = afterFirst.getCoverFileId().toString();
+
+        // 同文件名 + RECYCLE：旧封面即将释放名字，替换应当成功而不是撞名 409
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(new MockMultipartFile("file", "cover1.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(afterFirst.getVersion()))
+                        .param("oldCoverAction", "RECYCLE")
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("cover1.jpg"))
+                .andExpect(jsonPath("$.version").value(afterFirst.getVersion() + 1));
+
+        var afterReplace = itemService.findItem(householdId, item.getId());
+        assert !afterReplace.getCoverFileId().toString().equals(oldCoverId);
+
+        // 物品附件列表只剩新封面
+        mockMvc.perform(get("/api/v1/items/{id}/attachments", item.getId()).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].name").value("cover1.jpg"));
+
+        // 回收站里能找到旧封面
+        mockMvc.perform(get("/api/v1/files?recycled=true").with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(oldCoverId));
+    }
+
+    @Test
+    void replaceCoverKeepingOldRejectsSameFilename() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+
+        var v = itemService.findItem(householdId, item.getId()).getVersion();
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(new MockMultipartFile("file", "cover1.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(v))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        var afterFirst = itemService.findItem(householdId, item.getId());
+        String oldCoverId = afterFirst.getCoverFileId().toString();
+
+        // 缺省 oldCoverAction（=KEEP）：旧封面名字仍被占用，同文件名替换必须 409
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(new MockMultipartFile("file", "cover1.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(afterFirst.getVersion()))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("FILE_NAME_DUPLICATE"));
+
+        // 旧封面仍是封面，物品上仍只有一份附件
+        var afterFail = itemService.findItem(householdId, item.getId());
+        assert afterFail.getCoverFileId().toString().equals(oldCoverId);
+        mockMvc.perform(get("/api/v1/items/{id}/attachments", item.getId()).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1));
+    }
+
+    @Test
     void designateExistingEligibleAttachmentAsCover() throws Exception {
         var unitId = seedUnit();
         var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,

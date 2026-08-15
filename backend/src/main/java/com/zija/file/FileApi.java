@@ -68,6 +68,16 @@ public interface FileApi {
     /** 把附件送进回收站（设置删除时间，物理对象保留）。已删除则幂等返回。 */
     AttachmentInfo recycle(UUID householdId, UUID fileId);
 
+    /**
+     * 把附件送进回收站但不发布 {@link AttachmentRecycledEvent}（其余与 {@link #recycle}
+     * 相同：设置删除时间、审计、已删除幂等返回）。
+     *
+     * <p>供调用方在同一事务内立刻以新附件替换该附件的场景（如换封面）使用：监听器若
+     * 在替换完成前观察到「附件离开」会清除挂载点状态并改写版本，破坏紧随其后的
+     * 乐观锁写入。静默回收不广播事件，但同一事务内调用方随后的失败仍会整体回滚。</p>
+     */
+    AttachmentInfo recycleSilently(UUID householdId, UUID fileId);
+
     /** 恢复回收站附件：清除删除标记，挂载点保持删除前的值；恢复后是普通附件，不恢复封面指定。 */
     AttachmentInfo restore(UUID householdId, UUID fileId);
 
