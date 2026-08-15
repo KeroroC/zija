@@ -25,7 +25,7 @@
         </el-menu-item>
         <el-menu-item index="/files">
           <el-icon><Paperclip /></el-icon>
-          <span>附件</span>
+          <span>附件管理</span>
         </el-menu-item>
         <el-menu-item index="/inventory">
           <el-icon><Files /></el-icon>
