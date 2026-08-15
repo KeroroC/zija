@@ -9,6 +9,7 @@ import {
   uploadHouseholdAttachment,
   deleteAttachment,
   restoreAttachment,
+  purgeAttachment,
   remountAttachmentToHousehold,
   remountAttachmentToItem,
   remountAttachmentToLot,
@@ -24,6 +25,7 @@ vi.mock("../api/file", () => ({
   renameAttachment: vi.fn(),
   deleteAttachment: vi.fn(),
   restoreAttachment: vi.fn(),
+  purgeAttachment: vi.fn(),
   remountAttachmentToHousehold: vi.fn(),
   remountAttachmentToItem: vi.fn(),
   remountAttachmentToLot: vi.fn()
@@ -42,6 +44,7 @@ const uploadMock = vi.mocked(uploadHouseholdAttachment);
 const renameMock = vi.mocked(renameAttachment);
 const deleteMock = vi.mocked(deleteAttachment);
 const restoreMock = vi.mocked(restoreAttachment);
+const purgeMock = vi.mocked(purgeAttachment);
 const remountMock = vi.mocked(remountAttachmentToHousehold);
 const remountItemMock = vi.mocked(remountAttachmentToItem);
 const remountLotMock = vi.mocked(remountAttachmentToLot);
@@ -105,6 +108,7 @@ describe("AttachmentsPage", () => {
     renameMock.mockResolvedValue(householdAttachment);
     deleteMock.mockResolvedValue({ ...householdAttachment, deletedAt: "2026-08-15T11:00:00Z" });
     restoreMock.mockResolvedValue(householdAttachment);
+    purgeMock.mockResolvedValue({ id: "f1", purged: true });
     remountMock.mockResolvedValue(householdAttachment);
     remountItemMock.mockResolvedValue({ ...householdAttachment, mountType: "ITEM", mountId: "i1" });
     remountLotMock.mockResolvedValue({ ...householdAttachment, mountType: "LOT", mountId: "l1" });
@@ -232,6 +236,77 @@ describe("AttachmentsPage", () => {
     await flushPromises();
 
     expect(warningSpy).toHaveBeenCalledWith("原挂载点已有一份同名附件，请先改名再恢复");
+  });
+
+  it("shows the permanent-delete button only in the recycle bin view", async () => {
+    wrapper = mountPage();
+    await flushPromises();
+
+    // 「全部」视图不暴露不可逆操作
+    expect(wrapper.find('[data-testid="attachment-purge"]').exists()).toBe(false);
+
+    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
+    await radioGroup.vm.$emit("update:modelValue", "recycled");
+    await radioGroup.vm.$emit("change", "recycled");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="attachment-purge"]').exists()).toBe(true);
+  });
+
+  it("purges a recycled attachment after an explicit confirmation", async () => {
+    listMock.mockResolvedValue(pageResult([{ ...householdAttachment, deletedAt: "2026-08-15T11:00:00Z" }]));
+    const successSpy = vi.spyOn(ElMessage, "success").mockReturnValue({} as never);
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+
+    wrapper = mountPage();
+    await flushPromises();
+    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
+    await radioGroup.vm.$emit("update:modelValue", "recycled");
+    await radioGroup.vm.$emit("change", "recycled");
+    await flushPromises();
+
+    await wrapper.get('[data-testid="attachment-purge"]').trigger("click");
+    await flushPromises();
+
+    expect(purgeMock).toHaveBeenCalledWith("f1");
+    expect(successSpy).toHaveBeenCalledWith("已永久删除");
+    expect(listMock).toHaveBeenCalled();
+  });
+
+  it("does not purge when the confirmation is cancelled", async () => {
+    listMock.mockResolvedValue(pageResult([{ ...householdAttachment, deletedAt: "2026-08-15T11:00:00Z" }]));
+    vi.spyOn(ElMessageBox, "confirm").mockRejectedValue("cancel");
+
+    wrapper = mountPage();
+    await flushPromises();
+    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
+    await radioGroup.vm.$emit("update:modelValue", "recycled");
+    await radioGroup.vm.$emit("change", "recycled");
+    await flushPromises();
+
+    await wrapper.get('[data-testid="attachment-purge"]').trigger("click");
+    await flushPromises();
+
+    expect(purgeMock).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when permanent delete fails", async () => {
+    listMock.mockResolvedValue(pageResult([{ ...householdAttachment, deletedAt: "2026-08-15T11:00:00Z" }]));
+    purgeMock.mockRejectedValue(new ApiError("附件不在回收站，无法永久删除", "FILE_NOT_IN_RECYCLE_BIN", 409));
+    const errorSpy = vi.spyOn(ElMessage, "error").mockReturnValue({} as never);
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+
+    wrapper = mountPage();
+    await flushPromises();
+    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
+    await radioGroup.vm.$emit("update:modelValue", "recycled");
+    await radioGroup.vm.$emit("change", "recycled");
+    await flushPromises();
+
+    await wrapper.get('[data-testid="attachment-purge"]').trigger("click");
+    await flushPromises();
+
+    expect(errorSpy).toHaveBeenCalledWith("附件不在回收站，无法永久删除");
   });
 
   it("renames an attachment from the row action", async () => {

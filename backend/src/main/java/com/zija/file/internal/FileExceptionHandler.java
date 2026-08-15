@@ -4,6 +4,7 @@ import com.zija.shared.ZijaProblems;
 import com.zija.file.exception.FileMediaTypeUnsupportedException;
 import com.zija.file.exception.FileNameDuplicateException;
 import com.zija.file.exception.FileNotAvailableException;
+import com.zija.file.exception.FileNotInRecycleBinException;
 import com.zija.file.exception.FileSignatureMismatchException;
 import com.zija.file.exception.FileTooLargeException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,5 +45,10 @@ class FileExceptionHandler {
     @ExceptionHandler(FileNotAvailableException.class)
     ProblemDetail handleNotAvailable(HttpServletRequest request, FileNotAvailableException ex) {
         return ZijaProblems.of(request, HttpStatus.CONFLICT, "附件处于回收站，请先恢复", ErrorCodes.FILE_NOT_AVAILABLE);
+    }
+
+    @ExceptionHandler(FileNotInRecycleBinException.class)
+    ProblemDetail handleNotInRecycleBin(HttpServletRequest request, FileNotInRecycleBinException ex) {
+        return ZijaProblems.of(request, HttpStatus.CONFLICT, "附件不在回收站，无法永久删除", ErrorCodes.FILE_NOT_IN_RECYCLE_BIN);
     }
 }

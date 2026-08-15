@@ -158,8 +158,11 @@
             <el-button v-if="view === 'all'" text type="danger" data-testid="attachment-delete" @click="remove(row as Attachment)">
               删除
             </el-button>
-            <el-button v-else text type="primary" data-testid="attachment-restore" @click="restore(row as Attachment)">
+            <el-button v-if="view === 'recycled'" text type="primary" data-testid="attachment-restore" @click="restore(row as Attachment)">
               恢复
+            </el-button>
+            <el-button v-if="view === 'recycled'" text type="danger" data-testid="attachment-purge" @click="purge(row as Attachment)">
+              永久删除
             </el-button>
             <el-button text @click="download(row as Attachment)">下载</el-button>
           </div>
@@ -229,6 +232,7 @@ import {
   renameAttachment,
   deleteAttachment,
   restoreAttachment,
+  purgeAttachment,
   remountAttachmentToHousehold,
   remountAttachmentToItem,
   remountAttachmentToLot,
@@ -475,6 +479,29 @@ async function restore(row: Attachment) {
       return;
     }
     ElMessage.error(error instanceof ApiError ? error.message : "恢复失败");
+  }
+}
+
+async function purge(row: Attachment) {
+  try {
+    await ElMessageBox.confirm(
+      `永久删除「${row.name}」后不可恢复，此后生成的备份中也不再包含此文件。确定继续吗？`,
+      "永久删除附件",
+      {
+        confirmButtonText: "永久删除",
+        cancelButtonText: "取消",
+        type: "warning"
+      }
+    );
+  } catch {
+    return;
+  }
+  try {
+    await purgeAttachment(row.id);
+    ElMessage.success("已永久删除");
+    await load();
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : "永久删除失败");
   }
 }
 

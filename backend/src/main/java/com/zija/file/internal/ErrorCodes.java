@@ -12,6 +12,7 @@ public final class ErrorCodes {
     public static final String FILE_TOO_LARGE = "FILE_TOO_LARGE";
     public static final String FILE_NAME_DUPLICATE = "FILE_NAME_DUPLICATE";
     public static final String FILE_NOT_AVAILABLE = "FILE_NOT_AVAILABLE";
+    public static final String FILE_NOT_IN_RECYCLE_BIN = "FILE_NOT_IN_RECYCLE_BIN";
 
     private ErrorCodes() {
     }
