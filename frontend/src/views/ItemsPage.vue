@@ -213,6 +213,7 @@ import {
   deleteAttachment as apiDeleteAttachment,
   designateItemCover as apiDesignateItemCover,
   remountAttachmentToHousehold as apiRemountAttachmentToHousehold,
+  COVER_IMAGE_TYPES,
   type Attachment
 } from '../api/file'
 import { ApiError } from '../api/http'
@@ -381,8 +382,6 @@ const itemAttachments = ref<Attachment[]>([])
 const attachmentsLoading = ref(false)
 const attachmentInput = ref<HTMLInputElement | null>(null)
 
-const COVER_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-
 async function loadAttachments() {
   if (!selectedItem.value) return
   attachmentsLoading.value = true
@@ -427,7 +426,7 @@ async function designateCover(row: Attachment) {
   let oldCoverAction: 'KEEP' | 'RECYCLE' | undefined
   if (selectedItem.value.coverFileId) {
     try {
-      const action = await ElMessageBox.confirm(
+      await ElMessageBox.confirm(
         '指定此图为封面后，旧封面留作普通附件，还是送进回收站？',
         '更换封面',
         {
@@ -436,16 +435,11 @@ async function designateCover(row: Attachment) {
           distinguishCancelAndClose: true,
           type: 'info',
         },
-      ).then(
-        () => 'KEEP' as const,
-        (reason) => {
-          if (reason === 'cancel') return 'RECYCLE' as const
-          throw reason
-        },
       )
-      oldCoverAction = action
+      oldCoverAction = 'KEEP'
     } catch (reason) {
-      if (reason === 'close') return
+      if (reason !== 'cancel') return // close 或其它：不更换
+      oldCoverAction = 'RECYCLE'
     }
   }
   try {

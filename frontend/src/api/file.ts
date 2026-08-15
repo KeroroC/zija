@@ -27,6 +27,9 @@ export interface CoverResult extends Attachment {
   version: number
 }
 
+/** 有资格被指定为封面的图片媒体类型（与后端 FileApi.COVER_MEDIA_TYPE_* 一致）。 */
+export const COVER_IMAGE_TYPES: readonly string[] = ['image/jpeg', 'image/png', 'image/webp']
+
 export interface AttachmentListResponse {
   items: Attachment[]
   total: number

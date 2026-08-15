@@ -76,7 +76,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { uploadItemCover, removeItemCover } from '../api/file'
+import { uploadItemCover, removeItemCover, COVER_IMAGE_TYPES } from '../api/file'
 import type { CoverResult } from '../api/file'
 
 const props = defineProps<{
@@ -100,11 +100,10 @@ watch(() => props.coverUrl, (val) => {
   currentCoverUrl.value = val
 })
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
 
 function validateFile(file: File): string | null {
-  if (!ALLOWED_TYPES.includes(file.type)) {
+  if (!(COVER_IMAGE_TYPES as readonly string[]).includes(file.type)) {
     return '仅支持 JPG、PNG、WebP 格式的图片'
   }
   if (file.size > MAX_SIZE) {
@@ -179,8 +178,9 @@ async function onReplaceFileSelected(event: Event) {
   if (!file) return
 
   // 换封面时问旧封面留作普通附件还是送回收站
+  let oldCoverAction: 'KEEP' | 'RECYCLE'
   try {
-    const action = await ElMessageBox.confirm(
+    await ElMessageBox.confirm(
       '新封面将替换当前封面。旧封面留作普通附件，还是送进回收站？',
       '替换封面',
       {
@@ -189,18 +189,13 @@ async function onReplaceFileSelected(event: Event) {
         distinguishCancelAndClose: true,
         type: 'info',
       },
-    ).then(
-      () => 'KEEP' as const,
-      (reason) => {
-        if (reason === 'cancel') return 'RECYCLE' as const
-        throw reason // close：什么都不做
-      },
     )
-    await doUpload(file, action)
+    oldCoverAction = 'KEEP'
   } catch (reason) {
-    if (reason === 'close') return
-    // 其他取消路径不弹错误
+    if (reason !== 'cancel') return // close 或其它：什么都不做
+    oldCoverAction = 'RECYCLE'
   }
+  await doUpload(file, oldCoverAction)
 }
 
 async function handleRemove() {

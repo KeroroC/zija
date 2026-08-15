@@ -38,6 +38,7 @@ vi.mock("../api/inventory", () => ({
 }));
 
 vi.mock("../api/file", () => ({
+  COVER_IMAGE_TYPES: ["image/jpeg", "image/png", "image/webp"],
   listItemAttachments: vi.fn(),
   uploadItemAttachment: vi.fn(),
   renameAttachment: vi.fn(),
