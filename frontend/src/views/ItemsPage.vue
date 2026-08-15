@@ -394,6 +394,23 @@ async function loadAttachments() {
   }
 }
 
+/**
+ * 附件操作清除了当前封面时重新拉取物品：服务器会清除封面指定并递增版本号，
+ * 本地只清 coverFileId/coverUrl 会留下过期版本，后续封面/归档操作携带旧版本
+ * 触发 CATALOG_VERSION_CONFLICT（409）。刷新同时同步抽屉与列表行。
+ */
+async function refreshSelectedItem() {
+  if (!selectedItem.value) return
+  try {
+    const fresh = await apiFetchItem(selectedItem.value.id)
+    selectedItem.value = fresh
+    const idx = items.value.findIndex((it) => it.id === fresh.id)
+    if (idx >= 0) items.value[idx] = fresh
+  } catch {
+    // 静默：附件操作已成功，仅封面/版本展示可能滞后，列表刷新兜底
+  }
+}
+
 function triggerAttachmentUpload() {
   attachmentInput.value?.click()
 }
@@ -479,6 +496,10 @@ function downloadAttachment(row: Attachment) {
 async function moveAttachmentToHousehold(row: Attachment) {
   try {
     await apiRemountAttachmentToHousehold(row.id)
+    if (selectedItem.value?.coverFileId === row.id) {
+      // 改挂的是当前封面：服务器已清除封面指定并递增版本，重新拉取以刷新版本与封面
+      await refreshSelectedItem()
+    }
     ElMessage.success('已移到家庭')
     await loadAttachments()
   } catch (error) {
@@ -499,8 +520,8 @@ async function deleteAttachment(row: Attachment) {
   try {
     await apiDeleteAttachment(row.id)
     if (selectedItem.value?.coverFileId === row.id) {
-      selectedItem.value.coverFileId = null
-      selectedItem.value.coverUrl = undefined
+      // 删除的是当前封面：服务器已清除封面指定并递增版本，重新拉取以刷新版本与封面
+      await refreshSelectedItem()
     }
     ElMessage.success('已删除，可在回收站恢复')
     await loadAttachments()
