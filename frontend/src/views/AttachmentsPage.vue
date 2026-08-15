@@ -137,6 +137,24 @@
             >
               移到家庭
             </el-button>
+            <el-button
+              v-if="view === 'all' && row.mountType === 'HOUSEHOLD'"
+              text
+              type="primary"
+              data-testid="attachment-move-item"
+              @click="openMoveDialog('item', row as Attachment)"
+            >
+              移到物品
+            </el-button>
+            <el-button
+              v-if="view === 'all' && row.mountType === 'HOUSEHOLD'"
+              text
+              type="primary"
+              data-testid="attachment-move-lot"
+              @click="openMoveDialog('lot', row as Attachment)"
+            >
+              移到批次
+            </el-button>
             <el-button v-if="view === 'all'" text type="danger" data-testid="attachment-delete" @click="remove(row as Attachment)">
               删除
             </el-button>
@@ -159,11 +177,50 @@
         />
       </div>
     </div>
+
+    <!-- 改挂目标选择框 -->
+    <el-dialog
+      v-model="moveDialogVisible"
+      :title="moveType === 'item' ? '移到物品' : '移到批次'"
+      width="480px"
+      align-center
+    >
+      <p class="move-dialog-subtitle">
+        把「{{ moveTarget?.name }}」挂到所选目标上，内容与展示名保持不变。
+      </p>
+      <div v-if="moveOptions.length === 0" class="move-empty" data-testid="attachment-move-empty">
+        {{ mountNamesFailed
+          ? '目标信息加载失败，请刷新后重试。'
+          : (moveType === 'item' ? '家庭还没有可选的物品，先到物品页添加。' : '家庭还没有可选的批次，先到库存页录入批次。') }}
+      </div>
+      <el-select
+        v-else
+        v-model="moveSelection"
+        filterable
+        :placeholder="moveType === 'item' ? '搜索并选择物品' : '搜索并选择批次'"
+        style="width: 100%"
+        data-testid="attachment-move-select"
+      >
+        <el-option v-for="opt in moveOptions" :key="opt.id" :label="opt.label" :value="opt.id">
+          <span>{{ opt.label }}</span>
+          <span v-if="opt.archived" class="zj-badge zj-badge-plain move-badge">已归档</span>
+        </el-option>
+        <template #empty>
+          <span data-testid="attachment-move-empty-filter">没有匹配的目标</span>
+        </template>
+      </el-select>
+      <template #footer>
+        <el-button @click="closeMoveDialog">取消</el-button>
+        <el-button type="primary" :disabled="!moveSelection" data-testid="attachment-move-confirm" @click="confirmMove">
+          {{ moveType === 'item' ? '移到物品' : '移到批次' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Upload, Search, FolderOpened } from "@element-plus/icons-vue";
@@ -173,6 +230,8 @@ import {
   deleteAttachment,
   restoreAttachment,
   remountAttachmentToHousehold,
+  remountAttachmentToItem,
+  remountAttachmentToLot,
   uploadHouseholdAttachment,
   type Attachment
 } from "../api/file";
@@ -192,8 +251,37 @@ const filterMountType = ref("");
 const filterQ = ref("");
 const pagination = ref({ page: 1, pageSize: 20, total: 0 });
 
-const itemNames = ref<Map<string, string>>(new Map());
+interface ItemMeta {
+  name: string;
+  archived: boolean;
+}
+
+const itemMeta = ref<Map<string, ItemMeta>>(new Map());
 const lotLabels = ref<Map<string, string>>(new Map());
+
+/** 目标映射加载失败标记：改挂选择框据此区分「无目标」与「加载失败」。 */
+const mountNamesFailed = ref(false);
+
+/** 改挂目标选择框状态 */
+const moveDialogVisible = ref(false);
+const moveType = ref<"item" | "lot">("item");
+const moveTarget = ref<Attachment | null>(null);
+const moveSelection = ref("");
+
+const moveOptions = computed(() => {
+  if (moveType.value === "item") {
+    return Array.from(itemMeta.value.entries()).map(([id, meta]) => ({
+      id,
+      label: meta.name,
+      archived: meta.archived
+    }));
+  }
+  return Array.from(lotLabels.value.entries()).map(([id, label]) => ({
+    id,
+    label,
+    archived: false
+  }));
+});
 
 /** 缩略图加载失败的附件 id：回退为扩展名瓦片 */
 const failedImages = ref<Set<string>>(new Set());
@@ -256,27 +344,35 @@ async function load() {
   }
 }
 
-/** 加载物品名与批次标识，用于挂载点列展示。 */
+/** 加载物品名与批次标识，用于挂载点列展示与改挂目标选择。 */
 async function loadMountNames() {
   try {
     const [itemsResp, lotsResp] = await Promise.all([
       fetchItems({ pageSize: 1000 }),
       fetchLots({ pageSize: 1000 })
     ]);
-    itemNames.value = new Map(itemsResp.items.map((i) => [i.id, i.name]));
+    itemMeta.value = new Map(
+      itemsResp.items.map((i) => [i.id, { name: i.name, archived: i.status === "ARCHIVED" }])
+    );
     lotLabels.value = new Map(
       lotsResp.items.map((l) => [
         l.lotId,
         [l.itemName, l.lotNumber, l.serialNumber].filter(Boolean).join(" · ") || l.lotId.slice(0, 8)
       ])
     );
+    mountNamesFailed.value = false;
   } catch {
-    // 名称加载失败时回退为短 ID
+    // 名称加载失败时回退为短 ID；改挂选择框显示加载失败提示
+    mountNamesFailed.value = true;
   }
 }
 
+function isDuplicateNameError(error: unknown): boolean {
+  return error instanceof ApiError && error.errorCode === "FILE_NAME_DUPLICATE";
+}
+
 function itemName(id: string): string {
-  return itemNames.value.get(id) ?? id.slice(0, 8);
+  return itemMeta.value.get(id)?.name ?? id.slice(0, 8);
 }
 
 function lotLabel(id: string): string {
@@ -374,7 +470,7 @@ async function restore(row: Attachment) {
     ElMessage.success("已恢复");
     await load();
   } catch (error) {
-    if (error instanceof ApiError && error.errorCode === "FILE_NAME_DUPLICATE") {
+    if (isDuplicateNameError(error)) {
       ElMessage.warning("原挂载点已有一份同名附件，请先改名再恢复");
       return;
     }
@@ -388,6 +484,39 @@ async function moveToHousehold(row: Attachment) {
     ElMessage.success("已移到家庭");
     await load();
   } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : "改挂失败");
+  }
+}
+
+function openMoveDialog(type: "item" | "lot", row: Attachment) {
+  moveType.value = type;
+  moveTarget.value = row;
+  moveSelection.value = "";
+  moveDialogVisible.value = true;
+}
+
+function closeMoveDialog() {
+  moveDialogVisible.value = false;
+}
+
+async function confirmMove() {
+  const target = moveTarget.value;
+  if (!target || !moveSelection.value) return;
+  try {
+    if (moveType.value === "item") {
+      await remountAttachmentToItem(moveSelection.value, target.id);
+      ElMessage.success("已移到物品");
+    } else {
+      await remountAttachmentToLot(moveSelection.value, target.id);
+      ElMessage.success("已移到批次");
+    }
+    closeMoveDialog();
+    await load();
+  } catch (error) {
+    if (isDuplicateNameError(error)) {
+      ElMessage.warning("目标已有一份同名附件，请先改名再移动");
+      return;
+    }
     ElMessage.error(error instanceof ApiError ? error.message : "改挂失败");
   }
 }
@@ -630,5 +759,26 @@ function goToLot(lotId: string) {
 .file-pagination {
   margin-top: 16px;
   justify-content: flex-end;
+}
+
+/* ---------- 改挂目标选择框 ---------- */
+.move-dialog-subtitle {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--zj-ink-600);
+}
+
+.move-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--zj-ink-400);
+}
+
+.move-badge {
+  margin-left: 8px;
+  padding: 0 8px;
+  line-height: 16px;
+  font-size: 11px;
 }
 </style>
