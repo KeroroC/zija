@@ -1,8 +1,9 @@
-import ElementPlus, { ElMessage } from "element-plus";
+import ElementPlus, { ElMessage, ElMessageBox } from "element-plus";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchItems,
+  fetchItem,
   archiveItem,
   restoreItem,
   fetchCategories,
@@ -11,6 +12,13 @@ import {
   fetchTags,
 } from "../api/catalog";
 import { fetchStockPositions, fetchLots } from "../api/inventory";
+import {
+  listItemAttachments,
+  deleteAttachment,
+  designateItemCover,
+  remountAttachmentToHousehold,
+  type Attachment,
+} from "../api/file";
 import { useSessionStore } from "../stores/session";
 import ItemsPage from "./ItemsPage.vue";
 import { ApiError } from "../api/http";
@@ -18,6 +26,7 @@ import type { CatalogItem, Category, Brand, Unit, Tag } from "../types/catalog";
 
 vi.mock("../api/catalog", () => ({
   fetchItems: vi.fn(),
+  fetchItem: vi.fn(),
   archiveItem: vi.fn(),
   restoreItem: vi.fn(),
   fetchCategories: vi.fn(),
@@ -29,6 +38,16 @@ vi.mock("../api/catalog", () => ({
 vi.mock("../api/inventory", () => ({
   fetchStockPositions: vi.fn(),
   fetchLots: vi.fn(),
+}));
+
+vi.mock("../api/file", () => ({
+  COVER_IMAGE_TYPES: ["image/jpeg", "image/png", "image/webp"],
+  listItemAttachments: vi.fn(),
+  uploadItemAttachment: vi.fn(),
+  renameAttachment: vi.fn(),
+  deleteAttachment: vi.fn(),
+  designateItemCover: vi.fn(),
+  remountAttachmentToHousehold: vi.fn(),
 }));
 
 vi.mock("../stores/session", () => ({
@@ -43,6 +62,7 @@ vi.mock("vue-router", () => ({
 }));
 
 const fetchItemsMock = vi.mocked(fetchItems);
+const fetchItemMock = vi.mocked(fetchItem);
 const archiveItemMock = vi.mocked(archiveItem);
 const restoreItemMock = vi.mocked(restoreItem);
 const fetchCategoriesMock = vi.mocked(fetchCategories);
@@ -51,6 +71,10 @@ const fetchUnitsMock = vi.mocked(fetchUnits);
 const fetchTagsMock = vi.mocked(fetchTags);
 const fetchStockPositionsMock = vi.mocked(fetchStockPositions);
 const fetchLotsMock = vi.mocked(fetchLots);
+const listItemAttachmentsMock = vi.mocked(listItemAttachments);
+const deleteAttachmentMock = vi.mocked(deleteAttachment);
+const designateItemCoverMock = vi.mocked(designateItemCover);
+const remountAttachmentMock = vi.mocked(remountAttachmentToHousehold);
 
 const category: Category = {
   id: "cat-1",
@@ -168,6 +192,42 @@ describe("ItemsPage", () => {
       pageSize: 1,
     });
     vi.mocked(useSessionStore).mockReturnValue({ role: "OWNER" } as any);
+    listItemAttachmentsMock.mockReset().mockResolvedValue([
+      {
+        id: "f1",
+        name: "铭牌.jpg",
+        mediaType: "image/jpeg",
+        byteSize: 2048,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f1/content",
+      },
+      {
+        id: "f2",
+        name: "说明书.pdf",
+        mediaType: "application/pdf",
+        byteSize: 100,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f2/content",
+      },
+    ] as Attachment[]);
+    deleteAttachmentMock.mockReset().mockResolvedValue({} as Attachment);
+    remountAttachmentMock.mockReset().mockResolvedValue({} as Attachment);
+    fetchItemMock.mockReset().mockResolvedValue(activeItem as never);
+    designateItemCoverMock.mockReset().mockResolvedValue({
+      id: "f1",
+      name: "铭牌.jpg",
+      mediaType: "image/jpeg",
+      byteSize: 2048,
+      mountType: "ITEM",
+      mountId: "item-1",
+      createdAt: "2026-08-15T10:00:00Z",
+      url: "/api/v1/files/f1/content",
+      version: 2,
+    } as never);
   });
 
   afterEach(() => {
@@ -537,5 +597,200 @@ describe("ItemsPage", () => {
     await flushPromises();
 
     expect(pushMock).toHaveBeenCalledWith({ name: "inventory", query: { action: "inbound", itemId: "item-1" } });
+  });
+
+  // ==================== 附件与封面指定 ====================
+
+  async function openItemDetail() {
+    wrapper = mount(ItemsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+    const firstRow = wrapper.findAll("tbody tr")[0];
+    await firstRow.trigger("click");
+    await flushPromises();
+    return wrapper.findComponent({ name: "ElDrawer" });
+  }
+
+  it("shows item attachments in the detail drawer", async () => {
+    const drawer = await openItemDetail();
+    expect(listItemAttachmentsMock).toHaveBeenCalledWith("item-1");
+    expect(drawer.text()).toContain("铭牌.jpg");
+    expect(drawer.text()).toContain("说明书.pdf");
+  });
+
+  it("designates an eligible image attachment as cover", async () => {
+    const successSpy = vi.spyOn(ElMessage, "success").mockReturnValue({} as never);
+    const drawer = await openItemDetail();
+    const designButtons = drawer.findAll('[data-testid="designate-cover"]');
+    // 图片可以指定，PDF 不可以
+    expect(designButtons.length).toBe(1);
+    await designButtons[0].trigger("click");
+    await flushPromises();
+
+    expect(designateItemCoverMock).toHaveBeenCalledWith("item-1", "f1", 1, undefined);
+    expect(successSpy).toHaveBeenCalledWith("已设为封面");
+    successSpy.mockRestore();
+  });
+
+  it("asks how to dispose the old cover when replacing it", async () => {
+    fetchItemsMock.mockResolvedValue({
+      items: [
+        { ...activeItem, version: 1, coverFileId: "f1", coverUrl: "/api/v1/files/f1/content" }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    } as never);
+    listItemAttachmentsMock.mockResolvedValue([
+      {
+        id: "f1",
+        name: "旧封面.jpg",
+        mediaType: "image/jpeg",
+        byteSize: 2048,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f1/content",
+      },
+      {
+        id: "f3",
+        name: "新图.jpg",
+        mediaType: "image/jpeg",
+        byteSize: 2048,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f3/content",
+      },
+    ] as Attachment[]);
+    // ElMessageBox.confirm 的 reject 分支返回 'cancel'（送回收站）
+    vi.spyOn(ElMessageBox, "confirm").mockRejectedValue("cancel");
+
+    const drawer = await openItemDetail();
+    const designButtons = drawer.findAll('[data-testid="designate-cover"]');
+    // 旧封面显示「当前封面」，只有 f3 是「设为封面」
+    expect(designButtons.length).toBe(2);
+    const replaceBtn = designButtons.find((b) => b.text().includes("设为封面"));
+    await replaceBtn!.trigger("click");
+    await flushPromises();
+
+    expect(designateItemCoverMock).toHaveBeenCalledWith("item-1", "f3", 1, "RECYCLE");
+  });
+
+  it("deletes an attachment from the item detail drawer", async () => {
+    const drawer = await openItemDetail();
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+    const buttons = drawer.findAll(".el-button");
+    const deleteButtons = buttons.filter((b) => b.text().includes("删除"));
+    // 第二行是 PDF 附件
+    await deleteButtons[1].trigger("click");
+    await flushPromises();
+
+    expect(deleteAttachmentMock).toHaveBeenCalledWith("f2");
+  });
+
+  // ==================== 封面状态与版本刷新（stale cover state after delete） ====================
+
+  /** 带当前封面的物品与附件列表：f1 是封面图，f2 是普通 PDF。 */
+  function mockItemWithCover() {
+    fetchItemsMock.mockResolvedValue({
+      items: [
+        {
+          ...activeItem,
+          coverFileId: "f1",
+          coverUrl: "/api/v1/files/f1/content",
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    } as never);
+    listItemAttachmentsMock.mockResolvedValue([
+      {
+        id: "f1",
+        name: "封面.jpg",
+        mediaType: "image/jpeg",
+        byteSize: 2048,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f1/content",
+      },
+      {
+        id: "f2",
+        name: "说明书.pdf",
+        mediaType: "application/pdf",
+        byteSize: 100,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f2/content",
+      },
+    ] as Attachment[]);
+  }
+
+  it("refreshes the item after deleting the current cover so the drawer drops it and later actions use the new version", async () => {
+    mockItemWithCover();
+    // 服务器：删除封面附件后清除封面指定并递增版本
+    fetchItemMock.mockResolvedValue({
+      ...activeItem,
+      coverFileId: null,
+      coverUrl: undefined,
+      version: 2,
+    } as never);
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+
+    const drawer = await openItemDetail();
+    expect(drawer.find(".detail-cover").exists()).toBe(true);
+
+    // 删除当前封面附件
+    const deleteButtons = drawer.findAll(".el-button").filter((b) => b.text().includes("删除"));
+    await deleteButtons[0].trigger("click");
+    await flushPromises();
+
+    expect(deleteAttachmentMock).toHaveBeenCalledWith("f1");
+    // 抽屉刷新了物品：封面消失、版本已是最新
+    expect(fetchItemMock).toHaveBeenCalledWith("item-1");
+    expect(drawer.find(".detail-cover").exists()).toBe(false);
+
+    // 后续归档使用刷新后的版本，不再携带过期版本（否则服务器 409）
+    const archiveBtn = drawer.findAll(".el-button").find((b) => b.text().includes("归档"))!;
+    await archiveBtn.trigger("click");
+    await flushPromises();
+
+    expect(archiveItemMock).toHaveBeenCalledWith("item-1", 2);
+  });
+
+  it("refreshes the item after remounting the current cover so the drawer stops showing the stale cover", async () => {
+    mockItemWithCover();
+    // 服务器：封面附件改挂到家庭后清除封面指定并递增版本
+    fetchItemMock.mockResolvedValue({
+      ...activeItem,
+      coverFileId: null,
+      coverUrl: undefined,
+      version: 2,
+    } as never);
+
+    const drawer = await openItemDetail();
+    expect(drawer.find(".detail-cover").exists()).toBe(true);
+
+    const remountBtn = drawer.findAll(".el-button").find((b) => b.text().includes("移走"))!;
+    await remountBtn.trigger("click");
+    await flushPromises();
+
+    expect(remountAttachmentMock).toHaveBeenCalledWith("f1");
+    expect(fetchItemMock).toHaveBeenCalledWith("item-1");
+    expect(drawer.find(".detail-cover").exists()).toBe(false);
+  });
+
+  it("does not refetch the item when deleting a non-cover attachment", async () => {
+    const drawer = await openItemDetail();
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+    const deleteButtons = drawer.findAll(".el-button").filter((b) => b.text().includes("删除"));
+    await deleteButtons[1].trigger("click");
+    await flushPromises();
+
+    expect(deleteAttachmentMock).toHaveBeenCalledWith("f2");
+    // 非封面附件不影响物品版本/封面，无需额外请求
+    expect(fetchItemMock).not.toHaveBeenCalled();
   });
 });

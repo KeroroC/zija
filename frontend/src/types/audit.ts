@@ -50,6 +50,8 @@ export const ACTION_LABELS: Record<string, string> = {
   ITEM_RESTORED: "恢复物品",
   ITEM_COVER_UPLOADED: "上传封面",
   ITEM_COVER_REMOVED: "移除封面",
+  FILE_UPLOADED: "上传附件",
+  FILE_RENAMED: "附件改名",
   // 品类
   CATEGORY_CREATED: "创建品类",
   CATEGORY_UPDATED: "更新品类",

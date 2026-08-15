@@ -2,7 +2,7 @@
 
 ## 状态
 
-已批准
+已批准。依赖图中 `inventory → file` 见 [ADR-019](019-attachments-in-file-module.md)。
 
 ## 背景
 
@@ -19,7 +19,7 @@
    - `household` → `identity`, `system`
    - `catalog` → `household`, `file`
    - `location` → `household`
-   - `inventory` → `household`, `catalog`, `location`
+   - `inventory` → `household`, `catalog`, `location`, `file`（批次附件，见 ADR-019）
    - `reminder` → `household`, `catalog`, `inventory`, `system`
    - `file` → `household`, `system`
    - `reporting` → `household`, `catalog`, `location`, `inventory`, `system`

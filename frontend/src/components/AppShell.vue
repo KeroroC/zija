@@ -23,6 +23,10 @@
           <el-icon><Box /></el-icon>
           <span>物品资料</span>
         </el-menu-item>
+        <el-menu-item index="/files">
+          <el-icon><Paperclip /></el-icon>
+          <span>附件</span>
+        </el-menu-item>
         <el-menu-item index="/inventory">
           <el-icon><Files /></el-icon>
           <span>库存管理</span>
@@ -133,6 +137,7 @@ import {
   House,
   Box,
   Files,
+  Paperclip,
   Location,
   Bell,
   TrendCharts,

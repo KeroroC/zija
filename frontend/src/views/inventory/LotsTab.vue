@@ -72,11 +72,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { fetchLots } from '../../api/inventory'
 import { fetchItems } from '../../api/catalog'
 import type { LotSummary } from '../../types/inventory'
 import LotDetailDrawer from './LotDetailDrawer.vue'
+
+const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
 const rows = ref<LotSummary[]>([])
@@ -130,6 +134,19 @@ function onRowClick(row: LotSummary) {
   selectedLotId.value = row.lotId
   drawerVisible.value = true
 }
+
+// 从附件页跳转：?lotId=<id> 直接打开批次详情
+watch(
+  () => route.query.lotId,
+  (lotId) => {
+    if (typeof lotId === 'string' && lotId) {
+      selectedLotId.value = lotId
+      drawerVisible.value = true
+      router.replace({ query: { ...route.query, lotId: undefined } })
+    }
+  },
+  { immediate: true }
+)
 
 defineExpose({ loadData })
 

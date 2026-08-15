@@ -1,20 +1,25 @@
 package com.zija.file.internal;
 
-import com.zija.file.internal.exception.FileMediaTypeUnsupportedException;
-import com.zija.file.internal.exception.FileTooLargeException;
+import com.zija.file.FileApi;
+import com.zija.file.internal.event.FileEventPublisher;
+import com.zija.file.exception.FileMediaTypeUnsupportedException;
+import com.zija.file.exception.FileNameDuplicateException;
+import com.zija.file.exception.FileNotAvailableException;
+import com.zija.file.exception.FileTooLargeException;
 import com.zija.file.internal.persistence.StoredFileEntity;
 import com.zija.file.internal.persistence.StoredFileMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class FileServiceTest {
@@ -22,16 +27,30 @@ class FileServiceTest {
     private StoredFileMapper storedFileMapper;
     private FileContentInspector inspector;
     private FileStorage fileStorage;
+    private FileEventPublisher eventPublisher;
+    private SystemApiStub systemApi;
     private FileService service;
 
     private final UUID householdId = UUID.randomUUID();
+
+    /** 记录审计事件的桩（SystemApi 为接口，避免 Mockito 丢失调用记录）。 */
+    private static class SystemApiStub implements com.zija.system.SystemApi {
+        java.util.List<String> actions = new java.util.ArrayList<>();
+        @Override public void recordAudit(AuditEvent event) { actions.add(event.action()); }
+        @Override public SystemSnapshot current() { return null; }
+        @Override public AuditLogPage queryAuditLogs(UUID householdId, OffsetDateTime from, OffsetDateTime to,
+                                                     String action, UUID actorAccountId, String outcome,
+                                                     int page, int pageSize) { return null; }
+    }
 
     @BeforeEach
     void setUp() {
         storedFileMapper = mock(StoredFileMapper.class);
         inspector = mock(FileContentInspector.class);
         fileStorage = mock(FileStorage.class);
-        service = new FileService(storedFileMapper, inspector, fileStorage);
+        eventPublisher = mock(FileEventPublisher.class);
+        systemApi = new SystemApiStub();
+        service = new FileService(storedFileMapper, inspector, fileStorage, systemApi, eventPublisher);
     }
 
     @Test
@@ -41,8 +60,10 @@ class FileServiceTest {
                 "image/jpeg", "photo.jpg", "abc123hash");
         when(inspector.inspect(content, "photo.jpg", "image/jpeg")).thenReturn(inspectionResult);
         when(fileStorage.store(content, ".jpg")).thenReturn("2026/07/uuid.jpg");
+        when(storedFileMapper.selectCount(any())).thenReturn(0L);
 
-        var result = service.store(householdId, content, "photo.jpg", "image/jpeg");
+        var result = service.store(householdId, content, "photo.jpg", "image/jpeg",
+                FileApi.MOUNT_HOUSEHOLD, householdId);
 
         var order = inOrder(inspector, fileStorage, storedFileMapper);
         order.verify(inspector).inspect(content, "photo.jpg", "image/jpeg");
@@ -50,60 +71,175 @@ class FileServiceTest {
         order.verify(storedFileMapper).insert(any(StoredFileEntity.class));
 
         assertThat(result.householdId()).isEqualTo(householdId);
-        assertThat(result.storageKey()).isEqualTo("2026/07/uuid.jpg");
-        assertThat(result.originalFilename()).isEqualTo("photo.jpg");
-        assertThat(result.detectedMediaType()).isEqualTo("image/jpeg");
-        assertThat(result.sha256()).isEqualTo("abc123hash");
+        assertThat(result.name()).isEqualTo("photo.jpg");
+        assertThat(result.mediaType()).isEqualTo("image/jpeg");
+        assertThat(result.mountType()).isEqualTo("HOUSEHOLD");
+        assertThat(result.mountId()).isEqualTo(householdId);
+        assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_UPLOADED);
     }
 
     @Test
-    void retainCallsMapperIncrementReferenceCount() {
-        UUID fileId = UUID.randomUUID();
-        service.retain(householdId, fileId);
-        verify(storedFileMapper).incrementReferenceCount(fileId, householdId);
+    void storeRejectsDuplicateNameOnSameMount() {
+        byte[] content = new byte[]{1, 2, 3};
+        when(inspector.inspect(content, "photo.jpg", "image/jpeg"))
+                .thenReturn(new FileContentInspector.InspectionResult("image/jpeg", "photo.jpg", "h"));
+        when(storedFileMapper.selectCount(any())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.store(householdId, content, "photo.jpg", "image/jpeg",
+                FileApi.MOUNT_HOUSEHOLD, householdId))
+                .isInstanceOf(FileNameDuplicateException.class);
+
+        verifyNoInteractions(fileStorage);
     }
 
     @Test
-    void releaseDeletesFileAndEntityWhenReferenceCountReachesZero() throws IOException {
+    void recycleSetsDeletedAtAndPublishesEvent() {
         UUID fileId = UUID.randomUUID();
-        var decrementedEntity = updatedEntity(fileId, householdId, "2026/07/uuid.jpg", 0);
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg", null);
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
 
-        when(storedFileMapper.decrementReferenceCountIfPositive(fileId, householdId))
-                .thenReturn(decrementedEntity);
+        var result = service.recycle(householdId, fileId);
 
-        service.release(householdId, fileId);
+        assertThat(result.deletedAt()).isNotNull();
+        verify(storedFileMapper).updateById(entity);
+        verify(eventPublisher).publishRecycled(eq(householdId), eq(fileId), eq("HOUSEHOLD"), eq(householdId));
+        assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_DELETED);
+    }
 
-        verify(storedFileMapper).decrementReferenceCountIfPositive(fileId, householdId);
-        verify(fileStorage).delete("2026/07/uuid.jpg");
+    @Test
+    void recycleIsIdempotentForAlreadyRecycled() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",
+                OffsetDateTime.now());
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+
+        var result = service.recycle(householdId, fileId);
+
+        assertThat(result.deletedAt()).isNotNull();
+        verify(storedFileMapper, never()).updateById(any(StoredFileEntity.class));
+        verify(eventPublisher, never()).publishRecycled(any(), any(), any(), any());
+    }
+
+    @Test
+    void recycleSilentlySetsDeletedAtWithoutPublishingEvent() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg", null);
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+
+        var result = service.recycleSilently(householdId, fileId);
+
+        assertThat(result.deletedAt()).isNotNull();
+        verify(storedFileMapper).updateById(entity);
+        verify(eventPublisher, never()).publishRecycled(any(), any(), any(), any());
+        assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_DELETED);
+    }
+
+    @Test
+    void recycleSilentlyIsIdempotentForAlreadyRecycled() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",
+                OffsetDateTime.now());
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+
+        var result = service.recycleSilently(householdId, fileId);
+
+        assertThat(result.deletedAt()).isNotNull();
+        verify(storedFileMapper, never()).updateById(any(StoredFileEntity.class));
+        verify(eventPublisher, never()).publishRecycled(any(), any(), any(), any());
+    }
+
+    @Test
+    void restoreClearsDeletedAtAndKeepsMount() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",
+                OffsetDateTime.now());
+        entity.setMountType(FileApi.MOUNT_ITEM);
+        entity.setMountId(UUID.randomUUID());
+        entity.setNameNormalized("photo.jpg");
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+        when(storedFileMapper.selectCount(any())).thenReturn(0L);
+
+        var result = service.restore(householdId, fileId);
+
+        assertThat(result.deletedAt()).isNull();
+        assertThat(result.mountType()).isEqualTo(FileApi.MOUNT_ITEM);
+        verify(storedFileMapper).updateById(entity);
+        assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_RESTORED);
+    }
+
+    @Test
+    void restoreRejectsNameTakenAtMountPoint() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",
+                OffsetDateTime.now());
+        entity.setMountType(FileApi.MOUNT_HOUSEHOLD);
+        entity.setMountId(householdId);
+        entity.setNameNormalized("photo.jpg");
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+        when(storedFileMapper.selectCount(any())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.restore(householdId, fileId))
+                .isInstanceOf(FileNameDuplicateException.class);
+    }
+
+    @Test
+    void remountUpdatesMountAndPublishesMovedEvent() {
+        UUID fileId = UUID.randomUUID();
+        UUID oldItemId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg", null);
+        entity.setMountType(FileApi.MOUNT_ITEM);
+        entity.setMountId(oldItemId);
+        entity.setNameNormalized("photo.jpg");
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+        when(storedFileMapper.selectCount(any())).thenReturn(0L);
+
+        var result = service.remount(householdId, fileId, FileApi.MOUNT_LOT, UUID.randomUUID());
+
+        assertThat(result.mountType()).isEqualTo(FileApi.MOUNT_LOT);
+        verify(storedFileMapper).updateById(entity);
+        verify(eventPublisher).publishMoved(eq(householdId), eq(fileId),
+                eq(FileApi.MOUNT_ITEM), eq(oldItemId), eq(FileApi.MOUNT_LOT), any());
+        assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_MOVED);
+    }
+
+    @Test
+    void remountRejectsRecycledAttachment() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",
+                OffsetDateTime.now());
+        entity.setMountType(FileApi.MOUNT_HOUSEHOLD);
+        entity.setMountId(householdId);
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+
+        assertThatThrownBy(() -> service.remount(householdId, fileId, FileApi.MOUNT_ITEM, UUID.randomUUID()))
+                .isInstanceOf(FileNotAvailableException.class);
+    }
+
+    @Test
+    void purgeExpiredDeletesStorageAndRows() throws IOException {
+        UUID fileId = UUID.randomUUID();
+        var expired = entity(fileId, householdId, "2026/07/old.jpg", "old.jpg", "image/jpeg",
+                OffsetDateTime.now().minusDays(40));
+        when(storedFileMapper.findExpired(any())).thenReturn(List.of(expired));
+
+        int purged = service.purgeExpired(OffsetDateTime.now().minusDays(30));
+
+        assertThat(purged).isEqualTo(1);
+        verify(fileStorage).delete("2026/07/old.jpg");
         verify(storedFileMapper).deleteById(fileId);
     }
 
     @Test
-    void releaseDoesNotDeleteWhenReferencesRemain() throws IOException {
+    void purgeExpiredKeepsRowWhenStorageDeleteFails() throws IOException {
         UUID fileId = UUID.randomUUID();
-        var decrementedEntity = updatedEntity(fileId, householdId, "2026/07/uuid.jpg", 1);
+        var expired = entity(fileId, householdId, "2026/07/old.jpg", "old.jpg", "image/jpeg",
+                OffsetDateTime.now().minusDays(40));
+        when(storedFileMapper.findExpired(any())).thenReturn(List.of(expired));
+        doThrow(new IOException("disk")).when(fileStorage).delete(anyString());
 
-        when(storedFileMapper.decrementReferenceCountIfPositive(fileId, householdId))
-                .thenReturn(decrementedEntity);
+        int purged = service.purgeExpired(OffsetDateTime.now().minusDays(30));
 
-        service.release(householdId, fileId);
-
-        verify(storedFileMapper).decrementReferenceCountIfPositive(fileId, householdId);
-        verify(fileStorage, never()).delete(anyString());
-        verify(storedFileMapper, never()).deleteById(any(UUID.class));
-    }
-
-    @Test
-    void releaseDoesNothingWhenReferenceCountAlreadyZero() throws IOException {
-        UUID fileId = UUID.randomUUID();
-
-        when(storedFileMapper.decrementReferenceCountIfPositive(fileId, householdId))
-                .thenReturn(null); // 引用计数已为 0 或文件不存在
-
-        service.release(householdId, fileId);
-
-        verify(storedFileMapper).decrementReferenceCountIfPositive(fileId, householdId);
-        verify(fileStorage, never()).delete(anyString());
+        assertThat(purged).isZero();
         verify(storedFileMapper, never()).deleteById(any(UUID.class));
     }
 
@@ -113,7 +249,8 @@ class FileServiceTest {
         when(inspector.inspect(content, "big.jpg", "image/jpeg"))
                 .thenThrow(new FileTooLargeException(content.length));
 
-        assertThatThrownBy(() -> service.store(householdId, content, "big.jpg", "image/jpeg"))
+        assertThatThrownBy(() -> service.store(householdId, content, "big.jpg", "image/jpeg",
+                FileApi.MOUNT_HOUSEHOLD, householdId))
                 .isInstanceOf(FileTooLargeException.class);
 
         verifyNoInteractions(fileStorage);
@@ -126,19 +263,29 @@ class FileServiceTest {
         when(inspector.inspect(content, "anim.gif", null))
                 .thenThrow(new FileMediaTypeUnsupportedException("image/gif"));
 
-        assertThatThrownBy(() -> service.store(householdId, content, "anim.gif", null))
+        assertThatThrownBy(() -> service.store(householdId, content, "anim.gif", null,
+                FileApi.MOUNT_HOUSEHOLD, householdId))
                 .isInstanceOf(FileMediaTypeUnsupportedException.class);
 
         verifyNoInteractions(fileStorage);
         verifyNoInteractions(storedFileMapper);
     }
 
-    private StoredFileEntity updatedEntity(UUID id, UUID householdId, String storageKey, int refCount) {
+    private StoredFileEntity entity(UUID id, UUID householdId, String storageKey, String name,
+                                    String mediaType, OffsetDateTime deletedAt) {
         var e = new StoredFileEntity();
         e.setId(id);
         e.setHouseholdId(householdId);
         e.setStorageKey(storageKey);
-        e.setReferenceCount(refCount);
+        e.setOriginalFilename(name);
+        e.setDetectedMediaType(mediaType);
+        e.setByteSize(10L);
+        e.setSha256("hash");
+        e.setCreatedAt(OffsetDateTime.now());
+        e.setMountType(FileApi.MOUNT_HOUSEHOLD);
+        e.setMountId(householdId);
+        e.setNameNormalized(FileService.normalizeName(name));
+        e.setDeletedAt(deletedAt);
         return e;
     }
 }

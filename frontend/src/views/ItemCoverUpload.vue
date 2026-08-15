@@ -76,8 +76,8 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { uploadItemCover, removeItemCover } from '../api/file'
-import type { UploadedFile } from '../api/file'
+import { uploadItemCover, removeItemCover, COVER_IMAGE_TYPES } from '../api/file'
+import type { CoverResult } from '../api/file'
 
 const props = defineProps<{
   itemId: string
@@ -100,11 +100,10 @@ watch(() => props.coverUrl, (val) => {
   currentCoverUrl.value = val
 })
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
 
 function validateFile(file: File): string | null {
-  if (!ALLOWED_TYPES.includes(file.type)) {
+  if (!(COVER_IMAGE_TYPES as readonly string[]).includes(file.type)) {
     return '仅支持 JPG、PNG、WebP 格式的图片'
   }
   if (file.size > MAX_SIZE) {
@@ -126,7 +125,7 @@ function mapServerError(errorCode: string): string {
   }
 }
 
-async function doUpload(file: File) {
+async function doUpload(file: File, oldCoverAction?: 'KEEP' | 'RECYCLE') {
   const validationError = validateFile(file)
   if (validationError) {
     errorMsg.value = validationError
@@ -145,13 +144,13 @@ async function doUpload(file: File) {
   }, 200)
 
   try {
-    const result: UploadedFile = await uploadItemCover(props.itemId, file, props.version)
+    const result: CoverResult = await uploadItemCover(props.itemId, file, props.version, oldCoverAction)
     clearInterval(progressTimer)
     progress.value = 100
 
     currentCoverUrl.value = result.url
     emit('uploaded', { coverFileId: result.id, coverUrl: result.url, version: result.version })
-    ElMessage.success('封面上传成功')
+    ElMessage.success(oldCoverAction === 'RECYCLE' ? '已替换封面，旧封面已送回收站' : '封面上传成功')
   } catch (e: any) {
     clearInterval(progressTimer)
     errorMsg.value = mapServerError(e.errorCode || '')
@@ -172,19 +171,36 @@ function triggerReplace() {
   fileInputRef.value?.click()
 }
 
-function onReplaceFileSelected(event: Event) {
+async function onReplaceFileSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  if (file) {
-    doUpload(file)
-  }
-  // 重置 input 以允许再次选择同一文件
   input.value = ''
+  if (!file) return
+
+  // 换封面时问旧封面留作普通附件还是送回收站
+  let oldCoverAction: 'KEEP' | 'RECYCLE'
+  try {
+    await ElMessageBox.confirm(
+      '新封面将替换当前封面。旧封面留作普通附件，还是送进回收站？',
+      '替换封面',
+      {
+        confirmButtonText: '留作附件',
+        cancelButtonText: '送回收站',
+        distinguishCancelAndClose: true,
+        type: 'info',
+      },
+    )
+    oldCoverAction = 'KEEP'
+  } catch (reason) {
+    if (reason !== 'cancel') return // close 或其它：什么都不做
+    oldCoverAction = 'RECYCLE'
+  }
+  await doUpload(file, oldCoverAction)
 }
 
 async function handleRemove() {
   try {
-    await ElMessageBox.confirm('确定移除封面图片？', '确认', {
+    await ElMessageBox.confirm('确定移除封面图片？附件仍会留在物品上。', '确认', {
       confirmButtonText: '移除',
       cancelButtonText: '取消',
       type: 'warning',

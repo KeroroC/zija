@@ -1,6 +1,9 @@
 spring:
   application:
     name: zija
+  # 激活的 Profile（如 prod）；通过 ZIJA_PROFILES_ACTIVE 环境变量控制
+  profiles:
+    active: ${ZIJA_PROFILES_ACTIVE:}
   datasource:
     url: ${ZIJA_DB_URL:jdbc:postgresql://localhost:5432/zija}
     username: ${ZIJA_DB_USERNAME:zija}
@@ -26,6 +29,9 @@ spring:
       # Security 异常处理器）都以 UTF-8 输出。Servlet 规范默认 ISO-8859-1，
       # 会把中文错误文案退化成 "????"。
       force: true
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   lifecycle:
     timeout-per-shutdown-phase: 20s
   mail:
@@ -96,6 +102,18 @@ springdoc:
 zija:
   file:
     storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}
+    # 附件回收站保留期（天）：保留期满后由清除任务物理删除
+    retention-days: ${ZIJA_FILE_RETENTION_DAYS:30}
+
+  # 后台定时任务（时区与 cron；测试环境 cron 置 "-" 禁用）
+  schedule:
+    zone: ${ZIJA_SCHEDULE_ZONE:Asia/Shanghai}
+    expiry-scan: ${ZIJA_SCHEDULE_EXPIRY_SCAN:0 0 3 * * *}              # 每日临期扫描
+    mail-digest: ${ZIJA_SCHEDULE_MAIL_DIGEST:0 30 3 * * *}             # 每日邮件摘要
+    dead-letter-retry: ${ZIJA_SCHEDULE_DEAD_LETTER_RETRY:*/30 * * * * *}   # 事件死信重投
+    reporting-dead-letter-retry: ${ZIJA_SCHEDULE_REPORTING_DLQ_RETRY:*/30 * * * * *}  # 报表死信重投
+    file-purge: ${ZIJA_SCHEDULE_FILE_PURGE:0 20 3 * * *}               # 附件回收站保留期清除
+
   login:
     rate-limit:
       account-threshold: ${ZIJA_RATE_LIMIT_ACCOUNT_THRESHOLD:5}

@@ -2,6 +2,7 @@ package com.zija.inventory.internal;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zija.ZijaPrincipal;
+import com.zija.file.FileApi;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireMember;
 import com.zija.inventory.InventoryApi;
@@ -16,6 +17,7 @@ import jakarta.validation.constraints.Positive;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -73,6 +75,7 @@ class InventoryController {
     private final LotMapper lotMapper;
     private final MovementMapper movementMapper;
     private final StocktakeMapper stocktakeMapper;
+    private final com.zija.file.FileApi fileApi;
 
     InventoryController(InventoryService inventoryService,
                         InventoryApi inventoryApi,
@@ -80,7 +83,8 @@ class InventoryController {
                         StockPositionMapper stockPositionMapper,
                         LotMapper lotMapper,
                         MovementMapper movementMapper,
-                        StocktakeMapper stocktakeMapper) {
+                        StocktakeMapper stocktakeMapper,
+                        com.zija.file.FileApi fileApi) {
         this.inventoryService = inventoryService;
         this.inventoryApi = inventoryApi;
         this.householdApi = householdApi;
@@ -88,6 +92,7 @@ class InventoryController {
         this.lotMapper = lotMapper;
         this.movementMapper = movementMapper;
         this.stocktakeMapper = stocktakeMapper;
+        this.fileApi = fileApi;
     }
 
     // ==================== Read-only endpoints ====================
@@ -156,6 +161,69 @@ class InventoryController {
             throw new InventoryLotNotFoundException();
         }
         return toLotResponse(lot);
+    }
+
+    /**
+     * 列出批次上的未删除附件（购物小票等）。
+     */
+    @RequireMember
+    @GetMapping("/lots/{lotId}/attachments")
+    Map<String, Object> listLotAttachments(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID lotId
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        requireLot(member.householdId(), lotId);
+        var attachments = fileApi.listByMount(member.householdId(), FileApi.MOUNT_LOT, lotId);
+        var response = new LinkedHashMap<String, Object>();
+        response.put("items", attachments.stream().map(this::toAttachmentResponse).toList());
+        response.put("total", (long) attachments.size());
+        return response;
+    }
+
+    /**
+     * 上传附件并挂到批次上（挂到批次走本入口，校验批次属于本家庭）。
+     */
+    @RequireMember
+    @PostMapping("/lots/{lotId}/attachments")
+    Map<String, Object> uploadLotAttachment(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID lotId,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file
+    ) throws IOException {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        requireLot(member.householdId(), lotId);
+        var info = fileApi.store(
+                member.householdId(), file.getBytes(), file.getOriginalFilename(), file.getContentType(),
+                FileApi.MOUNT_LOT, lotId);
+        return toAttachmentResponse(info);
+    }
+
+    /**
+     * 把已有附件改挂到本批次。若该附件曾是某物品的封面，原物品的封面指定会被同步清除。
+     */
+    @RequireMember
+    @PatchMapping("/lots/{lotId}/attachments/{fileId}/mount")
+    Map<String, Object> mountLotAttachment(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID lotId,
+            @PathVariable UUID fileId
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        requireLot(member.householdId(), lotId);
+        var info = fileApi.remount(member.householdId(), fileId, FileApi.MOUNT_LOT, lotId);
+        if (info == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND);
+        }
+        return toAttachmentResponse(info);
+    }
+
+    private void requireLot(UUID householdId, UUID lotId) {
+        var lot = lotMapper.selectById(lotId);
+        if (lot == null || !lot.getHouseholdId().equals(householdId)) {
+            throw new InventoryLotNotFoundException();
+        }
     }
 
     /**
@@ -542,6 +610,22 @@ class InventoryController {
         response.put("page", page);
         response.put("pageSize", pageSize);
         return response;
+    }
+
+    /**
+     * 附件响应 DTO：剥离存储键，附内容 URL。
+     */
+    private Map<String, Object> toAttachmentResponse(com.zija.file.FileApi.AttachmentInfo info) {
+        var map = new LinkedHashMap<String, Object>();
+        map.put("id", info.id());
+        map.put("name", info.name());
+        map.put("mediaType", info.mediaType());
+        map.put("byteSize", info.byteSize());
+        map.put("mountType", info.mountType());
+        map.put("mountId", info.mountId());
+        map.put("createdAt", info.createdAt());
+        map.put("url", "/api/v1/files/" + info.id() + "/content");
+        return map;
     }
 
     /**

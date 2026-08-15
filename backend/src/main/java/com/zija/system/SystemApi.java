@@ -102,6 +102,13 @@ public interface SystemApi {
         String ITEM_COVER_UPLOADED = "ITEM_COVER_UPLOADED";
         String ITEM_COVER_REMOVED = "ITEM_COVER_REMOVED";
 
+        // ---------- file ----------
+        String FILE_UPLOADED = "FILE_UPLOADED";
+        String FILE_RENAMED = "FILE_RENAMED";
+        String FILE_MOVED = "FILE_MOVED";
+        String FILE_DELETED = "FILE_DELETED";
+        String FILE_RESTORED = "FILE_RESTORED";
+
         // ---------- location ----------
         String LOCATION_CREATED = "LOCATION_CREATED";
         String LOCATION_RENAMED = "LOCATION_RENAMED";

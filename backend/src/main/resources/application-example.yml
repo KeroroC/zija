@@ -8,6 +8,10 @@ spring:
   application:
     name: zija
 
+  # 激活的 Profile（如 prod）；由 ZIJA_PROFILES_ACTIVE 环境变量控制
+  profiles:
+    active: ${ZIJA_PROFILES_ACTIVE:}
+
   # ---------- 数据源 ----------
   datasource:
     url: ${ZIJA_DB_URL:jdbc:postgresql://localhost:5432/zija}
@@ -149,6 +153,7 @@ zija:
     mail-digest: ${ZIJA_SCHEDULE_MAIL_DIGEST:0 30 3 * * *}             # 每日邮件摘要
     dead-letter-retry: ${ZIJA_SCHEDULE_DEAD_LETTER_RETRY:*/30 * * * * *}   # 事件死信重投
     reporting-dead-letter-retry: ${ZIJA_SCHEDULE_REPORTING_DLQ_RETRY:*/30 * * * * *}  # 报表死信重投
+    file-purge: ${ZIJA_SCHEDULE_FILE_PURGE:0 20 3 * * *}               # 附件回收站保留期清除
 
   # SMTP 邮件（MailCapabilityConfig 直接读取 zija.smtp.*，与 spring.mail.* 二选一即可）
   smtp:

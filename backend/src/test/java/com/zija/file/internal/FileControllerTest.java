@@ -15,6 +15,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -24,6 +25,8 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -58,13 +61,14 @@ class FileControllerTest extends AbstractWebMvcSliceTest {
     }
 
     @Test
-    void uploadReturnsFileInfoForAuthenticatedUser() throws Exception {
+    void uploadReturnsAttachmentForAuthenticatedUser() throws Exception {
         UUID fileId = UUID.randomUUID();
-        var fileInfo = new FileApi.StoredFileInfo(
-                fileId, householdId, "2026/07/uuid.jpg", "photo.jpg",
-                "image/jpeg", 1024L, "abc123");
-        when(fileApi.store(eq(householdId), any(byte[].class), eq("photo.jpg"), eq("image/jpeg")))
-                .thenReturn(fileInfo);
+        var attachment = new FileApi.AttachmentInfo(
+                fileId, householdId, "photo.jpg", "image/jpeg", 1024L,
+                "HOUSEHOLD", householdId, OffsetDateTime.now(), null);
+        when(fileApi.store(eq(householdId), any(byte[].class), eq("photo.jpg"), eq("image/jpeg"),
+                eq("HOUSEHOLD"), eq(householdId)))
+                .thenReturn(attachment);
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "photo.jpg", "image/jpeg",
@@ -75,12 +79,30 @@ class FileControllerTest extends AbstractWebMvcSliceTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(fileId.toString()))
-                .andExpect(jsonPath("$.storageKey").value("2026/07/uuid.jpg"))
-                .andExpect(jsonPath("$.originalFilename").value("photo.jpg"))
-                .andExpect(jsonPath("$.detectedMediaType").value("image/jpeg"))
+                .andExpect(jsonPath("$.name").value("photo.jpg"))
+                .andExpect(jsonPath("$.mediaType").value("image/jpeg"))
                 .andExpect(jsonPath("$.byteSize").value(1024))
-                .andExpect(jsonPath("$.sha256").value("abc123"))
+                .andExpect(jsonPath("$.storageKey").doesNotExist())
                 .andExpect(jsonPath("$.url").value("/api/v1/files/" + fileId + "/content"));
+    }
+
+    @Test
+    void listPassesFiltersAndRecycledFlag() throws Exception {
+        UUID lotId = UUID.randomUUID();
+        var attachment = new FileApi.AttachmentInfo(
+                UUID.randomUUID(), householdId, "小票.jpg", "image/jpeg", 10L,
+                "LOT", lotId, OffsetDateTime.now(), OffsetDateTime.now());
+        when(fileApi.list(eq(householdId), eq(1), eq(20), eq("LOT"), eq(lotId), eq("票"), eq(true)))
+                .thenReturn(new FileApi.AttachmentPage(
+                        java.util.List.of(attachment), 1, 1, 20));
+
+        mockMvc.perform(get("/api/v1/files?mountType=LOT&mountId=" + lotId + "&q=票&recycled=true")
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].mountType").value("LOT"))
+                .andExpect(jsonPath("$.items[0].deletedAt").exists())
+                .andExpect(jsonPath("$.items[0].storageKey").doesNotExist());
     }
 
     @Test
@@ -106,5 +128,76 @@ class FileControllerTest extends AbstractWebMvcSliceTest {
         mockMvc.perform(delete("/api/v1/files/{fileId}", fileId)
                         .with(SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void deleteSendsAttachmentToRecycleBin() throws Exception {
+        UUID fileId = UUID.randomUUID();
+        var attachment = new FileApi.AttachmentInfo(
+                fileId, householdId, "photo.jpg", "image/jpeg", 10L,
+                "HOUSEHOLD", householdId, OffsetDateTime.now(), OffsetDateTime.now());
+        when(fileApi.recycle(householdId, fileId)).thenReturn(attachment);
+
+        mockMvc.perform(delete("/api/v1/files/{fileId}", fileId)
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deletedAt").exists());
+    }
+
+    @Test
+    void deleteReturns404ForMissingFile() throws Exception {
+        UUID fileId = UUID.randomUUID();
+        when(fileApi.recycle(householdId, fileId)).thenReturn(null);
+
+        mockMvc.perform(delete("/api/v1/files/{fileId}", fileId)
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void restoreReturnsAttachment() throws Exception {
+        UUID fileId = UUID.randomUUID();
+        var attachment = new FileApi.AttachmentInfo(
+                fileId, householdId, "photo.jpg", "image/jpeg", 10L,
+                "HOUSEHOLD", householdId, OffsetDateTime.now(), null);
+        when(fileApi.restore(householdId, fileId)).thenReturn(attachment);
+
+        mockMvc.perform(post("/api/v1/files/{fileId}/restore", fileId)
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(fileId.toString()))
+                .andExpect(jsonPath("$.deletedAt").doesNotExist());
+    }
+
+    @Test
+    void remountToHouseholdUpdatesMount() throws Exception {
+        UUID fileId = UUID.randomUUID();
+        var attachment = new FileApi.AttachmentInfo(
+                fileId, householdId, "小票.jpg", "image/jpeg", 10L,
+                "HOUSEHOLD", householdId, OffsetDateTime.now(), null);
+        when(fileApi.remount(eq(householdId), eq(fileId), eq("HOUSEHOLD"), eq(householdId)))
+                .thenReturn(attachment);
+
+        mockMvc.perform(patch("/api/v1/files/{fileId}/mount", fileId)
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"mountType\":\"HOUSEHOLD\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mountType").value("HOUSEHOLD"));
+    }
+
+    @Test
+    void remountToItemViaFileEndpointIsRejected() throws Exception {
+        UUID fileId = UUID.randomUUID();
+        mockMvc.perform(patch("/api/v1/files/{fileId}/mount", fileId)
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal))
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"mountType\":\"ITEM\"}"))
+                .andExpect(status().isBadRequest());
     }
 }

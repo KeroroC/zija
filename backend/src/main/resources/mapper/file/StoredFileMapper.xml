@@ -2,28 +2,17 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.zija.file.internal.persistence.StoredFileMapper">
 
-    <update id="incrementReferenceCount">
-        UPDATE stored_file
-        SET reference_count = reference_count + 1
-        WHERE id = #{id, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
-          AND household_id = #{householdId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
-    </update>
-
-    <update id="decrementReferenceCount">
-        UPDATE stored_file
-        SET reference_count = reference_count - 1
-        WHERE id = #{id, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
-          AND household_id = #{householdId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
-    </update>
-
-    <select id="decrementReferenceCountIfPositive" resultType="com.zija.file.internal.persistence.StoredFileEntity">
-        UPDATE stored_file
-        SET reference_count = reference_count - 1
-        WHERE id = #{id, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
-          AND household_id = #{householdId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
-          AND reference_count > 0
-        RETURNING id, household_id, storage_key, original_filename, declared_media_type,
-                  detected_media_type, byte_size, sha256, reference_count, created_at
+    <!--
+        清除过期附件：返回待物理删除的附件（回收站中已过保留期）。
+    -->
+    <select id="findExpired" resultType="com.zija.file.internal.persistence.StoredFileEntity">
+        SELECT id, household_id, storage_key, original_filename, declared_media_type,
+               detected_media_type, byte_size, sha256, created_at,
+               mount_type, mount_id, name_normalized, deleted_at
+        FROM stored_file
+        WHERE deleted_at IS NOT NULL
+          AND deleted_at &lt; #{before}
+        ORDER BY deleted_at ASC
     </select>
 
 </mapper>

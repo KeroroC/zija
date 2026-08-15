@@ -181,6 +181,10 @@ export async function putJson<T>(path: string, body?: unknown): Promise<T> {
   return coreRequest<T>("PUT", path, body);
 }
 
+export async function patchJson<T>(path: string, body?: unknown): Promise<T> {
+  return coreRequest<T>("PATCH", path, body);
+}
+
 export async function deleteJson<T>(path: string, body?: unknown): Promise<T> {
   return coreRequest<T>("DELETE", path, body);
 }

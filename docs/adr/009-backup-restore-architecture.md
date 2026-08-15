@@ -4,7 +4,7 @@
 
 决定：
 
-- **备份** 由宿主机运维脚本（`scripts/backup.sh`，经 `make backup-test` 调用）触发，不经应用、不动 app 镜像。`pg_dump` 在 `postgres` 容器内执行；封面文件卷由一次性容器镜像拷出。产物是一个自包含目录 `backup_<id>_<timestamp>/`，内含 `db.dump`、`files/`、`manifest.json`。`manifest.json` 记录 schema 基线（`flyway_schema_history` 最大版本）、应用版本（`ZIJA_VERSION`）、备份时间、`db.dump` 的 SHA256、每个文件的 `storage_key` + SHA256 + 字节数与孤儿计数。备份批次标识就是目录名。
+- **备份** 由宿主机运维脚本（`scripts/backup.sh`，经 `make backup-test` 调用）触发，不经应用、不动 app 镜像。`pg_dump` 在 `postgres` 容器内执行；文件卷（含回收站中尚未物理删除的附件）由一次性容器镜像拷出。产物是一个自包含目录 `backup_<id>_<timestamp>/`，内含 `db.dump`、`files/`、`manifest.json`。`manifest.json` 记录 schema 基线（`flyway_schema_history` 最大版本）、应用版本（`ZIJA_VERSION`）、备份时间、`db.dump` 的 SHA256、每个文件的 `storage_key` + SHA256 + 字节数与孤儿计数。备份批次标识就是目录名。
 - **恢复** 由宿主机运维脚本（`scripts/restore.sh`，经 `make restore-smoke` 调用）触达一套空环境（空 `postgres-data` 卷、空 `zija-files` 卷）的 Compose 栈：导入 `db.dump` → 拷入 `files/` → 启动 app（Flyway 跑迁移且 v1 下应为 no-op）→ 用备份中的所有者身份依次调三个 REST 端点断言：`/api/v1/system/info` 的版本 == manifest 应用版本、新增的 OWNER-only `GET /api/v1/files/integrity-report` 的 `missing`/`hashMismatch` == 0、既有库存 `checkConsistency` 端点的 `discrepancies` == 0。
 - **文件完整性检查由 `file` 模块承担**：新增 OWNER-only `GET /api/v1/files/integrity-report` 遍历所有 file 行核对卷上文件存在且 SHA256 匹配，返回 `{checked, missing, hashMismatch, orphanCount}`。孤儿文件只告警不计入失败。`system` 模块不新增聚合端点、不引入对业务模块的依赖（守 spec §8.4）。
 

@@ -5,6 +5,8 @@ import com.zija.file.FileApi;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireOwner;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -12,19 +14,23 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * 文件管理控制器，提供文件的上传、下载和删除 REST API。
- *
- * <p>文件以家庭为单位隔离存储，通过内容寻址（SHA-256）实现去重。</p>
+ * 附件控制器，提供附件的上传、列表、改名、改挂、下载、删除与恢复 REST API。
  *
  * <p>端点概览：</p>
  * <ul>
- *   <li>{@code POST   /api/v1/files}               — 上传文件</li>
- *   <li>{@code GET    /api/v1/files/{fileId}/content} — 下载/预览文件内容</li>
- *   <li>{@code DELETE /api/v1/files/{fileId}}        — 删除文件</li>
+ *   <li>{@code GET    /api/v1/files}               — 分页列出附件（可筛挂载点/名字，recycled=true 列回收站）</li>
+ *   <li>{@code POST   /api/v1/files}               — 上传家庭附件</li>
+ *   <li>{@code PATCH  /api/v1/files/{fileId}}       — 改名</li>
+ *   <li>{@code PATCH  /api/v1/files/{fileId}/mount} — 改挂到家庭</li>
+ *   <li>{@code GET    /api/v1/files/{fileId}/content} — 下载/预览内容（含回收站内）</li>
+ *   <li>{@code DELETE /api/v1/files/{fileId}}        — 删除（进回收站）</li>
+ *   <li>{@code POST   /api/v1/files/{fileId}/restore} — 恢复</li>
  *   <li>{@code GET    /api/v1/files/integrity-report} — 文件完整性报告（仅 Owner）</li>
  * </ul>
  */
@@ -46,9 +52,76 @@ class FileController {
     }
 
     /**
-     * 上传文件，自动检测媒体类型并通过 SHA-256 去重。
+     * 分页列出当前家庭的附件。默认未删除；{@code recycled=true} 列出回收站。
+     * 可按挂载类型、挂载 UUID、名字子串筛选。列表不暴露存储键。
+     */
+    @GetMapping
+    Map<String, Object> list(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String mountType,
+            @RequestParam(required = false) UUID mountId,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "false") boolean recycled
+    ) {
+        if (pageSize > 100) pageSize = 100;
+        if (pageSize < 1) pageSize = 20;
+        if (page < 1) page = 1;
+
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var result = fileApi.list(member.householdId(), page, pageSize, mountType, mountId, q, recycled);
+        List<Map<String, Object>> items = result.items().stream()
+                .map(this::toListItem)
+                .toList();
+        var response = new LinkedHashMap<String, Object>();
+        response.put("items", items);
+        response.put("total", result.total());
+        response.put("page", result.page());
+        response.put("pageSize", result.pageSize());
+        return response;
+    }
+
+    @PatchMapping("/{fileId}")
+    Map<String, Object> rename(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID fileId,
+            @Valid @RequestBody RenameRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var info = fileApi.rename(member.householdId(), fileId, request.name());
+        if (info == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return toListItem(info);
+    }
+
+    /**
+     * 改挂到家庭（当前成员的家庭）。改挂到物品 / 批次分别走 catalog / inventory 入口。
+     */
+    @PatchMapping("/{fileId}/mount")
+    Map<String, Object> remountToHousehold(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID fileId,
+            @RequestBody(required = false) RemountRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        if (request != null && request.mountType() != null
+                && !FileApi.MOUNT_HOUSEHOLD.equals(request.mountType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "挂到物品/批次请走对应模块入口");
+        }
+        var info = fileApi.remount(
+                member.householdId(), fileId, FileApi.MOUNT_HOUSEHOLD, member.householdId());
+        if (info == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return toListItem(info);
+    }
+
+    /**
+     * 上传家庭附件（挂载点 = 当前家庭）。
      *
-     * @return 文件元信息（id、storageKey、文件名、媒体类型、大小、SHA-256、访问 URL）
+     * @return 附件元信息（id、名字、媒体类型、大小、挂载点、访问 URL）
      */
     @PostMapping
     Map<String, Object> upload(
@@ -60,24 +133,15 @@ class FileController {
                 member.householdId(),
                 file.getBytes(),
                 file.getOriginalFilename(),
-                file.getContentType()
+                file.getContentType(),
+                FileApi.MOUNT_HOUSEHOLD,
+                member.householdId()
         );
-        return Map.of(
-                "id", info.id(),
-                "storageKey", info.storageKey(),
-                "originalFilename", info.originalFilename(),
-                "detectedMediaType", info.detectedMediaType(),
-                "byteSize", info.byteSize(),
-                "sha256", info.sha256(),
-                "url", "/api/v1/files/" + info.id() + "/content"
-        );
+        return toListItem(info);
     }
 
     /**
-     * 下载或预览文件内容，以 inline 方式返回。
-     *
-     * @param fileId 文件 ID
-     * @throws ResponseStatusException 文件不存在时返回 404
+     * 下载或预览附件内容，以 inline 方式返回。回收站内未物理删除的附件同样可下载。
      */
     @GetMapping("/{fileId}/content")
     void download(
@@ -98,27 +162,65 @@ class FileController {
     }
 
     /**
-     * 释放文件引用。当引用计数归零时文件将被实际删除。
-     *
-     * @param fileId 文件 ID
+     * 删除附件：进入回收站（保留期内可恢复），不物理删除。
      */
     @DeleteMapping("/{fileId}")
-    void remove(
+    Map<String, Object> remove(
             @AuthenticationPrincipal ZijaPrincipal principal,
             @PathVariable UUID fileId
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
-        fileApi.release(member.householdId(), fileId);
+        var info = fileApi.recycle(member.householdId(), fileId);
+        if (info == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return toListItem(info);
+    }
+
+    /**
+     * 恢复回收站附件：回到删除前的挂载点，作为普通附件。
+     */
+    @PostMapping("/{fileId}/restore")
+    Map<String, Object> restore(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID fileId
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var info = fileApi.restore(member.householdId(), fileId);
+        if (info == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return toListItem(info);
     }
 
     /**
      * 执行文件完整性校验，返回校验报告。仅家庭所有者可调用。
-     *
-     * @return 文件完整性报告
      */
     @RequireOwner
     @GetMapping("/integrity-report")
     FileIntegrityReport integrityReport() {
         return fileIntegrityService.check();
+    }
+
+    private Map<String, Object> toListItem(FileApi.AttachmentInfo info) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", info.id());
+        item.put("name", info.name());
+        item.put("mediaType", info.mediaType());
+        item.put("byteSize", info.byteSize());
+        item.put("mountType", info.mountType());
+        item.put("mountId", info.mountId());
+        item.put("createdAt", info.createdAt());
+        if (info.deletedAt() != null) {
+            item.put("deletedAt", info.deletedAt());
+        }
+        item.put("url", "/api/v1/files/" + info.id() + "/content");
+        return item;
+    }
+
+    record RenameRequest(@NotBlank String name) {
+    }
+
+    record RemountRequest(String mountType) {
     }
 }

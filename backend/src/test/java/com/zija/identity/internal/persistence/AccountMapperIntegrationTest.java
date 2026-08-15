@@ -1,10 +1,13 @@
 package com.zija.identity.internal.persistence;
 
+import com.zija.TestDb;
 import com.zija.ZijaSessionInvalidator;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,8 +34,16 @@ class AccountMapperIntegrationTest {
     @Autowired
     AccountMapper mapper;
 
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
     @MockitoBean
     ZijaSessionInvalidator sessionInvalidator;
+
+    @BeforeEach
+    void cleanTables() {
+        TestDb.cleanAll(jdbcTemplate);
+    }
 
     @Test
     @Transactional
