@@ -29,6 +29,9 @@ spring:
       # Security 异常处理器）都以 UTF-8 输出。Servlet 规范默认 ISO-8859-1，
       # 会把中文错误文案退化成 "????"。
       force: true
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   lifecycle:
     timeout-per-shutdown-phase: 20s
   mail:

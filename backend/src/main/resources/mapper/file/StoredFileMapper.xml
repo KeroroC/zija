@@ -23,7 +23,8 @@
           AND household_id = #{householdId, typeHandler=com.zija.system.internal.persistence.PostgresUuidTypeHandler}
           AND reference_count > 0
         RETURNING id, household_id, storage_key, original_filename, declared_media_type,
-                  detected_media_type, byte_size, sha256, reference_count, created_at
+                  detected_media_type, byte_size, sha256, reference_count, created_at,
+                  mount_type, mount_id, name_normalized
     </select>
 
 </mapper>

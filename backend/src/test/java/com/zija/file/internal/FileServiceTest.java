@@ -31,7 +31,7 @@ class FileServiceTest {
         storedFileMapper = mock(StoredFileMapper.class);
         inspector = mock(FileContentInspector.class);
         fileStorage = mock(FileStorage.class);
-        service = new FileService(storedFileMapper, inspector, fileStorage);
+        service = new FileService(storedFileMapper, inspector, fileStorage, mock(com.zija.system.SystemApi.class));
     }
 
     @Test

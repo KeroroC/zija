@@ -5,6 +5,8 @@ import com.zija.file.FileApi;
 import com.zija.household.HouseholdApi;
 import com.zija.household.RequireOwner;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -12,6 +14,8 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -22,7 +26,9 @@ import java.util.UUID;
  *
  * <p>端点概览：</p>
  * <ul>
+ *   <li>{@code GET    /api/v1/files}               — 分页列出附件</li>
  *   <li>{@code POST   /api/v1/files}               — 上传文件</li>
+ *   <li>{@code PATCH  /api/v1/files/{fileId}}       — 改名</li>
  *   <li>{@code GET    /api/v1/files/{fileId}/content} — 下载/预览文件内容</li>
  *   <li>{@code DELETE /api/v1/files/{fileId}}        — 删除文件</li>
  *   <li>{@code GET    /api/v1/files/integrity-report} — 文件完整性报告（仅 Owner）</li>
@@ -46,6 +52,46 @@ class FileController {
     }
 
     /**
+     * 分页列出当前家庭的附件。列表不暴露存储键。
+     */
+    @GetMapping
+    Map<String, Object> list(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize
+    ) {
+        if (pageSize > 100) pageSize = 100;
+        if (pageSize < 1) pageSize = 20;
+        if (page < 1) page = 1;
+
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var result = fileApi.list(member.householdId(), page, pageSize);
+        List<Map<String, Object>> items = result.items().stream()
+                .map(this::toListItem)
+                .toList();
+        var response = new LinkedHashMap<String, Object>();
+        response.put("items", items);
+        response.put("total", result.total());
+        response.put("page", result.page());
+        response.put("pageSize", result.pageSize());
+        return response;
+    }
+
+    @PatchMapping("/{fileId}")
+    Map<String, Object> rename(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @PathVariable UUID fileId,
+            @Valid @RequestBody RenameRequest request
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        var info = fileApi.rename(member.householdId(), fileId, request.name());
+        if (info == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return toListItem(info);
+    }
+
+    /**
      * 上传文件，自动检测媒体类型并通过 SHA-256 去重。
      *
      * @return 文件元信息（id、storageKey、文件名、媒体类型、大小、SHA-256、访问 URL）
@@ -60,7 +106,9 @@ class FileController {
                 member.householdId(),
                 file.getBytes(),
                 file.getOriginalFilename(),
-                file.getContentType()
+                file.getContentType(),
+                "HOUSEHOLD",
+                member.householdId()
         );
         return Map.of(
                 "id", info.id(),
@@ -120,5 +168,21 @@ class FileController {
     @GetMapping("/integrity-report")
     FileIntegrityReport integrityReport() {
         return fileIntegrityService.check();
+    }
+
+    private Map<String, Object> toListItem(FileApi.AttachmentInfo info) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", info.id());
+        item.put("name", info.name());
+        item.put("mediaType", info.mediaType());
+        item.put("byteSize", info.byteSize());
+        item.put("mountType", info.mountType());
+        item.put("mountId", info.mountId());
+        item.put("createdAt", info.createdAt());
+        item.put("url", "/api/v1/files/" + info.id() + "/content");
+        return item;
+    }
+
+    record RenameRequest(@NotBlank String name) {
     }
 }

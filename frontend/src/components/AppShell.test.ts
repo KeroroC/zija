@@ -82,6 +82,7 @@ describe("AppShell", () => {
     expect(wrapper.text()).toContain("成员管理");
     expect(wrapper.text()).toContain("个人资料");
     expect(wrapper.text()).toContain("物品资料");
+    expect(wrapper.text()).toContain("附件");
     expect(wrapper.text()).toContain("库存管理");
     expect(wrapper.text()).toContain("位置管理");
     expect(wrapper.text()).toContain("提醒中心");

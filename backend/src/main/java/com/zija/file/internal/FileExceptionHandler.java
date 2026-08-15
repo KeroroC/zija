@@ -2,6 +2,7 @@ package com.zija.file.internal;
 
 import com.zija.shared.ZijaProblems;
 import com.zija.file.internal.exception.FileMediaTypeUnsupportedException;
+import com.zija.file.internal.exception.FileNameDuplicateException;
 import com.zija.file.internal.exception.FileSignatureMismatchException;
 import com.zija.file.internal.exception.FileTooLargeException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,5 +27,10 @@ class FileExceptionHandler {
     @ExceptionHandler(FileSignatureMismatchException.class)
     ProblemDetail handleMismatch(HttpServletRequest request, FileSignatureMismatchException ex) {
         return ZijaProblems.of(request, HttpStatus.UNPROCESSABLE_CONTENT, "文件签名不匹配", ErrorCodes.FILE_SIGNATURE_MISMATCH);
+    }
+
+    @ExceptionHandler(FileNameDuplicateException.class)
+    ProblemDetail handleDuplicateName(HttpServletRequest request, FileNameDuplicateException ex) {
+        return ZijaProblems.of(request, HttpStatus.CONFLICT, "同一挂载点下附件名字不可重复", ErrorCodes.FILE_NAME_DUPLICATE);
     }
 }

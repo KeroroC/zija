@@ -20,6 +20,9 @@ public class StoredFileEntity {
     private String sha256;
     private Integer referenceCount;
     private OffsetDateTime createdAt;
+    private String mountType;
+    private UUID mountId;
+    private String nameNormalized;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -41,4 +44,10 @@ public class StoredFileEntity {
     public void setReferenceCount(Integer referenceCount) { this.referenceCount = referenceCount; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
+    public String getMountType() { return mountType; }
+    public void setMountType(String mountType) { this.mountType = mountType; }
+    public UUID getMountId() { return mountId; }
+    public void setMountId(UUID mountId) { this.mountId = mountId; }
+    public String getNameNormalized() { return nameNormalized; }
+    public void setNameNormalized(String nameNormalized) { this.nameNormalized = nameNormalized; }
 }

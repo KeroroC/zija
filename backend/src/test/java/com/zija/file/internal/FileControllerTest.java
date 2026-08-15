@@ -63,7 +63,8 @@ class FileControllerTest extends AbstractWebMvcSliceTest {
         var fileInfo = new FileApi.StoredFileInfo(
                 fileId, householdId, "2026/07/uuid.jpg", "photo.jpg",
                 "image/jpeg", 1024L, "abc123");
-        when(fileApi.store(eq(householdId), any(byte[].class), eq("photo.jpg"), eq("image/jpeg")))
+        when(fileApi.store(eq(householdId), any(byte[].class), eq("photo.jpg"), eq("image/jpeg"),
+                eq("HOUSEHOLD"), eq(householdId)))
                 .thenReturn(fileInfo);
 
         MockMultipartFile file = new MockMultipartFile(

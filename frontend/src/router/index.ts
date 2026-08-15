@@ -16,6 +16,7 @@ export const router = createRouter({
     { path: "/profile", name: "profile", component: () => import("../views/ProfilePage.vue"), meta: { title: "个人资料" } },
     { path: "/owner-recovery", name: "owner-recovery", component: () => import("../views/OwnerRecoveryPage.vue"), meta: { title: "重置密码" } },
     { path: "/items", name: "items", component: () => import("../views/ItemsPage.vue"), meta: { title: "物品资料" } },
+    { path: "/files", name: "files", component: () => import("../views/AttachmentsPage.vue"), meta: { title: "附件" } },
     { path: "/locations", name: "locations", component: () => import("../views/LocationsPage.vue"), meta: { title: "位置管理" } },
     { path: "/settings", redirect: "/settings/catalog" },
     { path: "/settings/catalog", name: "catalog-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "目录设置" } },
