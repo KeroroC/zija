@@ -24,31 +24,54 @@
     </div>
 
     <!-- 时间线 -->
-    <div v-loading="loading" class="tl-track">
-      <div v-for="(group, gi) in groupedLogs" :key="gi" class="tl-day-group">
-        <div class="tl-day-label">
-          <span class="tl-day-dot" />
-          <span class="tl-day-text">{{ group.label }}</span>
-        </div>
-        <div v-for="log in group.items" :key="log.id" class="tl-event" @click="openDrawer(log)">
-          <div class="tl-line" />
-          <div class="tl-node" :class="log.outcome === 'SUCCESS' ? 'node-success' : 'node-failure'" />
-          <div class="tl-card" :class="{ 'card-failure': log.outcome === 'FAILURE' }">
-            <div class="tl-card-head">
-              <span class="tl-action" :class="'tl-' + log.outcome.toLowerCase()">{{ actionLabel(log.action) }}</span>
-              <span class="tl-meta">
-                <span class="tl-actor">{{ log.actor?.displayName ?? log.actor?.username ?? "系统" }}</span>
-                <span v-if="log.subject" class="tl-arrow">→</span>
-                <span v-if="log.subject" class="tl-subject">{{ log.subject?.displayName ?? log.subject?.username }}</span>
-              </span>
-              <span v-if="log.ipAddress" class="tl-ip">{{ log.ipAddress }}</span>
-              <span v-if="log.detail && Object.keys(log.detail).length" class="tl-detail">{{ formatDetail(log.detail) }}</span>
-              <span class="tl-time">{{ formatTime(log.createdAt) }}</span>
-            </div>
+    <div class="tl-track">
+      <!-- 骨架：贴合时间线结构 -->
+      <div v-if="loading" class="tl-skeleton">
+        <div v-for="i in 4" :key="i" class="tl-skeleton-row">
+          <el-skeleton-item variant="text" class="skeleton-day" />
+          <div v-for="j in 2" :key="j" class="tl-skeleton-event">
+            <el-skeleton-item variant="rect" class="skeleton-line" />
+            <el-skeleton-item variant="rect" class="skeleton-card" />
           </div>
         </div>
       </div>
-      <div v-if="!loading && logs.length === 0" class="tl-empty">暂无审计记录</div>
+
+      <template v-else-if="logs.length">
+        <div v-for="(group, gi) in groupedLogs" :key="gi" class="tl-day-group">
+          <div class="tl-day-label">
+            <span class="tl-day-dot" />
+            <span class="tl-day-text">{{ group.label }}</span>
+            <span class="tl-day-count zj-num">{{ group.items.length }}</span>
+          </div>
+          <div v-for="log in group.items" :key="log.id" class="tl-event" @click="openDrawer(log)">
+            <div class="tl-line" />
+            <div class="tl-node" :class="log.outcome === 'SUCCESS' ? 'node-success' : 'node-failure'" />
+            <div class="tl-card" :class="{ 'card-failure': log.outcome === 'FAILURE' }">
+              <div class="tl-card-head">
+                <span class="tl-action" :class="'tl-' + log.outcome.toLowerCase()">{{ actionLabel(log.action) }}</span>
+                <span class="tl-meta">
+                  <span class="tl-actor">{{ log.actor?.displayName ?? log.actor?.username ?? "系统" }}</span>
+                  <span v-if="log.subject" class="tl-arrow">→</span>
+                  <span v-if="log.subject" class="tl-subject">{{ log.subject?.displayName ?? log.subject?.username }}</span>
+                </span>
+                <span class="tl-time">{{ formatTime(log.createdAt) }}</span>
+              </div>
+              <div class="tl-card-sub">
+                <span v-if="log.ipAddress" class="tl-ip">{{ log.ipAddress }}</span>
+                <span v-if="log.detail && Object.keys(log.detail).length" class="tl-detail">{{ formatDetail(log.detail) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <div v-else class="tl-empty">
+        <div class="tl-empty-icon" aria-hidden="true">
+          <el-icon><Document /></el-icon>
+        </div>
+        <p class="tl-empty-title">暂无审计记录</p>
+        <p class="tl-empty-hint">家庭成员的操作会记录在这里，调整筛选条件后再看看。</p>
+      </div>
     </div>
 
     <!-- 分页 -->
@@ -67,10 +90,13 @@
     <!-- 详情抽屉 -->
     <el-drawer v-model="drawerVisible" title="审计详情" size="480px">
       <template v-if="selectedLog">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="时间">{{ formatTime(selectedLog.createdAt) }}</el-descriptions-item>
+        <el-descriptions :column="1" class="detail-descriptions">
+          <el-descriptions-item label="时间">
+            <span class="zj-num">{{ formatTime(selectedLog.createdAt) }}</span>
+          </el-descriptions-item>
           <el-descriptions-item label="操作类型">{{ actionLabel(selectedLog.action) }}</el-descriptions-item>
           <el-descriptions-item label="结果">
+            <span class="zj-dot" :class="selectedLog.outcome === 'SUCCESS' ? 'zj-dot-pine' : 'zj-dot-danger'"></span>
             {{ selectedLog.outcome === "SUCCESS" ? "成功" : "失败" }}
           </el-descriptions-item>
           <el-descriptions-item label="操作人">
@@ -79,12 +105,14 @@
           <el-descriptions-item label="目标成员">
             {{ selectedLog.subject?.displayName ?? selectedLog.subject?.username ?? "—" }}
           </el-descriptions-item>
-          <el-descriptions-item label="IP 地址">{{ selectedLog.ipAddress ?? "—" }}</el-descriptions-item>
+          <el-descriptions-item label="IP 地址">
+            <span class="mono">{{ selectedLog.ipAddress ?? "—" }}</span>
+          </el-descriptions-item>
           <el-descriptions-item label="请求 ID">
             <span class="mono">{{ selectedLog.requestId ?? "—" }}</span>
           </el-descriptions-item>
         </el-descriptions>
-        <div v-if="selectedLog.detail" class="detail-section">
+        <div v-if="selectedLog.detail && Object.keys(selectedLog.detail).length" class="detail-section">
           <h4>详细信息</h4>
           <pre class="detail-json">{{ JSON.stringify(selectedLog.detail, null, 2) }}</pre>
         </div>
@@ -96,6 +124,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
 import { ElMessage } from "element-plus";
+import { Document } from "@element-plus/icons-vue";
 import { fetchAuditLogs } from "../api/audit";
 import { ACTION_LABELS, ACTION_OPTIONS, OUTCOME_OPTIONS } from "../types/audit";
 import type { AuditLogItem } from "../types/audit";
@@ -222,7 +251,16 @@ onMounted(loadData);
 
 .tl-day-text {
   font-family: var(--zj-serif);
-  font-size: 15px; font-weight: 600; color: var(--zj-ink-900);
+  font-size: 16px; font-weight: 600; color: var(--zj-ink-900);
+}
+
+.tl-day-count {
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--zj-pine-50);
+  color: var(--zj-pine-600);
+  font-size: 12px;
+  line-height: 20px;
 }
 
 .tl-event {
@@ -280,26 +318,77 @@ onMounted(loadData);
 .tl-arrow { margin: 0 4px; color: var(--zj-ink-400); }
 .tl-subject { color: var(--zj-ink-600); }
 
-.tl-ip {
-  font-size: 12px; color: var(--zj-ink-400);
-  font-family: var(--zj-mono);
-}
-
-.tl-detail {
-  font-size: 12.5px; color: var(--zj-ink-400);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  max-width: 320px;
-}
-
 .tl-time {
   margin-left: auto; font-size: 12.5px; color: var(--zj-ink-400);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
+.tl-card-sub {
+  display: flex; align-items: baseline; gap: 14px;
+  margin-top: 6px; min-width: 0;
+}
+
+.tl-ip {
+  font-size: 12px; color: var(--zj-ink-400);
+  font-family: var(--zj-mono);
+  flex-shrink: 0;
+}
+
+.tl-detail {
+  font-size: 12.5px; color: var(--zj-ink-400);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;
+}
+
+/* ---------- 骨架 ---------- */
+.tl-skeleton :deep(.el-skeleton__item) {
+  background: var(--zj-surface-sunken);
+}
+
+.tl-skeleton-row {
+  margin-bottom: 16px;
+}
+
+.tl-skeleton :deep(.skeleton-day) {
+  width: 120px; height: 20px; margin-bottom: 10px;
+}
+
+.tl-skeleton-event {
+  display: flex; align-items: flex-start; margin-bottom: 8px;
+}
+
+.tl-skeleton :deep(.skeleton-line) {
+  width: 1px; height: 48px; margin: 8px 20px 0 0;
+}
+
+.tl-skeleton :deep(.skeleton-card) {
+  flex: 1; height: 60px; border-radius: var(--zj-radius-md);
+}
+
+/* ---------- 空状态 ---------- */
 .tl-empty {
-  text-align: center; padding: 44px 0;
-  font-family: var(--zj-serif); font-size: 16px;
+  text-align: center; padding: 48px 0 56px;
+}
+
+.tl-empty-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px; margin: 0 auto 16px;
+  border-radius: var(--zj-radius-md);
+  background: var(--zj-surface-sunken);
+  color: var(--zj-ink-300);
+}
+
+.tl-empty-icon .el-icon { font-size: 24px; }
+
+.tl-empty-title {
+  margin: 0;
+  font-family: var(--zj-serif); font-size: 18px; font-weight: 600;
+  color: var(--zj-ink-900);
+}
+
+.tl-empty-hint {
+  margin: 8px 0 0; font-size: 13px;
   color: var(--zj-ink-400);
 }
 
@@ -316,4 +405,27 @@ onMounted(loadData);
   overflow-x: auto; white-space: pre-wrap; word-break: break-all;
 }
 .mono { font-family: var(--zj-mono); font-size: 12px; }
+
+/* 描述列表去竖边框，仅保留行分隔发丝线 */
+.detail-descriptions :deep(.el-descriptions__body),
+.detail-descriptions :deep(.el-descriptions__table) {
+  border: 0;
+}
+
+.detail-descriptions :deep(.el-descriptions__cell) {
+  border: 0;
+  padding: 10px 0;
+}
+
+.detail-descriptions :deep(.el-descriptions__cell:not(:last-child)) {
+  border-bottom: 1px solid var(--zj-line);
+}
+
+.detail-descriptions :deep(.el-descriptions__label) {
+  width: 72px;
+  color: var(--zj-ink-400);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
 </style>
