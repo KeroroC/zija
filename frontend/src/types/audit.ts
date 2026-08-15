@@ -87,6 +87,8 @@ export const ACTION_LABELS: Record<string, string> = {
   INVENTORY_REVERSAL: "撤销流水",
   INVENTORY_STOCKTAKE_CANCEL: "取消盘点",
   INVENTORY_STOCKTAKE_CONFIRM: "确认盘点",
+  // 报表
+  EXPORT_PERFORMED: "导出报表",
 };
 
 export const ACTION_OPTIONS = Object.entries(ACTION_LABELS).map(([value, label]) => ({

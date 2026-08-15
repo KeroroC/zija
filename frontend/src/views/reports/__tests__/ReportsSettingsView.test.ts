@@ -115,9 +115,9 @@ describe("ReportsSettingsView", () => {
     wrapper = mountV();
     await flushPromises();
 
-    expect(wrapper.text()).toContain("EXPORT_PERFORMED");
-    expect(wrapper.text()).toContain("SUCCESS");
-    expect(wrapper.text()).toContain("FAILURE");
+    expect(wrapper.text()).toContain("导出报表");
+    expect(wrapper.text()).toContain("成功");
+    expect(wrapper.text()).toContain("失败");
   });
 
   it("rebuild button exists with danger type", async () => {
