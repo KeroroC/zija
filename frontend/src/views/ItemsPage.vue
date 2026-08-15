@@ -124,8 +124,8 @@
         <p class="detail-row">标签：<template v-if="selectedItem.tagIds?.length">
           <el-tag v-for="tid in selectedItem.tagIds" :key="tid" size="small" effect="plain" class="tag-item">{{ tagMap[tid] || tid }}</el-tag>
         </template><template v-else>—</template></p>
-        <p v-if="selectedItem.expiryReminderMode">临期提醒：{{ selectedItem.expiryReminderMode }}{{ selectedItem.expiryReminderDays?.length ? `（${selectedItem.expiryReminderDays.join(', ')} 天）` : '' }}</p>
-        <p v-if="selectedItem.lowStockMode">低库存：{{ selectedItem.lowStockMode }}{{ selectedItem.lowStockThreshold ? `（阈值：${selectedItem.lowStockThreshold}）` : '' }}</p>
+        <p v-if="selectedItem.expiryReminderMode">临期提醒：{{ reminderModeLabel(selectedItem.expiryReminderMode) }}{{ selectedItem.expiryReminderDays?.length ? `（${selectedItem.expiryReminderDays.join(', ')} 天）` : '' }}</p>
+        <p v-if="selectedItem.lowStockMode">低库存：{{ reminderModeLabel(selectedItem.lowStockMode) }}{{ selectedItem.lowStockThreshold ? `（阈值：${selectedItem.lowStockThreshold}）` : '' }}</p>
         <p v-if="selectedItem.memo">备注：{{ selectedItem.memo }}</p>
         <p>创建时间：{{ formatDate(selectedItem.createdAt) }}</p>
         <el-divider />
@@ -547,6 +547,11 @@ async function restoreItem(item: CatalogItem) {
   await apiRestoreItem(item.id, item.version)
   ElMessage.success('已恢复')
   fetchItems()
+}
+
+/** 提醒模式枚举的中文化映射（详情抽屉展示用） */
+function reminderModeLabel(mode: string): string {
+  return { INHERIT: '继承全局设置', DISABLED: '禁用', CUSTOM: '自定义' }[mode] ?? mode
 }
 
 function formatDate(iso: string): string {

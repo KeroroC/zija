@@ -1,7 +1,10 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h2 class="page-title">库存管理</h2>
+      <div>
+        <h2 class="page-title">库存管理</h2>
+        <p class="page-subtitle">批次、存量与流水，以及盘点</p>
+      </div>
       <div class="page-actions">
         <el-button type="primary" data-testid="btn-inbound" @click="openInbound">入库</el-button>
         <el-button data-testid="btn-consume" @click="openConsume">领用</el-button>

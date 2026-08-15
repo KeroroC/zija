@@ -25,10 +25,14 @@
             <div class="tree-node">
               <span>
                 {{ data.name }}
-                <el-tag v-if="data.status === 'ARCHIVED'" type="info" size="small" style="margin-left: 8px">已归档</el-tag>
+                <span v-if="data.status === 'ARCHIVED'" class="zj-badge zj-badge-plain" style="margin-left: 8px">已归档</span>
               </span>
               <span class="tree-node-actions">
-                <el-button size="small" text @click.stop="openCreateCategory(data.id, data.name)">+</el-button>
+                <el-tooltip content="添加子分类" placement="top" :show-after="300">
+                  <el-button size="small" text @click.stop="openCreateCategory(data.id, data.name)">
+                    <el-icon><Plus /></el-icon>
+                  </el-button>
+                </el-tooltip>
                 <el-button size="small" text @click.stop="openRename('category', data)">重命名</el-button>
                 <el-button size="small" text @click.stop="openMoveCategory(data)">移动</el-button>
                 <el-button v-if="data.status === 'ACTIVE'" size="small" text type="danger" @click.stop="handleArchiveCategory(data)">归档</el-button>
@@ -52,9 +56,8 @@
           <el-table-column prop="name" label="名称" min-width="200" />
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
-                {{ row.status === 'ACTIVE' ? '活跃' : '已归档' }}
-              </el-tag>
+              <span :class="row.status === 'ACTIVE' ? 'zj-dot zj-dot-pine' : 'zj-dot zj-dot-off'"></span>
+              {{ row.status === 'ACTIVE' ? '活跃' : '已归档' }}
             </template>
           </el-table-column>
           <el-table-column label="操作" width="180" fixed="right">
@@ -82,9 +85,8 @@
           <el-table-column prop="decimalScale" label="小数位" width="100" />
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
-                {{ row.status === 'ACTIVE' ? '活跃' : '已归档' }}
-              </el-tag>
+              <span :class="row.status === 'ACTIVE' ? 'zj-dot zj-dot-pine' : 'zj-dot zj-dot-off'"></span>
+              {{ row.status === 'ACTIVE' ? '活跃' : '已归档' }}
             </template>
           </el-table-column>
           <el-table-column label="操作" width="260" fixed="right">
@@ -111,9 +113,8 @@
           <el-table-column prop="name" label="名称" min-width="200" />
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
-                {{ row.status === 'ACTIVE' ? '活跃' : '已归档' }}
-              </el-tag>
+              <span :class="row.status === 'ACTIVE' ? 'zj-dot zj-dot-pine' : 'zj-dot zj-dot-off'"></span>
+              {{ row.status === 'ACTIVE' ? '活跃' : '已归档' }}
             </template>
           </el-table-column>
           <el-table-column label="操作" width="160" fixed="right">
@@ -223,6 +224,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import {
   fetchCategories, createCategory, renameCategory, moveCategory, archiveCategory, restoreCategory,
   fetchBrands, createBrand, renameBrand, archiveBrand, restoreBrand,

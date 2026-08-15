@@ -569,7 +569,7 @@ describe("ItemsPage", () => {
 
     const drawer = wrapper.findComponent({ name: "ElDrawer" });
     expect(drawer.text()).toContain("测试备注");
-    expect(drawer.text()).toContain("CUSTOM");
+    expect(drawer.text()).toContain("自定义");
     expect(drawer.text()).toContain("30");
     expect(drawer.text()).toContain("7");
     expect(drawer.text()).toContain("阈值");
