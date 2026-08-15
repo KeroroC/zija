@@ -398,7 +398,7 @@ class HouseholdAttachmentEndpointIntegrationTest extends AbstractMockMvcIntegrat
     }
 
     @Test
-    void itemCoverDoesNotAppearInHouseholdAttachmentListAndCoverSlotStillWorks() throws Exception {
+    void itemCoverIsItemMountedNotHouseholdAndCoverSlotStillWorks() throws Exception {
         UUID unitId = seedUnit();
         var created = mockMvc.perform(post("/api/v1/items")
                         .with(auth()).with(csrf())
@@ -420,7 +420,7 @@ class HouseholdAttachmentEndpointIntegrationTest extends AbstractMockMvcIntegrat
                         .with(auth()).with(csrf()))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/files").with(auth()))
+        mockMvc.perform(get("/api/v1/files?mountType=HOUSEHOLD").with(auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(0));
 
@@ -455,7 +455,7 @@ class HouseholdAttachmentEndpointIntegrationTest extends AbstractMockMvcIntegrat
         mockMvc.perform(get("/api/v1/items/{id}", itemId).with(auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.coverFileId").value(org.hamcrest.Matchers.nullValue()));
-        mockMvc.perform(get("/api/v1/files").with(auth()))
+        mockMvc.perform(get("/api/v1/files?mountType=HOUSEHOLD").with(auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(0));
     }

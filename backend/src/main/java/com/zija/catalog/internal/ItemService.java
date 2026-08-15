@@ -10,6 +10,7 @@ import com.zija.shared.ZijaReminderMode;
 import com.zija.catalog.CatalogApi;
 import com.zija.catalog.internal.event.CatalogEventPublisher;
 import com.zija.catalog.internal.exception.CatalogArchivedDictionaryException;
+import com.zija.catalog.internal.exception.CatalogCoverNotEligibleException;
 import com.zija.catalog.internal.exception.CatalogUnitPrecisionInvalidException;
 import com.zija.catalog.internal.exception.CatalogVersionConflictException;
 import com.zija.catalog.internal.persistence.*;
@@ -267,7 +268,7 @@ class ItemService implements CatalogApi {
     public ItemEntity updateItem(
             UUID householdId, UUID id,
             String name, UUID categoryId, UUID brandId, UUID unitId,
-            String memo, UUID coverFileId,
+            String memo,
             String expiryReminderMode, List<Short> expiryReminderDays,
             String lowStockMode, BigDecimal lowStockThreshold,
             List<UUID> tagIds, Integer version
@@ -275,7 +276,6 @@ class ItemService implements CatalogApi {
         var entity = requireItemEntity(householdId, id);
         if (name != null) entity.setName(name.trim());
         if (memo != null) entity.setMemo(memo);
-        if (coverFileId != null) entity.setCoverFileId(coverFileId);
         if (unitId != null) {
             requireActiveUnit(householdId, unitId);
             entity.setUnitId(unitId);
@@ -320,78 +320,125 @@ class ItemService implements CatalogApi {
         return itemMapper.findByIdFull(id);
     }
 
+    // ==================== 附件与封面 ====================
+
+    /** 换封面时旧封面的处置：留作普通附件。 */
+    public static final String COVER_ACTION_KEEP = "KEEP";
+    /** 换封面时旧封面的处置：送进回收站。 */
+    public static final String COVER_ACTION_RECYCLE = "RECYCLE";
+
+    private static final java.util.Set<String> COVER_IMAGE_TYPES =
+            java.util.Set.of(FileApi.COVER_MEDIA_TYPE_JPEG, FileApi.COVER_MEDIA_TYPE_PNG, FileApi.COVER_MEDIA_TYPE_WEBP);
+
     /**
-     * 上传物品封面图，替换旧封面（如有）。整个操作在同一事务中，确保版本冲突时不会出现孤儿文件或封面丢失。
+     * 上传附件并挂到物品上（物品归档不影响附件操作）。名字在同一物品上唯一，撞名抛
+     * {@link com.zija.file.exception.FileNameDuplicateException}。
+     */
+    @Transactional
+    public FileApi.AttachmentInfo uploadAttachment(
+            UUID householdId, UUID itemId,
+            byte[] fileContent, String originalFilename, String contentType
+    ) {
+        requireItemEntity(householdId, itemId);
+        return fileApi.store(householdId, fileContent, originalFilename, contentType,
+                FileApi.MOUNT_ITEM, itemId);
+    }
+
+    /** 列出物品上的未删除附件。 */
+    @Transactional(readOnly = true)
+    public List<FileApi.AttachmentInfo> listAttachments(UUID householdId, UUID itemId) {
+        requireItemEntity(householdId, itemId);
+        return fileApi.listByMount(householdId, FileApi.MOUNT_ITEM, itemId);
+    }
+
+    /**
+     * 把已有附件改挂到本物品（挂到物品走本入口，校验物品属于本家庭）。
+     * 若该附件曾是某个物品的当前封面，file 模块发布改挂事件，本模块同步清除原物品的封面指定。
+     */
+    @Transactional
+    public FileApi.AttachmentInfo mountAttachment(UUID householdId, UUID itemId, UUID fileId) {
+        requireItemEntity(householdId, itemId);
+        var info = fileApi.remount(householdId, fileId, FileApi.MOUNT_ITEM, itemId);
+        if (info == null) {
+            throw new CatalogArchivedDictionaryException("file", fileId);
+        }
+        return info;
+    }
+
+    /**
+     * 指定已有附件为封面。目标必须是本物品上、未进回收站、JPEG/PNG/WebP 的附件。
      *
-     * <p>操作顺序：1. 存储新文件 → 2. 更新 item（乐观锁） → 3. retain 新文件 + release 旧文件。
-     * 若步骤 2 版本冲突，事务回滚，新文件的 insert 也会回滚，不会产生孤儿。</p>
-     *
-     * @param householdId 家庭 ID
-     * @param itemId 物品 ID
-     * @param fileContent 文件内容
-     * @param originalFilename 原始文件名
-     * @param contentType 声明的媒体类型
-     * @param version 乐观锁版本号
-     * @return 新封面文件信息和更新后的版本
+     * <p>换封面时若带 {@code oldCoverAction=RECYCLE}，旧封面附件进入回收站；
+     * 缺省或 {@code KEEP} 则旧封面留作普通附件。顺序为先写新指定（乐观锁）再回收旧封面，
+     * 避免回收事件监听器误清刚写下的新指定。物品乐观锁版本冲突返回 409。</p>
+     */
+    @Transactional
+    public CoverResult designateCover(
+            UUID householdId, UUID itemId, UUID fileId, String oldCoverAction, Integer version
+    ) {
+        var entity = requireItemEntity(householdId, itemId);
+        var attachment = fileApi.findAttachment(householdId, fileId)
+                .orElseThrow(() -> new CatalogArchivedDictionaryException("file", fileId));
+        if (attachment.deletedAt() != null
+                || !FileApi.MOUNT_ITEM.equals(attachment.mountType())
+                || !itemId.equals(attachment.mountId())) {
+            throw new CatalogCoverNotEligibleException("attachment not on this item or recycled");
+        }
+        if (!COVER_IMAGE_TYPES.contains(attachment.mediaType())) {
+            throw new CatalogCoverNotEligibleException("media type not coverable: " + attachment.mediaType());
+        }
+
+        UUID oldCoverFileId = entity.getCoverFileId();
+        entity.setCoverFileId(fileId);
+        entity.setVersion(version);
+        entity.setUpdatedAt(OffsetDateTime.now());
+        if (itemMapper.updateById(entity) == 0) {
+            throw new CatalogVersionConflictException();
+        }
+
+        if (oldCoverFileId != null && !oldCoverFileId.equals(fileId)
+                && COVER_ACTION_RECYCLE.equals(oldCoverAction)) {
+            fileApi.recycle(householdId, oldCoverFileId);
+        }
+
+        audit(householdId, SystemApi.AuditAction.ITEM_COVER_UPLOADED, itemId);
+        return new CoverResult(attachment, version + 1);
+    }
+
+    /**
+     * 上传一张新图片并指定为封面（「传封面」与「先当附件再指定」是同一件事）。
      */
     @Transactional
     public CoverResult uploadCover(
             UUID householdId, UUID itemId,
             byte[] fileContent, String originalFilename, String contentType,
-            Integer version
+            String oldCoverAction, Integer version
     ) {
-        var entity = requireItemEntity(householdId, itemId);
-        UUID oldCoverFileId = entity.getCoverFileId();
-
-        // 1. 存储新文件（refcount=0，在本事务中，若后续失败会回滚）
-        var newFileInfo = fileApi.store(householdId, fileContent, originalFilename, contentType);
-
-        // 2. 更新 item（乐观锁）
-        entity.setCoverFileId(newFileInfo.id());
-        entity.setVersion(version);
-        if (itemMapper.updateById(entity) == 0) {
-            throw new CatalogVersionConflictException();
-        }
-
-        // 3. 更新成功后，retain 新文件，release 旧文件
-        fileApi.retain(householdId, newFileInfo.id());
-        if (oldCoverFileId != null) {
-            fileApi.release(householdId, oldCoverFileId);
-        }
-
-        audit(householdId, SystemApi.AuditAction.ITEM_COVER_UPLOADED, itemId);
-        return new CoverResult(newFileInfo, version + 1);
+        var attachment = uploadAttachment(householdId, itemId, fileContent, originalFilename, contentType);
+        return designateCover(householdId, itemId, attachment.id(), oldCoverAction, version);
     }
 
     /**
-     * 上传封面结果。
+     * 封面指定结果。
      */
-    public record CoverResult(FileApi.StoredFileInfo fileInfo, Integer newVersion) {}
+    public record CoverResult(FileApi.AttachmentInfo attachment, Integer newVersion) {}
 
     /**
-     * 移除物品封面图，释放文件引用。整个操作在同一事务中，确保版本冲突时不会丢失文件。
-     *
-     * @param householdId 家庭 ID
-     * @param itemId 物品 ID
-     * @param version 乐观锁版本号
+     * 取消封面指定（只取消指定，附件仍留在物品上，不送回收站）。
      */
     @Transactional
     public void removeCover(UUID householdId, UUID itemId, Integer version) {
         var entity = requireItemEntity(householdId, itemId);
-        UUID oldCoverFileId = entity.getCoverFileId();
-        if (oldCoverFileId == null) {
+        if (entity.getCoverFileId() == null) {
             throw new CatalogArchivedDictionaryException("item", itemId);
         }
 
-        // 1. 先更新 item（乐观锁）
         entity.setCoverFileId(null);
         entity.setVersion(version);
+        entity.setUpdatedAt(OffsetDateTime.now());
         if (itemMapper.updateById(entity) == 0) {
             throw new CatalogVersionConflictException();
         }
-
-        // 2. 更新成功后，释放旧文件
-        fileApi.release(householdId, oldCoverFileId);
 
         audit(householdId, SystemApi.AuditAction.ITEM_COVER_REMOVED, itemId);
     }

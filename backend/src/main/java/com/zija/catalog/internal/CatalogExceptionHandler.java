@@ -45,4 +45,11 @@ class CatalogExceptionHandler {
     ProblemDetail handleCycleDetected(HttpServletRequest request) {
         return ZijaProblems.of(request, HttpStatus.CONFLICT, "移动会产生循环引用", ErrorCodes.CATALOG_CYCLE_DETECTED);
     }
+
+    @ExceptionHandler(CatalogCoverNotEligibleException.class)
+    ProblemDetail handleCoverNotEligible(HttpServletRequest request) {
+        return ZijaProblems.of(request, HttpStatus.UNPROCESSABLE_CONTENT,
+                "附件没有资格作为封面（须为本物品上未删除的 JPEG/PNG/WebP 图片）",
+                ErrorCodes.CATALOG_COVER_NOT_ELIGIBLE);
+    }
 }

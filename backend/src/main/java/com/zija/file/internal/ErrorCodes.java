@@ -11,6 +11,7 @@ public final class ErrorCodes {
     public static final String FILE_SIGNATURE_MISMATCH = "FILE_SIGNATURE_MISMATCH";
     public static final String FILE_TOO_LARGE = "FILE_TOO_LARGE";
     public static final String FILE_NAME_DUPLICATE = "FILE_NAME_DUPLICATE";
+    public static final String FILE_NOT_AVAILABLE = "FILE_NOT_AVAILABLE";
 
     private ErrorCodes() {
     }

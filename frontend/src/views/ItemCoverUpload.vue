@@ -77,7 +77,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { uploadItemCover, removeItemCover } from '../api/file'
-import type { UploadedFile } from '../api/file'
+import type { CoverResult } from '../api/file'
 
 const props = defineProps<{
   itemId: string
@@ -126,7 +126,7 @@ function mapServerError(errorCode: string): string {
   }
 }
 
-async function doUpload(file: File) {
+async function doUpload(file: File, oldCoverAction?: 'KEEP' | 'RECYCLE') {
   const validationError = validateFile(file)
   if (validationError) {
     errorMsg.value = validationError
@@ -145,13 +145,13 @@ async function doUpload(file: File) {
   }, 200)
 
   try {
-    const result: UploadedFile = await uploadItemCover(props.itemId, file, props.version)
+    const result: CoverResult = await uploadItemCover(props.itemId, file, props.version, oldCoverAction)
     clearInterval(progressTimer)
     progress.value = 100
 
     currentCoverUrl.value = result.url
     emit('uploaded', { coverFileId: result.id, coverUrl: result.url, version: result.version })
-    ElMessage.success('封面上传成功')
+    ElMessage.success(oldCoverAction === 'RECYCLE' ? '已替换封面，旧封面已送回收站' : '封面上传成功')
   } catch (e: any) {
     clearInterval(progressTimer)
     errorMsg.value = mapServerError(e.errorCode || '')
@@ -172,19 +172,40 @@ function triggerReplace() {
   fileInputRef.value?.click()
 }
 
-function onReplaceFileSelected(event: Event) {
+async function onReplaceFileSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  if (file) {
-    doUpload(file)
-  }
-  // 重置 input 以允许再次选择同一文件
   input.value = ''
+  if (!file) return
+
+  // 换封面时问旧封面留作普通附件还是送回收站
+  try {
+    const action = await ElMessageBox.confirm(
+      '新封面将替换当前封面。旧封面留作普通附件，还是送进回收站？',
+      '替换封面',
+      {
+        confirmButtonText: '留作附件',
+        cancelButtonText: '送回收站',
+        distinguishCancelAndClose: true,
+        type: 'info',
+      },
+    ).then(
+      () => 'KEEP' as const,
+      (reason) => {
+        if (reason === 'cancel') return 'RECYCLE' as const
+        throw reason // close：什么都不做
+      },
+    )
+    await doUpload(file, action)
+  } catch (reason) {
+    if (reason === 'close') return
+    // 其他取消路径不弹错误
+  }
 }
 
 async function handleRemove() {
   try {
-    await ElMessageBox.confirm('确定移除封面图片？', '确认', {
+    await ElMessageBox.confirm('确定移除封面图片？附件仍会留在物品上。', '确认', {
       confirmButtonText: '移除',
       cancelButtonText: '取消',
       type: 'warning',

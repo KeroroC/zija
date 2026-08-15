@@ -138,6 +138,51 @@
           <el-button v-if="selectedItem.status === 'ACTIVE'" @click="archiveItem(selectedItem)">归档</el-button>
           <el-button v-if="selectedItem.status === 'ARCHIVED'" @click="restoreItem(selectedItem)">恢复</el-button>
         </div>
+        <el-divider />
+        <div class="attachments-section">
+          <div class="section-header">
+            <h4 class="section-title">附件</h4>
+            <el-button size="small" type="primary" @click="triggerAttachmentUpload">上传</el-button>
+            <input
+              ref="attachmentInput"
+              class="file-input"
+              type="file"
+              @change="onAttachmentChosen"
+            />
+          </div>
+          <el-table
+            v-loading="attachmentsLoading"
+            :data="itemAttachments"
+            size="small"
+            empty-text="还没有附件"
+          >
+            <el-table-column prop="name" label="名字" min-width="140" />
+            <el-table-column label="类型" min-width="110">
+              <template #default="{ row }"><span class="cell-secondary">{{ row.mediaType }}</span></template>
+            </el-table-column>
+            <el-table-column label="大小" width="90">
+              <template #default="{ row }"><span class="cell-secondary zj-num">{{ formatBytes(row.byteSize) }}</span></template>
+            </el-table-column>
+            <el-table-column label="" width="230" align="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="canDesignateCover(row as Attachment)"
+                  size="small"
+                  text
+                  type="primary"
+                  data-testid="designate-cover"
+                  @click="designateCover(row as Attachment)"
+                >
+                  {{ isCurrentCover(row as Attachment) ? '当前封面' : '设为封面' }}
+                </el-button>
+                <el-button size="small" text type="primary" @click="renameAttachment(row as Attachment)">改名</el-button>
+                <el-button size="small" text @click="downloadAttachment(row as Attachment)">下载</el-button>
+                <el-button size="small" text @click="moveAttachmentToHousehold(row as Attachment)">移走</el-button>
+                <el-button size="small" text type="danger" @click="deleteAttachment(row as Attachment)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </div>
     </el-drawer>
 
@@ -161,6 +206,17 @@ import {
   fetchCategories, fetchBrands, fetchUnits, fetchTags
 } from '../api/catalog'
 import { fetchStockPositions, fetchLots } from '../api/inventory'
+import {
+  listItemAttachments,
+  uploadItemAttachment,
+  renameAttachment as apiRenameAttachment,
+  deleteAttachment as apiDeleteAttachment,
+  designateItemCover as apiDesignateItemCover,
+  remountAttachmentToHousehold as apiRemountAttachmentToHousehold,
+  type Attachment
+} from '../api/file'
+import { ApiError } from '../api/http'
+import { formatBytes } from '../utils/format'
 import type { CatalogItem, Category, Brand, Unit, Tag } from '../types/catalog'
 import ItemFormDrawer from './ItemFormDrawer.vue'
 
@@ -305,6 +361,7 @@ async function openDetail(item: CatalogItem) {
   detailVisible.value = true
   inventoryTotal.value = 0
   lotCount.value = 0
+  itemAttachments.value = []
   try {
     const [pos, lots] = await Promise.all([
       fetchStockPositions({ itemId: item.id, pageSize: 10000 }),
@@ -315,7 +372,149 @@ async function openDetail(item: CatalogItem) {
   } catch {
     // silently ignore — inventory module may not be available yet
   }
+  loadAttachments()
 }
+
+// ==================== 附件 ====================
+
+const itemAttachments = ref<Attachment[]>([])
+const attachmentsLoading = ref(false)
+const attachmentInput = ref<HTMLInputElement | null>(null)
+
+const COVER_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+async function loadAttachments() {
+  if (!selectedItem.value) return
+  attachmentsLoading.value = true
+  try {
+    itemAttachments.value = await listItemAttachments(selectedItem.value.id)
+  } catch {
+    // 附件模块异常时静默，详情其余部分照常
+  } finally {
+    attachmentsLoading.value = false
+  }
+}
+
+function triggerAttachmentUpload() {
+  attachmentInput.value?.click()
+}
+
+async function onAttachmentChosen(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !selectedItem.value) return
+  try {
+    await uploadItemAttachment(selectedItem.value.id, file)
+    ElMessage.success('已上传')
+    await loadAttachments()
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '上传失败')
+  }
+}
+
+function canDesignateCover(row: Attachment): boolean {
+  return COVER_IMAGE_TYPES.includes(row.mediaType)
+}
+
+function isCurrentCover(row: Attachment): boolean {
+  return selectedItem.value?.coverFileId === row.id
+}
+
+/** 把合格图片附件指定为封面；已有封面时先问旧封面处置。 */
+async function designateCover(row: Attachment) {
+  if (!selectedItem.value || isCurrentCover(row)) return
+  let oldCoverAction: 'KEEP' | 'RECYCLE' | undefined
+  if (selectedItem.value.coverFileId) {
+    try {
+      const action = await ElMessageBox.confirm(
+        '指定此图为封面后，旧封面留作普通附件，还是送进回收站？',
+        '更换封面',
+        {
+          confirmButtonText: '留作附件',
+          cancelButtonText: '送回收站',
+          distinguishCancelAndClose: true,
+          type: 'info',
+        },
+      ).then(
+        () => 'KEEP' as const,
+        (reason) => {
+          if (reason === 'cancel') return 'RECYCLE' as const
+          throw reason
+        },
+      )
+      oldCoverAction = action
+    } catch (reason) {
+      if (reason === 'close') return
+    }
+  }
+  try {
+    const result = await apiDesignateItemCover(selectedItem.value.id, row.id, selectedItem.value.version, oldCoverAction)
+    selectedItem.value.coverFileId = result.id
+    selectedItem.value.coverUrl = result.url
+    selectedItem.value.version = result.version
+    ElMessage.success('已设为封面')
+    await loadAttachments()
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '设置封面失败')
+  }
+}
+
+async function renameAttachment(row: Attachment) {
+  try {
+    const picked = await ElMessageBox.prompt('新名字', '改名', {
+      inputValue: row.name,
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputPattern: /\S+/,
+      inputErrorMessage: '名字不能为空',
+    })
+    await apiRenameAttachment(row.id, picked.value.trim())
+    ElMessage.success('已改名')
+    await loadAttachments()
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error instanceof ApiError ? error.message : '改名失败')
+  }
+}
+
+function downloadAttachment(row: Attachment) {
+  window.open(row.url, '_blank')
+}
+
+async function moveAttachmentToHousehold(row: Attachment) {
+  try {
+    await apiRemountAttachmentToHousehold(row.id)
+    ElMessage.success('已移到家庭')
+    await loadAttachments()
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '改挂失败')
+  }
+}
+
+async function deleteAttachment(row: Attachment) {
+  try {
+    await ElMessageBox.confirm(`确定删除「${row.name}」？删除后进入回收站，保留期内可以恢复。`, '删除附件', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  try {
+    await apiDeleteAttachment(row.id)
+    if (selectedItem.value?.coverFileId === row.id) {
+      selectedItem.value.coverFileId = null
+      selectedItem.value.coverUrl = undefined
+    }
+    ElMessage.success('已删除，可在回收站恢复')
+    await loadAttachments()
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '删除失败')
+  }
+}
+
 
 function goToInbound() {
   if (!selectedItem.value) return
@@ -421,6 +620,24 @@ async function openHighlightedItem(itemId: string) {
   margin-top: 20px;
   display: flex;
   gap: 12px;
+}
+.attachments-section {
+  margin-top: 8px;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.section-title {
+  margin: 0;
+  font-family: var(--zj-serif);
+  font-size: 15px;
+  font-weight: 600;
+}
+.file-input {
+  display: none;
 }
 .cover-thumb {
   width: 36px;

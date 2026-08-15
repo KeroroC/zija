@@ -94,4 +94,14 @@
           AND status = 'ACTIVE'
           AND low_stock_threshold IS NOT NULL
     </update>
+
+    <update id="clearCoverIfCurrent">
+        UPDATE catalog_item
+        SET cover_file_id = NULL,
+            updated_at = CURRENT_TIMESTAMP,
+            version = version + 1
+        WHERE household_id = #{householdId}
+          AND id = #{itemId}
+          AND cover_file_id = #{fileId}
+    </update>
 </mapper>

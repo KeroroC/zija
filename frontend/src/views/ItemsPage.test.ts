@@ -1,4 +1,4 @@
-import ElementPlus, { ElMessage } from "element-plus";
+import ElementPlus, { ElMessage, ElMessageBox } from "element-plus";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -11,6 +11,12 @@ import {
   fetchTags,
 } from "../api/catalog";
 import { fetchStockPositions, fetchLots } from "../api/inventory";
+import {
+  listItemAttachments,
+  deleteAttachment,
+  designateItemCover,
+  type Attachment,
+} from "../api/file";
 import { useSessionStore } from "../stores/session";
 import ItemsPage from "./ItemsPage.vue";
 import { ApiError } from "../api/http";
@@ -29,6 +35,15 @@ vi.mock("../api/catalog", () => ({
 vi.mock("../api/inventory", () => ({
   fetchStockPositions: vi.fn(),
   fetchLots: vi.fn(),
+}));
+
+vi.mock("../api/file", () => ({
+  listItemAttachments: vi.fn(),
+  uploadItemAttachment: vi.fn(),
+  renameAttachment: vi.fn(),
+  deleteAttachment: vi.fn(),
+  designateItemCover: vi.fn(),
+  remountAttachmentToHousehold: vi.fn(),
 }));
 
 vi.mock("../stores/session", () => ({
@@ -51,6 +66,9 @@ const fetchUnitsMock = vi.mocked(fetchUnits);
 const fetchTagsMock = vi.mocked(fetchTags);
 const fetchStockPositionsMock = vi.mocked(fetchStockPositions);
 const fetchLotsMock = vi.mocked(fetchLots);
+const listItemAttachmentsMock = vi.mocked(listItemAttachments);
+const deleteAttachmentMock = vi.mocked(deleteAttachment);
+const designateItemCoverMock = vi.mocked(designateItemCover);
 
 const category: Category = {
   id: "cat-1",
@@ -168,6 +186,40 @@ describe("ItemsPage", () => {
       pageSize: 1,
     });
     vi.mocked(useSessionStore).mockReturnValue({ role: "OWNER" } as any);
+    listItemAttachmentsMock.mockReset().mockResolvedValue([
+      {
+        id: "f1",
+        name: "铭牌.jpg",
+        mediaType: "image/jpeg",
+        byteSize: 2048,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f1/content",
+      },
+      {
+        id: "f2",
+        name: "说明书.pdf",
+        mediaType: "application/pdf",
+        byteSize: 100,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f2/content",
+      },
+    ] as Attachment[]);
+    deleteAttachmentMock.mockReset().mockResolvedValue({} as Attachment);
+    designateItemCoverMock.mockReset().mockResolvedValue({
+      id: "f1",
+      name: "铭牌.jpg",
+      mediaType: "image/jpeg",
+      byteSize: 2048,
+      mountType: "ITEM",
+      mountId: "item-1",
+      createdAt: "2026-08-15T10:00:00Z",
+      url: "/api/v1/files/f1/content",
+      version: 2,
+    } as never);
   });
 
   afterEach(() => {
@@ -537,5 +589,94 @@ describe("ItemsPage", () => {
     await flushPromises();
 
     expect(pushMock).toHaveBeenCalledWith({ name: "inventory", query: { action: "inbound", itemId: "item-1" } });
+  });
+
+  // ==================== 附件与封面指定 ====================
+
+  async function openItemDetail() {
+    wrapper = mount(ItemsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+    const firstRow = wrapper.findAll("tbody tr")[0];
+    await firstRow.trigger("click");
+    await flushPromises();
+    return wrapper.findComponent({ name: "ElDrawer" });
+  }
+
+  it("shows item attachments in the detail drawer", async () => {
+    const drawer = await openItemDetail();
+    expect(listItemAttachmentsMock).toHaveBeenCalledWith("item-1");
+    expect(drawer.text()).toContain("铭牌.jpg");
+    expect(drawer.text()).toContain("说明书.pdf");
+  });
+
+  it("designates an eligible image attachment as cover", async () => {
+    const successSpy = vi.spyOn(ElMessage, "success").mockReturnValue({} as never);
+    const drawer = await openItemDetail();
+    const designButtons = drawer.findAll('[data-testid="designate-cover"]');
+    // 图片可以指定，PDF 不可以
+    expect(designButtons.length).toBe(1);
+    await designButtons[0].trigger("click");
+    await flushPromises();
+
+    expect(designateItemCoverMock).toHaveBeenCalledWith("item-1", "f1", 1, undefined);
+    expect(successSpy).toHaveBeenCalledWith("已设为封面");
+    successSpy.mockRestore();
+  });
+
+  it("asks how to dispose the old cover when replacing it", async () => {
+    fetchItemsMock.mockResolvedValue({
+      items: [
+        { ...activeItem, version: 1, coverFileId: "f1", coverUrl: "/api/v1/files/f1/content" }
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    } as never);
+    listItemAttachmentsMock.mockResolvedValue([
+      {
+        id: "f1",
+        name: "旧封面.jpg",
+        mediaType: "image/jpeg",
+        byteSize: 2048,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f1/content",
+      },
+      {
+        id: "f3",
+        name: "新图.jpg",
+        mediaType: "image/jpeg",
+        byteSize: 2048,
+        mountType: "ITEM",
+        mountId: "item-1",
+        createdAt: "2026-08-15T10:00:00Z",
+        url: "/api/v1/files/f3/content",
+      },
+    ] as Attachment[]);
+    // ElMessageBox.confirm 的 reject 分支返回 'cancel'（送回收站）
+    vi.spyOn(ElMessageBox, "confirm").mockRejectedValue("cancel");
+
+    const drawer = await openItemDetail();
+    const designButtons = drawer.findAll('[data-testid="designate-cover"]');
+    // 旧封面显示「当前封面」，只有 f3 是「设为封面」
+    expect(designButtons.length).toBe(2);
+    const replaceBtn = designButtons.find((b) => b.text().includes("设为封面"));
+    await replaceBtn!.trigger("click");
+    await flushPromises();
+
+    expect(designateItemCoverMock).toHaveBeenCalledWith("item-1", "f3", 1, "RECYCLE");
+  });
+
+  it("deletes an attachment from the item detail drawer", async () => {
+    const drawer = await openItemDetail();
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+    const buttons = drawer.findAll(".el-button");
+    const deleteButtons = buttons.filter((b) => b.text().includes("删除"));
+    // 第二行是 PDF 附件
+    await deleteButtons[1].trigger("click");
+    await flushPromises();
+
+    expect(deleteAttachmentMock).toHaveBeenCalledWith("f2");
   });
 });

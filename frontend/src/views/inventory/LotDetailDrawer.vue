@@ -144,6 +144,37 @@
           </el-table-column>
         </el-table>
       </section>
+
+      <!-- Attachments -->
+      <section class="drawer-section">
+        <div class="section-header">
+          <h4 class="section-title">附件</h4>
+          <el-button size="small" type="primary" @click="triggerAttachmentUpload">上传</el-button>
+          <input ref="attachmentInput" class="file-input" type="file" @change="onAttachmentChosen" />
+        </div>
+        <el-table
+          :data="attachments"
+          v-loading="attachmentsLoading"
+          style="width: 100%"
+          size="small"
+          empty-text="还没有附件"
+        >
+          <el-table-column prop="name" label="名字" min-width="120" />
+          <el-table-column label="大小" width="90">
+            <template #default="{ row }">
+              {{ formatBytes(row.byteSize) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="" width="170" align="right">
+            <template #default="{ row }">
+              <el-button size="small" text type="primary" @click="renameAttachment(row as Attachment)">改名</el-button>
+              <el-button size="small" text @click="downloadAttachment(row as Attachment)">下载</el-button>
+              <el-button size="small" text @click="moveAttachmentToHousehold(row as Attachment)">移走</el-button>
+              <el-button size="small" text type="danger" @click="deleteAttachment(row as Attachment)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </section>
     </template>
 
     <template v-else-if="loading">
@@ -154,11 +185,20 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchLot, fetchMovements, updateLotMeta } from '../../api/inventory'
+import {
+  listLotAttachments,
+  uploadLotAttachment,
+  renameAttachment as apiRenameAttachment,
+  deleteAttachment as apiDeleteAttachment,
+  remountAttachmentToHousehold as apiRemountAttachmentToHousehold,
+  type Attachment,
+} from '../../api/file'
 import { ApiError } from '../../api/http'
 import type { LotSummary, Movement, MovementType } from '../../types/inventory'
 import { futureDateShortcuts, pastDateShortcuts } from '../../utils/date'
+import { formatBytes } from '../../utils/format'
 
 const props = defineProps<{
   modelValue: boolean
@@ -222,6 +262,93 @@ async function loadMovements(lotId: string) {
   }
 }
 
+// ==================== 附件 ====================
+
+const attachments = ref<Attachment[]>([])
+const attachmentsLoading = ref(false)
+const attachmentInput = ref<HTMLInputElement | null>(null)
+
+async function loadAttachments(lotId: string) {
+  attachmentsLoading.value = true
+  try {
+    attachments.value = await listLotAttachments(lotId)
+  } catch {
+    attachments.value = []
+  } finally {
+    attachmentsLoading.value = false
+  }
+}
+
+function triggerAttachmentUpload() {
+  attachmentInput.value?.click()
+}
+
+async function onAttachmentChosen(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !props.lotId) return
+  try {
+    await uploadLotAttachment(props.lotId, file)
+    ElMessage.success('已上传')
+    await loadAttachments(props.lotId)
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '上传失败')
+  }
+}
+
+async function renameAttachment(row: Attachment) {
+  try {
+    const picked = await ElMessageBox.prompt('新名字', '改名', {
+      inputValue: row.name,
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputPattern: /\S+/,
+      inputErrorMessage: '名字不能为空',
+    })
+    await apiRenameAttachment(row.id, picked.value.trim())
+    ElMessage.success('已改名')
+    if (props.lotId) await loadAttachments(props.lotId)
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error instanceof ApiError ? error.message : '改名失败')
+  }
+}
+
+function downloadAttachment(row: Attachment) {
+  window.open(row.url, '_blank')
+}
+
+async function moveAttachmentToHousehold(row: Attachment) {
+  try {
+    await apiRemountAttachmentToHousehold(row.id)
+    ElMessage.success('已移到家庭')
+    if (props.lotId) await loadAttachments(props.lotId)
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '改挂失败')
+  }
+}
+
+async function deleteAttachment(row: Attachment) {
+  try {
+    await ElMessageBox.confirm(`确定删除「${row.name}」？删除后进入回收站，保留期内可以恢复。`, '删除附件', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  try {
+    await apiDeleteAttachment(row.id)
+    ElMessage.success('已删除，可在回收站恢复')
+    if (props.lotId) await loadAttachments(props.lotId)
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '删除失败')
+  }
+}
+
+
 function startEdit() {
   if (!lot.value) return
   editForm.value = {
@@ -274,6 +401,7 @@ watch(
       editing.value = false
       loadLot(lotId)
       loadMovements(lotId)
+      loadAttachments(lotId)
     }
   },
   { immediate: true },
@@ -300,5 +428,8 @@ watch(
 }
 .section-header .section-title {
   margin-bottom: 0;
+}
+.file-input {
+  display: none;
 }
 </style>

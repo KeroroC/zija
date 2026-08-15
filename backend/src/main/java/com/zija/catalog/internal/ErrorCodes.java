@@ -14,6 +14,7 @@ public final class ErrorCodes {
     public static final String CATALOG_UNIT_PRECISION_INVALID = "CATALOG_UNIT_PRECISION_INVALID";
     public static final String CATALOG_UNIT_PRECISION_LOCKED = "CATALOG_UNIT_PRECISION_LOCKED";
     public static final String CATALOG_VERSION_CONFLICT = "CATALOG_VERSION_CONFLICT";
+    public static final String CATALOG_COVER_NOT_ELIGIBLE = "CATALOG_COVER_NOT_ELIGIBLE";
 
     private ErrorCodes() {
     }

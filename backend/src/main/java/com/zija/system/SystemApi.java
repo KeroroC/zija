@@ -105,6 +105,9 @@ public interface SystemApi {
         // ---------- file ----------
         String FILE_UPLOADED = "FILE_UPLOADED";
         String FILE_RENAMED = "FILE_RENAMED";
+        String FILE_MOVED = "FILE_MOVED";
+        String FILE_DELETED = "FILE_DELETED";
+        String FILE_RESTORED = "FILE_RESTORED";
 
         // ---------- location ----------
         String LOCATION_CREATED = "LOCATION_CREATED";

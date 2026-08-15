@@ -3,7 +3,6 @@ package com.zija.catalog.internal;
 import com.zija.TestDb;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
-import com.zija.file.FileApi;
 import com.zija.household.internal.persistence.HouseholdEntity;
 import com.zija.household.internal.persistence.HouseholdMapper;
 import com.zija.household.internal.persistence.MemberEntity;
@@ -24,15 +23,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -58,7 +52,6 @@ class ItemEndpointIntegrationTest {
     @Autowired MemberMapper memberMapper;
     @Autowired ItemService itemService;
 
-    @MockitoBean FileApi fileApi;
     @MockitoBean ZijaSessionInvalidator sessionInvalidator;
 
     private UUID householdId;
@@ -237,61 +230,66 @@ class ItemEndpointIntegrationTest {
                 "INHERIT", null, "INHERIT", null, null);
         var version = itemService.findItem(householdId, item.getId()).getVersion();
 
-        UUID fileId = UUID.randomUUID();
-        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
-                .thenReturn(new FileApi.StoredFileInfo(
-                        fileId, householdId, "2026/07/cover.jpg", "cover.jpg",
-                        "image/jpeg", 2048L, "sha256hash"));
-
         MockMultipartFile file = new MockMultipartFile(
-                "file", "cover.jpg", "image/jpeg", new byte[]{1, 2, 3});
+                "file", "cover.jpg", "image/jpeg", jpegBytes());
 
         mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
                         .file(file)
                         .param("version", String.valueOf(version))
                         .with(auth()).with(csrf()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(fileId.toString()))
-                .andExpect(jsonPath("$.originalFilename").value("cover.jpg"))
-                .andExpect(jsonPath("$.detectedMediaType").value("image/jpeg"))
-                .andExpect(jsonPath("$.byteSize").value(2048));
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.name").value("cover.jpg"))
+                .andExpect(jsonPath("$.mediaType").value("image/jpeg"))
+                .andExpect(jsonPath("$.byteSize").value(jpegBytes().length))
+                .andExpect(jsonPath("$.url").value(org.hamcrest.Matchers.startsWith("/api/v1/files/")))
+                .andExpect(jsonPath("$.version").value(version + 1));
 
         var updated = itemService.findItem(householdId, item.getId());
         assert updated.getCoverFileId() != null;
         assert updated.getVersion() == version + 1;
+
+        // 封面附件挂在物品上，不出现在家庭挂载的附件列表
+        mockMvc.perform(get("/api/v1/files?mountType=HOUSEHOLD").with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
     }
 
     @Test
-    void uploadCoverWithStaleVersionReturns409() throws Exception {
+    void uploadCoverWithStaleVersionReturns409AndRollsBackAttachment() throws Exception {
         var unitId = seedUnit();
         var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
                 "INHERIT", null, "INHERIT", null, null);
+        var version = itemService.findItem(householdId, item.getId()).getVersion();
 
-        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
-                .thenReturn(new FileApi.StoredFileInfo(
-                        UUID.randomUUID(), householdId, "2026/07/cover.jpg", "cover.jpg",
-                        "image/jpeg", 1024L, "sha"));
-
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "cover.jpg", "image/jpeg", new byte[]{1});
-
+        // 先传一个封面
         mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
-                        .file(file)
+                        .file(new MockMultipartFile("file", "cover1.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(version))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+        String oldCoverId = itemService.findItem(householdId, item.getId()).getCoverFileId().toString();
+
+        // 用过期版本上传第二个封面 → 409，且新附件随事务回滚（不留孤儿）
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(new MockMultipartFile("file", "cover2.jpg", "image/jpeg", jpegBytes()))
                         .param("version", "999")
                         .with(auth()).with(csrf()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("CATALOG_VERSION_CONFLICT"));
+
+        var afterConflict = itemService.findItem(householdId, item.getId());
+        assert afterConflict.getCoverFileId().toString().equals(oldCoverId);
+
+        mockMvc.perform(get("/api/v1/items/{id}/attachments", item.getId()).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1));
     }
 
     @Test
     void uploadCoverRejectsNonExistentItem() throws Exception {
-        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
-                .thenReturn(new FileApi.StoredFileInfo(
-                        UUID.randomUUID(), householdId, "k", "cover.jpg",
-                        "image/jpeg", 1L, "s"));
-
         MockMultipartFile file = new MockMultipartFile(
-                "file", "cover.jpg", "image/jpeg", new byte[]{1});
+                "file", "cover.jpg", "image/jpeg", jpegBytes());
 
         mockMvc.perform(multipart("/api/v1/items/{id}/cover", UUID.randomUUID())
                         .file(file)
@@ -302,29 +300,21 @@ class ItemEndpointIntegrationTest {
     }
 
     @Test
-    void removeCoverClearsCoverFileIdAndBumpsVersion() throws Exception {
+    void removeCoverClearsCoverFileIdAndKeepsAttachmentOnItem() throws Exception {
         var unitId = seedUnit();
         var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
                 "INHERIT", null, "INHERIT", null, null);
 
-        // 先上传封面
-        UUID fileId = UUID.randomUUID();
-        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
-                .thenReturn(new FileApi.StoredFileInfo(
-                        fileId, householdId, "2026/07/cover.jpg", "cover.jpg",
-                        "image/jpeg", 1024L, "sha"));
-
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "cover.jpg", "image/jpeg", new byte[]{1});
         var v = itemService.findItem(householdId, item.getId()).getVersion();
         mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
-                        .file(file)
+                        .file(new MockMultipartFile("file", "cover.jpg", "image/jpeg", jpegBytes()))
                         .param("version", String.valueOf(v))
                         .with(auth()).with(csrf()))
                 .andExpect(status().isOk());
 
-        // 删除封面
+        // 只取消指定：附件仍留在物品上，不送回收站
         var afterUpload = itemService.findItem(householdId, item.getId());
+        String coverId = afterUpload.getCoverFileId().toString();
         mockMvc.perform(delete("/api/v1/items/{id}/cover", item.getId())
                         .with(auth()).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -334,6 +324,11 @@ class ItemEndpointIntegrationTest {
         var afterRemove = itemService.findItem(householdId, item.getId());
         assert afterRemove.getCoverFileId() == null;
         assert afterRemove.getVersion() == afterUpload.getVersion() + 1;
+
+        mockMvc.perform(get("/api/v1/items/{id}/attachments", item.getId()).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(coverId));
     }
 
     @Test
@@ -342,22 +337,13 @@ class ItemEndpointIntegrationTest {
         var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
                 "INHERIT", null, "INHERIT", null, null);
 
-        // 先上传封面
-        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover.jpg"), eq("image/jpeg")))
-                .thenReturn(new FileApi.StoredFileInfo(
-                        UUID.randomUUID(), householdId, "k", "cover.jpg",
-                        "image/jpeg", 1L, "s"));
-
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "cover.jpg", "image/jpeg", new byte[]{1});
         var v = itemService.findItem(householdId, item.getId()).getVersion();
         mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
-                        .file(file)
+                        .file(new MockMultipartFile("file", "cover.jpg", "image/jpeg", jpegBytes()))
                         .param("version", String.valueOf(v))
                         .with(auth()).with(csrf()))
                 .andExpect(status().isOk());
 
-        // 用过期版本删除
         mockMvc.perform(delete("/api/v1/items/{id}/cover", item.getId())
                         .with(auth()).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -382,53 +368,240 @@ class ItemEndpointIntegrationTest {
     }
 
     @Test
-    void uploadCoverWithStaleVersionDoesNotReleaseOldFileOrRetainNewFile() throws Exception {
+    void replaceCoverDefaultKeepsOldCoverAsOrdinaryAttachment() throws Exception {
         var unitId = seedUnit();
         var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
                 "INHERIT", null, "INHERIT", null, null);
 
-        // 先上传一个封面
-        UUID oldFileId = UUID.randomUUID();
-        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover1.jpg"), eq("image/jpeg")))
-                .thenReturn(new FileApi.StoredFileInfo(
-                        oldFileId, householdId, "2026/07/cover1.jpg", "cover1.jpg",
-                        "image/jpeg", 1024L, "sha1"));
-        MockMultipartFile file1 = new MockMultipartFile(
-                "file", "cover1.jpg", "image/jpeg", new byte[]{1});
         var v = itemService.findItem(householdId, item.getId()).getVersion();
         mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
-                        .file(file1)
+                        .file(new MockMultipartFile("file", "cover1.jpg", "image/jpeg", jpegBytes()))
                         .param("version", String.valueOf(v))
                         .with(auth()).with(csrf()))
                 .andExpect(status().isOk());
 
-        // 清除第一次上传的调用记录
-        clearInvocations(fileApi);
+        var afterFirst = itemService.findItem(householdId, item.getId());
+        String oldCoverId = afterFirst.getCoverFileId().toString();
 
-        // 准备第二次上传（版本冲突）
-        UUID newFileId = UUID.randomUUID();
-        when(fileApi.store(eq(householdId), any(byte[].class), eq("cover2.jpg"), eq("image/jpeg")))
-                .thenReturn(new FileApi.StoredFileInfo(
-                        newFileId, householdId, "2026/07/cover2.jpg", "cover2.jpg",
-                        "image/jpeg", 2048L, "sha2"));
-        MockMultipartFile file2 = new MockMultipartFile(
-                "file", "cover2.jpg", "image/jpeg", new byte[]{2});
-
-        // 用过期版本上传
+        // 未带 oldCoverAction → 旧封面留作普通附件
         mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
-                        .file(file2)
-                        .param("version", "999")
+                        .file(new MockMultipartFile("file", "cover2.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(afterFirst.getVersion()))
                         .with(auth()).with(csrf()))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value("CATALOG_VERSION_CONFLICT"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("cover2.jpg"));
 
-        // 验证：版本冲突时，不应调用 retain 和 release
-        verify(fileApi, never()).retain(eq(householdId), any());
-        verify(fileApi, never()).release(eq(householdId), any());
+        var afterReplace = itemService.findItem(householdId, item.getId());
+        assert !afterReplace.getCoverFileId().toString().equals(oldCoverId);
 
-        // 验证：item 仍指向旧封面
-        var afterConflict = itemService.findItem(householdId, item.getId());
-        assert afterConflict.getCoverFileId().equals(oldFileId);
+        // 两份附件都在物品上（未删除）
+        mockMvc.perform(get("/api/v1/items/{id}/attachments", item.getId()).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
+    }
+
+    @Test
+    void replaceCoverWithRecycleMovesOldCoverToRecycleBin() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+
+        var v = itemService.findItem(householdId, item.getId()).getVersion();
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(new MockMultipartFile("file", "cover1.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(v))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        var afterFirst = itemService.findItem(householdId, item.getId());
+        String oldCoverId = afterFirst.getCoverFileId().toString();
+
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(new MockMultipartFile("file", "cover2.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(afterFirst.getVersion()))
+                        .param("oldCoverAction", "RECYCLE")
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        // 旧封面进了回收站：物品附件列表只剩新封面
+        mockMvc.perform(get("/api/v1/items/{id}/attachments", item.getId()).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].name").value("cover2.jpg"));
+
+        // 回收站里能找到旧封面
+        mockMvc.perform(get("/api/v1/files?recycled=true").with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(oldCoverId));
+    }
+
+    @Test
+    void designateExistingEligibleAttachmentAsCover() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+        var version = itemService.findItem(householdId, item.getId()).getVersion();
+
+        // 先作为普通附件上传
+        var uploadBody = mockMvc.perform(multipart("/api/v1/items/{id}/attachments", item.getId())
+                        .file(new MockMultipartFile("file", "铭牌.jpg", "image/jpeg", jpegBytes()))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String fileId = com.jayway.jsonpath.JsonPath.read(uploadBody, "$.id");
+
+        // 指定为封面
+        mockMvc.perform(put("/api/v1/items/{id}/cover", item.getId())
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileId\":\"" + fileId + "\",\"version\":" + version + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(fileId))
+                .andExpect(jsonPath("$.version").value(version + 1));
+
+        var updated = itemService.findItem(householdId, item.getId());
+        assert updated.getCoverFileId().toString().equals(fileId);
+    }
+
+    @Test
+    void designateCoverRejectsPdfAttachment() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+        var version = itemService.findItem(householdId, item.getId()).getVersion();
+
+        var uploadBody = mockMvc.perform(multipart("/api/v1/items/{id}/attachments", item.getId())
+                        .file(new MockMultipartFile("file", "说明书.pdf", "application/pdf", pdfBytes()))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String fileId = com.jayway.jsonpath.JsonPath.read(uploadBody, "$.id");
+
+        mockMvc.perform(put("/api/v1/items/{id}/cover", item.getId())
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileId\":\"" + fileId + "\",\"version\":" + version + "}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("CATALOG_COVER_NOT_ELIGIBLE"));
+    }
+
+    @Test
+    void designateCoverRejectsAttachmentMountedOnAnotherItem() throws Exception {
+        var unitId = seedUnit();
+        var itemA = itemService.createItem(householdId, "冰箱A", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+        var itemB = itemService.createItem(householdId, "冰箱B", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+        var versionA = itemService.findItem(householdId, itemA.getId()).getVersion();
+
+        var uploadBody = mockMvc.perform(multipart("/api/v1/items/{id}/attachments", itemA.getId())
+                        .file(new MockMultipartFile("file", "铭牌.jpg", "image/jpeg", jpegBytes()))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String fileId = com.jayway.jsonpath.JsonPath.read(uploadBody, "$.id");
+
+        // 挂载在 A 上的附件不能指定为 B 的封面
+        mockMvc.perform(put("/api/v1/items/{id}/cover", itemB.getId())
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileId\":\"" + fileId + "\",\"version\":" + versionA + "}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("CATALOG_COVER_NOT_ELIGIBLE"));
+    }
+
+    @Test
+    void deletingCoverAttachmentClearsItemCover() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "冰箱", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+
+        var v = itemService.findItem(householdId, item.getId()).getVersion();
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", item.getId())
+                        .file(new MockMultipartFile("file", "cover.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(v))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        var afterUpload = itemService.findItem(householdId, item.getId());
+        String coverId = afterUpload.getCoverFileId().toString();
+
+        // 从附件总列表删除封面附件 → 进回收站，且物品不再有封面
+        mockMvc.perform(delete("/api/v1/files/{id}", coverId).with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        var afterDelete = itemService.findItem(householdId, item.getId());
+        assert afterDelete.getCoverFileId() == null;
+    }
+
+    @Test
+    void remountingCoverAttachmentToAnotherItemClearsCover() throws Exception {
+        var unitId = seedUnit();
+        var itemA = itemService.createItem(householdId, "冰箱A", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+        var itemB = itemService.createItem(householdId, "冰箱B", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+
+        var v = itemService.findItem(householdId, itemA.getId()).getVersion();
+        mockMvc.perform(multipart("/api/v1/items/{id}/cover", itemA.getId())
+                        .file(new MockMultipartFile("file", "cover.jpg", "image/jpeg", jpegBytes()))
+                        .param("version", String.valueOf(v))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        var afterUpload = itemService.findItem(householdId, itemA.getId());
+        String coverId = afterUpload.getCoverFileId().toString();
+
+        // 改挂封面附件到另一物品 → 原物品封面被清除
+        mockMvc.perform(patch("/api/v1/items/{id}/attachments/{fileId}/mount", itemB.getId(), coverId)
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mountId").value(itemB.getId().toString()));
+
+        var afterRemount = itemService.findItem(householdId, itemA.getId());
+        assert afterRemount.getCoverFileId() == null;
+
+        // 附件出现在 B 的附件列表
+        mockMvc.perform(get("/api/v1/items/{id}/attachments", itemB.getId()).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1));
+    }
+
+    @Test
+    void archivedItemStillAllowsAttachmentUploadAndCoverDesignation() throws Exception {
+        var unitId = seedUnit();
+        var item = itemService.createItem(householdId, "旧手机", "DURABLE", null, null, unitId, null,
+                "INHERIT", null, "INHERIT", null, null);
+        itemService.archiveItem(householdId, item.getId(), accountId, item.getVersion());
+
+        var body = mockMvc.perform(multipart("/api/v1/items/{id}/attachments", item.getId())
+                        .file(new MockMultipartFile("file", "发票.jpg", "image/jpeg", jpegBytes()))
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String fileId = com.jayway.jsonpath.JsonPath.read(body, "$.id");
+
+        var archived = itemService.findItem(householdId, item.getId());
+        mockMvc.perform(put("/api/v1/items/{id}/cover", item.getId())
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileId\":\"" + fileId + "\",\"version\":" + archived.getVersion() + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(archived.getVersion() + 1));
+    }
+
+    private static byte[] jpegBytes() {
+        byte[] jpeg = new byte[16];
+        jpeg[0] = (byte) 0xFF;
+        jpeg[1] = (byte) 0xD8;
+        jpeg[2] = (byte) 0xFF;
+        jpeg[3] = (byte) 0xE0;
+        return jpeg;
+    }
+
+    private static byte[] pdfBytes() {
+        return new byte[]{'%', 'P', 'D', 'F', '-', '1', '.', '4', '\n', '%', 0, 0, 0, 0};
     }
 
     // --- Helpers ---

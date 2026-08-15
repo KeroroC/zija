@@ -1,4 +1,4 @@
-package com.zija.file.internal.exception;
+package com.zija.file.exception;
 
 public class FileNameDuplicateException extends RuntimeException {
     public FileNameDuplicateException(String name) {
