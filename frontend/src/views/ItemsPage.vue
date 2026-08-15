@@ -432,6 +432,9 @@ function openEdit(item: CatalogItem) {
 
 function onFormSaved() {
   formDrawerVisible.value = false
+  // 抽屉里可能新建了标签/品牌/单位：先刷新字典，再重拉列表，
+  // 否则新字典项的 id 在 tagMap/brandMap/unitMap 中找不到名字，表格只显示裸 id。
+  loadDictionaries()
   fetchItems()
 }
 

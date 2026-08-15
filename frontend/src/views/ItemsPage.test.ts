@@ -760,6 +760,36 @@ describe("ItemsPage", () => {
     expect(archiveItemMock).toHaveBeenCalledWith("item-1", 2);
   });
 
+  it("shows the new tag name (not its id) in the table after an item is saved with a tag created during editing", async () => {
+    wrapper = mount(ItemsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    // 用户编辑物品时新建了一个标签 tag-3，保存后物品带上了新标签 id
+    const freshItem: CatalogItem = { ...activeItem, tagIds: ["tag-1", "tag-3"] };
+    fetchItemsMock.mockResolvedValueOnce({
+      items: [freshItem],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    // 服务器已持久化新标签：刷新字典时 fetchTags 返回它
+    fetchTagsMock.mockResolvedValueOnce([
+      tag,
+      tag2,
+      { ...tag, id: "tag-3", name: "常用紧急" },
+    ]);
+
+    const formDrawer = wrapper.findComponent({ name: "ItemFormDrawer" });
+    formDrawer.vm.$emit("saved", freshItem);
+    await flushPromises();
+
+    const firstRow = wrapper.findAll("tbody tr")[0];
+    expect(firstRow.text()).toContain("重要");
+    // 新标签应显示名称而非 id；字典里还没有 tag-3，说明刷新兜底生效
+    expect(firstRow.text()).toContain("常用紧急");
+    expect(firstRow.text()).not.toContain("tag-3");
+  });
+
   it("refreshes the item after remounting the current cover so the drawer stops showing the stale cover", async () => {
     mockItemWithCover();
     // 服务器：封面附件改挂到家庭后清除封面指定并递增版本
