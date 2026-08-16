@@ -7,6 +7,7 @@ import com.zija.household.internal.persistence.MemberEntity;
 import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.reminder.internal.persistence.TaskEntity;
 import com.zija.reminder.internal.persistence.TaskMapper;
+import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,8 +15,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.test.context.TestPropertySource;
 
 import java.time.OffsetDateTime;
@@ -75,6 +76,9 @@ class MailDigestSchedulerIntegrationTest {
     void setUp() {
         TestDb.cleanAll(jdbcTemplate);
         reset(mailSender);
+        // reset() clears stubbings, so re-arm the MimeMessage factory for the mocked sender.
+        when(mailSender.createMimeMessage())
+                .thenAnswer(inv -> new JavaMailSenderImpl().createMimeMessage());
 
         householdId = seedHousehold("测试家");
         unitId = seedUnit();
@@ -89,7 +93,7 @@ class MailDigestSchedulerIntegrationTest {
 
         scheduler.sendDailyDigests();
 
-        verify(mailSender).send(any(SimpleMailMessage.class));
+        verify(mailSender).send(any(MimeMessage.class));
         var setting = selectMailSetting(householdId);
         assertThat(setting.getLastDigestSentAt()).isNotNull();
 
@@ -106,7 +110,7 @@ class MailDigestSchedulerIntegrationTest {
 
         scheduler.sendDailyDigests();
 
-        verify(mailSender, never()).send(any(SimpleMailMessage.class));
+        verify(mailSender, never()).send(any(MimeMessage.class));
     }
 
     @Test
@@ -117,7 +121,7 @@ class MailDigestSchedulerIntegrationTest {
         seedTask(householdId, "LOW_STOCK", "WARN");
 
         doThrow(new RuntimeException("SMTP connection refused"))
-                .when(mailSender).send(any(SimpleMailMessage.class));
+                .when(mailSender).send(any(MimeMessage.class));
 
         scheduler.sendDailyDigests();
 

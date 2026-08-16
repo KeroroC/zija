@@ -4,8 +4,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -30,21 +30,22 @@ public class MailService {
     }
 
     /**
-     * Sends a simple mail message. Returns false silently when not configured or on failure.
+     * Sends an HTML mail message. Returns false silently when not configured or on failure.
      */
-    public boolean send(String to, String subject, String body) {
+    public boolean send(String to, String subject, String html) {
         if (!isConfigured()) {
             return false;
         }
         try {
-            var msg = new SimpleMailMessage();
-            msg.setFrom(from);
-            msg.setTo(to);
-            msg.setSubject(subject);
-            msg.setText(body);
+            var msg = sender.createMimeMessage();
+            var helper = new MimeMessageHelper(msg, true, "UTF-8");
+            helper.setFrom(from);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(html, true);
             sender.send(msg);
             return true;
-        } catch (RuntimeException ex) {
+        } catch (Exception ex) {
             log.warn("邮件发送失败 to={} subject={} err={}", to, subject, ex.getMessage());
             return false;
         }
