@@ -2,7 +2,7 @@ name: zija
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_DB: ${ZIJA_POSTGRES_DB:-zija}
       POSTGRES_USER: ${ZIJA_POSTGRES_USER:-zija}
@@ -30,6 +30,9 @@ services:
       ZIJA_VERSION: ${ZIJA_VERSION:-dev}
       ZIJA_PROFILES_ACTIVE: ${ZIJA_PROFILES_ACTIVE:-}
       ZIJA_FILE_STORAGE_PATH: /var/lib/zija/files
+      ZIJA_AI_OLLAMA_BASE_URL: ${ZIJA_AI_OLLAMA_BASE_URL:-http://localhost:11434}
+      ZIJA_AI_CHAT_MODEL: ${ZIJA_AI_CHAT_MODEL:-qwen2.5:7b}
+      ZIJA_AI_EMBEDDING_MODEL: ${ZIJA_AI_EMBEDDING_MODEL:-nomic-embed-text}
     volumes:
       - zija-files:/var/lib/zija/files
     depends_on:

@@ -69,7 +69,7 @@ FILE_ENTRIES=""
 CHECKED_COUNT=0
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-zija}"
 VOLUME_NAME="${COMPOSE_PROJECT}_zija-files"
-PG_IMAGE="postgres:17-alpine"
+PG_IMAGE="pgvector/pgvector:pg17"
 
 while IFS='|' read -r storage_key sha256 byte_size; do
   [[ -z "${storage_key}" ]] && continue

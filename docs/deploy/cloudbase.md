@@ -1,11 +1,11 @@
 # 腾讯云 CloudBase 云托管部署
 
-适合希望免运维、单域同源部署的家庭用户：CloudBase 云托管容器内同时运行 PostgreSQL + Spring Boot + nginx + 前端静态资源，**无需外部数据库、VPC 或 CORS**。
+适合希望免运维、单域同源部署的家庭用户：CloudBase 云托管容器内同时运行 PostgreSQL 17 + pgvector、Spring Boot、nginx 和前端静态资源，**无需外部数据库、VPC 或 CORS**。
 
 ## 部署文件
 
-- `Dockerfile.cloudbase`（仓库根） — 多阶段构建：前端 `npm build` → 后端 Maven `package` → 运行时镜像装 PostgreSQL + nginx
-- `deploy/cloudbase/entrypoint.sh` — 初始化并启动 PostgreSQL、以 `--server.port=8081` 启动后端、启动 nginx，`wait -n` 双进程监管
+- `Dockerfile.cloudbase`（仓库根） — 多阶段构建：前端 `npm build` → 后端 Maven `package` → `pgvector/pgvector:pg17` 运行时镜像 + nginx
+- `deploy/cloudbase/entrypoint.sh` — 初始化并启动 PostgreSQL + pgvector、以 `--server.port=8081` 启动后端、启动 nginx，`wait -n` 双进程监管
 - `deploy/cloudbase/default.conf` — nginx 监听 8080，静态资源 + `/api` + `/actuator` 反代到 `127.0.0.1:8081`
 
 ⚠️ **构建上下文必须是仓库根目录**。Dockerfile 里的 `COPY frontend/…`、`COPY backend/…` 全部相对仓库根书写；构建时用 `-f Dockerfile.cloudbase` 指定 Dockerfile。
@@ -107,6 +107,9 @@ docker manifest inspect ccr.ccs.tencentyun.com/<命名空间>/zija:<版本号>
 | `ZIJA_DB_NAME` | `zija` | `entrypoint.sh` 建库使用 |
 | `ZIJA_VERSION` | `cloudbase` | 版本标识，展示于 `/api/v1/system/info` |
 | `ZIJA_FILE_STORAGE_PATH` | `/var/lib/zija/files` | 上传文件目录 |
+| `ZIJA_AI_OLLAMA_BASE_URL` | `http://localhost:11434` | 可选 Ollama 地址；容器内未运行 Ollama 时 AI 保持不可用但不影响核心业务 |
+| `ZIJA_AI_CHAT_MODEL` | `qwen2.5:7b` | 可选聊天模型 |
+| `ZIJA_AI_EMBEDDING_MODEL` | `nomic-embed-text` | 可选 embedding 模型，必须输出 768 维 |
 | `MANAGEMENT_HEALTH_MAIL_ENABLED` | `false` | **必须设置**。未配 SMTP 时邮件健康检查会让 readiness 探针 DOWN |
 
 因为数据库跑在容器内部，**不需要配置 `VpcConf`**；部署工具提示「未配置 VPC」可忽略。

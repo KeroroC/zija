@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 #
 # CloudBase 云托管（CloudRun）单容器自包含镜像：
-#   PostgreSQL + Spring Boot + nginx + Vue 静态资源 全部在一个容器内。
+#   PostgreSQL + pgvector + Spring Boot + nginx + Vue 静态资源 全部在一个容器内。
 #
 # ⚠️ 构建上下文必须是**仓库根目录**：
 #   本文件的 COPY 全部相对仓库根书写（frontend/、backend/、deploy/cloudbase/），
@@ -60,10 +60,15 @@ COPY backend/src backend/src
 # mvn picks up JAVA_HOME=/opt/java/openjdk (Temurin 25) from the base image.
 RUN cd backend && mvn -B -DskipTests package
 
-# ---- Runtime: PostgreSQL + Spring Boot + nginx in one container ----
-FROM eclipse-temurin:25-jre-noble
+# ---- Runtime: PostgreSQL + pgvector + Spring Boot + nginx in one container ----
+# pgvector is part of the database runtime because Flyway creates the vector
+# extension during the first application startup.
+FROM pgvector/pgvector:pg17
+COPY --from=eclipse-temurin:25-jre-noble /opt/java/openjdk /opt/java/openjdk
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl nginx postgresql postgresql-contrib \
+    curl nginx \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/lib/zija/files /var/lib/zija/postgresql/data /var/log/nginx /var/run/nginx \
     && chown -R postgres:postgres /var/lib/zija/postgresql \

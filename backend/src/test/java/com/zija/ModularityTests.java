@@ -40,4 +40,10 @@ class ModularityTests {
         assertThat(modules.getModuleByName("reporting")).isPresent();
         modules.verify();
     }
+
+    @Test
+    void aiModuleExistsAndDependenciesAreValid() {
+        assertThat(modules.getModuleByName("ai")).isPresent();
+        modules.verify();
+    }
 }

@@ -122,7 +122,21 @@ AI 是核心业务的可选增强能力。未配置可用模型或 AI 暂时不�
 - 使用 **PostgreSQL pgvector** 作为知识来源的向量存储，与现有 PostgreSQL 单体部署和备份体系保持一致，不引入独立向量数据库。
 - 家庭事实通过 Spring AI 工具调用连接到受控的公共查询契约；附件知识通过 Spring AI 的文档检索能力连接到 `PgVectorStore`。
 - 检索必须使用 `householdId`、挂载点类型、挂载 ID、附件 ID 和知识准备状态等元数据过滤，过滤条件由服务端生成，不能由模型自行放宽。
-- 具体 LLM、embedding 模型和外部提供方仍保持可替换，不在本规格中锁定。
+- 具体 LLM、embedding 模型和外部提供方仍保持可替换；当前开发基线默认使用 Ollama
+  `qwen2.5:7b`（聊天）和 `nomic-embed-text`（embedding），地址为
+  `http://localhost:11434`，由 `ZIJA_AI_OLLAMA_BASE_URL`、`ZIJA_AI_CHAT_MODEL` 和
+  `ZIJA_AI_EMBEDDING_MODEL` 环境变量覆盖；可替换 embedding 模型必须保持 768 维。
+- Spring AI 版本线固定为 2.0.0，使用 `spring-ai-bom`、`spring-ai-starter-model-ollama` 和
+  `spring-ai-starter-vector-store-pgvector`。生产边界为 `com.zija.ai.AiApi`，只暴露项目自有
+  records；`ChatClient`、`@Tool` 与其他 Spring AI 类型只存在于 `com.zija.ai.internal`，提供方
+  可以替换而不改变业务公共契约。
+- embedding 维度固定为 768，距离度量为 `COSINE_DISTANCE`，索引为 HNSW
+  (`vector_cosine_ops`)。向量表由 Flyway 创建，`PgVectorStore.initialize-schema=false`，避免
+  运行时建表与迁移体系分离。
+- 知识分块的 `metadata` 至少包含 `household_id`、`mount_type`、`mount_id`、`item_id`、
+  `lot_id`、`attachment_id`、`readiness_status`、`page_number`、`section_path`、`char_start`、
+  `char_end`、`embedding_model`、`embedding_dimensions` 和 `chunker_version`。家庭、挂载点、
+  物品/批次、附件和准备状态由服务端生成过滤，不能由模型请求覆盖。
 
 ## 6. 生命周期与可靠性
 
@@ -178,7 +192,8 @@ AI 请求需要具备成员级和部署级资源限制，包括请求频率、�
 3. 附件上传、恢复、改名、改挂、回收和永久删除的生命周期通知或等价的一致性机制；
 4. 知识准备状态、重试和派生数据清理的持久化边界；
 5. 家庭事实来源的新鲜度与回答依据格式；
-6. pgvector 元数据过滤、向量维度和索引策略的运行约束。
+6. pgvector 元数据过滤、向量维度和索引策略的运行约束（当前基线已锁定为 768 维、余弦距离、
+   HNSW，表结构和初始化由 Flyway 管理）。
 
 这些能力必须遵守现有 Spring Modulith 模块边界，跨模块只使用公共 API、DTO 和公开领域事件。
 

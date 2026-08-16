@@ -31,6 +31,8 @@ public final class TestDb {
             "reporting_search_index",
             "reporting_event_dead_letter",
             "reporting_processed_event",
+            // AI knowledge vector store
+            "ai_knowledge_chunk",
             // inventory
             "inventory_stocktake_item",
             "inventory_stocktake",

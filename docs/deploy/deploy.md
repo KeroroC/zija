@@ -52,6 +52,9 @@ cp .env.example .env
 | `ZIJA_POSTGRES_PORT` | 否 | `5432` | 宿主机暴露的 PostgreSQL 端口 |
 | `ZIJA_FILE_STORAGE_PATH` | 否 | `/var/lib/zija/files` | 容器内文件存储路径（卷挂载） |
 | `ZIJA_BACKUP_DIR` | 否 | `./backups` | 备份产物宿主机目录 |
+| `ZIJA_AI_OLLAMA_BASE_URL` | 否 | `http://localhost:11434` | Ollama 地址；Compose 会透传到 app 容器，需保证容器可达 |
+| `ZIJA_AI_CHAT_MODEL` | 否 | `qwen2.5:7b` | 默认聊天模型 |
+| `ZIJA_AI_EMBEDDING_MODEL` | 否 | `nomic-embed-text` | 默认 embedding 模型，必须输出 768 维 |
 | `ZIJA_SMTP_HOST` | 否 | *(空)* | SMTP 服务器地址（不配置则邮件功能静默禁用） |
 | `ZIJA_SMTP_PORT` | 否 | `587` | SMTP 端口 |
 | `ZIJA_SMTP_USERNAME` | 否 | | SMTP 用户名 |

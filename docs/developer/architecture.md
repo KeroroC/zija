@@ -15,6 +15,7 @@
 | `inventory` | 批次（Lot）、库存位、流水（Movement）、盘点（Stocktake）、幂等与一致性 |
 | `reminder` | 提醒规则、通知、邮件摘要 |
 | `reporting` | 读模型投影、报表查询端口、CSV 导出 |
+| `ai` | 模型提供方抽象、Spring AI 适配和向量检索基线 |
 
 每个模块遵循 `com.zija.<module>` 包结构：
 

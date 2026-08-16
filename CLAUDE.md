@@ -47,7 +47,7 @@ make recover-owner           # Generate owner recovery link
 
 ## Tech Stack
 
-- **Backend:** Java 25, Spring Boot 4.1.x, Spring Modulith 2.0.5, MyBatis-Plus 3.5.16, Flyway, PostgreSQL 17
+- **Backend:** Java 25, Spring Boot 4.1.x, Spring Modulith 2.0.5, MyBatis-Plus 3.5.16, Flyway, PostgreSQL 17 + pgvector
 - **Frontend:** Vue 3, TypeScript, Vite 7, Vue Router 4, Pinia 3, Element Plus, Vitest, Playwright (e2e)
 - **Infra:** Docker Compose (postgres + app + web/nginx), Maven Wrapper, npm
 
@@ -67,7 +67,7 @@ com.zija.<module>/
     persistence/            # Mapper, Entity, XML — module-internal
 ```
 
-Existing modules: `system` (health check, installation info, audit), `identity` (auth, users, sessions), `household` (family management, bootstrap, invitations), `catalog` (item categories), `location` (storage places), `file` (file storage), `inventory` (lots, stock movements, stocktake, idempotency, consistency checks), `reminder` (reminder rules, notifications), `reporting` (read-model projections, CSV export, query ports).
+Existing modules: `system` (health check, installation info, audit), `identity` (auth, users, sessions), `household` (family management, bootstrap, invitations), `catalog` (item categories), `location` (storage places), `file` (file storage), `inventory` (lots, stock movements, stocktake, idempotency, consistency checks), `reminder` (reminder rules, notifications), `reporting` (read-model projections, CSV export, query ports), `ai` (provider abstraction and Spring AI adapter).
 
 **Rules:**
 - External modules may only depend on another module's public `Api` interface and its public DTOs/records.
@@ -127,7 +127,7 @@ src/
 
 ### Docker Compose Services
 
-- `postgres`: PostgreSQL 17 Alpine with health check.
+- `postgres`: PostgreSQL 17 with pgvector and health check.
 - `app`: Spring Boot JAR (built from `deploy/app/Dockerfile`), depends on healthy postgres.
 - `web`: Nginx serving frontend static files + reverse-proxying `/api` to app, depends on healthy app.
 

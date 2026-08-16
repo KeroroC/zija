@@ -64,6 +64,25 @@ spring:
       mail.smtp.auth: true
       mail.smtp.starttls.enable: ${ZIJA_SMTP_TLS:true}
 
+  # ---------- AI（本地 Ollama，可选） ----------
+  # 未运行 Ollama 时核心业务仍可启动；调用 AI 时由 provider seam 报告不可用。
+  ai:
+    ollama:
+      base-url: ${ZIJA_AI_OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        model: ${ZIJA_AI_CHAT_MODEL:qwen2.5:7b}
+      embedding:
+        model: ${ZIJA_AI_EMBEDDING_MODEL:nomic-embed-text}
+    vectorstore:
+      pgvector:
+        schema-name: public
+        table-name: ai_knowledge_chunk
+        dimensions: 768
+        distance-type: COSINE_DISTANCE
+        index-type: HNSW
+        initialize-schema: false
+        schema-validation: true
+
   # ---------- 会话 (Session) ----------
   # 会话超时由 server.servlet.session.timeout 控制（Spring Session 由 @EnableJdbcHttpSession 配置）
 
