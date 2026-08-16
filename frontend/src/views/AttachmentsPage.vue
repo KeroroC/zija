@@ -242,6 +242,7 @@ import {
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
 import { ApiError } from "../api/http";
+import { FILE_NAME_DUPLICATE } from "../types/errorCodes";
 import { formatDateTime } from "../utils/date";
 import { formatBytes } from "../utils/format";
 
@@ -372,7 +373,7 @@ async function loadMountNames() {
 }
 
 function isDuplicateNameError(error: unknown): boolean {
-  return error instanceof ApiError && error.errorCode === "FILE_NAME_DUPLICATE";
+  return error instanceof ApiError && error.errorCode === FILE_NAME_DUPLICATE;
 }
 
 function itemName(id: string): string {

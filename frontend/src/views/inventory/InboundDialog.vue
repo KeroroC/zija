@@ -230,6 +230,7 @@ import { fetchItems, fetchUnits } from '../../api/catalog'
 import { fetchLots, inboundNewLot, inboundExistingLot } from '../../api/inventory'
 import { fetchLocationTree } from '../../api/location'
 import { ApiError } from '../../api/http'
+import { INVENTORY_ARCHIVED_ITEM } from '../../types/errorCodes'
 import type { CatalogItem, Unit } from '../../types/catalog'
 import type { LotSummary } from '../../types/inventory'
 import type { LocationNode, LocationTree } from '../../types/location'
@@ -472,7 +473,7 @@ async function handleSubmit() {
     emit('update:modelValue', false)
   } catch (err) {
     if (err instanceof ApiError) {
-      if (err.errorCode === 'INVENTORY_ARCHIVED_ITEM') {
+      if (err.errorCode === INVENTORY_ARCHIVED_ITEM) {
         ElMessage.error('该物品已归档，无法入库。请先恢复物品状态。')
       } else {
         ElMessage.error(err.message)

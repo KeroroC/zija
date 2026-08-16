@@ -342,7 +342,7 @@ Docker Compose 包含反向代理、应用和 PostgreSQL 三个主要服务。�
 
 数据与运行：
 
-- PostgreSQL 17 或更高的受支持主版本；
+- PostgreSQL 17 或更高的受支持主版本，开发与 Compose 基线启用 pgvector 扩展；
 - Docker Compose；
 - Nginx；
 - 可选 SMTP。
@@ -379,6 +379,7 @@ MyBatis-Plus 提供的代码生成器不作为运行时依赖。若实施阶段�
 | `reminder` | 规则、任务、站内通知、邮件 | 订阅 `inventory` 与 `catalog` 的公开事件 |
 | `file` | 封面文件存储、读取和清理 | `household`, `system` |
 | `reporting` | 查询投影、报表、CSV 导入导出 | 订阅公开事件并调用稳定查询端口 |
+| `ai` | 提供方抽象、模型/embedding 适配、向量检索基线 | 当前基线无业务模块依赖；后续仅使用公开查询端口 |
 | `system` | 健康检查、审计、时钟、通用技术能力 | 无业务模块依赖 |
 
 模块采用按业务能力组织的包结构。外部模块只能使用被明确公开的接口、数据传输类型和领域事件，不能直接引用其他模块的实体、Mapper 或 XML 映射。自动化架构测试持续验证依赖方向。

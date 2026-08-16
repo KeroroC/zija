@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -156,7 +157,7 @@ class FileController {
         byte[] content = fileStorage.read(info.storageKey());
         response.setContentType(info.detectedMediaType());
         response.setContentLengthLong(content.length);
-        response.setHeader("Content-Disposition", "inline; filename=\"" + info.originalFilename() + "\"");
+        response.setHeader("Content-Disposition", contentDispositionValue(info.originalFilename()));
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.getOutputStream().write(content);
     }
@@ -235,4 +236,52 @@ class FileController {
 
     record RemountRequest(String mountType) {
     }
+
+    /**
+     * 构建安全的 {@code Content-Disposition} 头值（RFC 6266 §5 + RFC 5987）。
+     *
+     * <p>文件名原样放入双引号会破坏 quoted-string 语法：含 {@code "} 的名字可拼接出
+     * 伪造的 {@code filename} 参数（头参数注入），非 ASCII 名字还会被以 ISO-8859-1
+     * 写到线上变成乱码。因此真实名字走 {@code filename*=UTF-8''<百分号编码>}，
+     * 另附一个纯 ASCII 的 {@code filename="..."} 回退值供旧客户端使用；两者都存在时
+     * 规范要求客户端优先采用 {@code filename*}。</p>
+     */
+    private static String contentDispositionValue(String originalFilename) {
+        if (originalFilename == null || originalFilename.isBlank()) {
+            return "inline; filename=\"file\"";
+        }
+        String fallback = headerSafeAscii(originalFilename);
+        String encoded = rfc5987Encode(originalFilename);
+        if (fallback.equals(originalFilename)) {
+            return "inline; filename=\"" + fallback + "\"";
+        }
+        return "inline; filename=\"" + fallback + "\"; filename*=UTF-8''" + encoded;
+    }
+
+    /** quoted-string 安全的 ASCII 回退名：双引号、反斜杠、控制符与非 ASCII 一律替换为下划线。 */
+    private static String headerSafeAscii(String name) {
+        StringBuilder sb = new StringBuilder(name.length());
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            sb.append((c >= 0x20 && c <= 0x7E && c != '"' && c != '\\') ? c : '_');
+        }
+        return sb.toString();
+    }
+
+    /** RFC 5987 {@code attr-char} 白名单外的字节做 UTF-8 百分号编码。 */
+    private static String rfc5987Encode(String value) {
+        StringBuilder sb = new StringBuilder(value.length() * 2);
+        for (byte b : value.getBytes(StandardCharsets.UTF_8)) {
+            int v = b & 0xFF;
+            if ((v >= 'a' && v <= 'z') || (v >= 'A' && v <= 'Z') || (v >= '0' && v <= '9')
+                    || "!#$&+-.^_`|~".indexOf(v) >= 0) {
+                sb.append((char) v);
+            } else {
+                sb.append('%').append(HEX[(v >> 4) & 0xF]).append(HEX[v & 0xF]);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static final char[] HEX = "0123456789ABCDEF".toCharArray();
 }

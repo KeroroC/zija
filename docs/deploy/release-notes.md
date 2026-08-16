@@ -14,7 +14,7 @@
 | Spring Boot | 4.1.0 |
 | Spring Modulith | 2.0.5 |
 | MyBatis-Plus | 3.5.16 |
-| PostgreSQL | 17 (Alpine) |
+| PostgreSQL | 17 (pgvector) |
 | Vue | 3.5 |
 | Vite | 7.0 |
 | Element Plus | (随 Vue 3 生态) |

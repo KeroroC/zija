@@ -197,6 +197,7 @@ import {
 } from '../../api/file'
 import { ApiError } from '../../api/http'
 import type { LotSummary, Movement, MovementType } from '../../types/inventory'
+import { INVENTORY_LOT_VERSION_CONFLICT } from '../../types/errorCodes'
 import { futureDateShortcuts, pastDateShortcuts } from '../../utils/date'
 import { formatBytes } from '../../utils/format'
 
@@ -382,7 +383,7 @@ async function submitEdit() {
     ElMessage.success('批次信息已更新')
     emit('updated')
   } catch (err) {
-    if (err instanceof ApiError && err.errorCode === 'lot_version_conflict') {
+    if (err instanceof ApiError && err.errorCode === INVENTORY_LOT_VERSION_CONFLICT) {
       ElMessage.error('数据已被其他人修改，请关闭后重新打开')
     } else {
       ElMessage.error(err instanceof Error ? err.message : '保存失败')

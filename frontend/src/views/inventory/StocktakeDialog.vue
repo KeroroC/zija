@@ -232,6 +232,7 @@ import {
 } from '../../api/inventory'
 import { fetchLocationTree } from '../../api/location'
 import { ApiError } from '../../api/http'
+import { INVENTORY_STOCKTAKE_STALE } from '../../types/errorCodes'
 import type {
   StocktakeDetail,
   StocktakeItem,
@@ -412,7 +413,7 @@ async function handleSaveDraft() {
     isStale.value = false
   } catch (err) {
     if (err instanceof ApiError) {
-      if (err.errorCode === 'INVENTORY_STOCKTAKE_STALE') {
+      if (err.errorCode === INVENTORY_STOCKTAKE_STALE) {
         isStale.value = true
         currentStep.value = 2
         ElMessage.warning('盘点数据已过期，请刷新')
@@ -477,7 +478,7 @@ async function handleConfirm() {
     emit('update:modelValue', false)
   } catch (err) {
     if (err instanceof ApiError) {
-      if (err.errorCode === 'INVENTORY_STOCKTAKE_STALE') {
+      if (err.errorCode === INVENTORY_STOCKTAKE_STALE) {
         isStale.value = true
         ElMessage.warning('盘点数据已过期，请刷新后重试')
       } else {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CloudBase CloudRun entrypoint:
-#   1. Initialize + start an in-container PostgreSQL (data on /var/lib/zija/postgresql/data)
+#   1. Initialize + start an in-container PostgreSQL + pgvector (data on /var/lib/zija/postgresql/data)
 #   2. Start the Spring Boot backend (jar) on 127.0.0.1:8081
 #   3. Start nginx on 8080 (CloudRun PORT) serving the SPA + reverse-proxying /api
 set -euo pipefail

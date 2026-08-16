@@ -42,6 +42,22 @@ spring:
     properties:
       mail.smtp.auth: true
       mail.smtp.starttls.enable: ${ZIJA_SMTP_TLS:true}
+  ai:
+    ollama:
+      base-url: ${ZIJA_AI_OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        model: ${ZIJA_AI_CHAT_MODEL:qwen2.5:7b}
+      embedding:
+        model: ${ZIJA_AI_EMBEDDING_MODEL:nomic-embed-text}
+    vectorstore:
+      pgvector:
+        schema-name: public
+        table-name: ai_knowledge_chunk
+        dimensions: 768
+        distance-type: COSINE_DISTANCE
+        index-type: HNSW
+        initialize-schema: false
+        schema-validation: true
 
 server:
   shutdown: graceful

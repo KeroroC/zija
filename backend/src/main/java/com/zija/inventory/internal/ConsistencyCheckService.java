@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -62,6 +63,19 @@ public class ConsistencyCheckService {
             if (actualQty.compareTo(expected) != 0) {
                 discrepancies.add(new Discrepancy(
                         actual.getLotId(), actual.getLocationId(), expected, actualQty));
+            }
+        }
+
+        // 5. 补报"应有但缺行"的库存位：流水聚合有 (lotId, locationId) 的应有数量，
+        //    但实际不存在库存位行。净数为 0 的键视为一致，避免误报。
+        Set<StockPositionKey> actualKeys = actualPositions.stream()
+                .map(sp -> new StockPositionKey(sp.getLotId(), sp.getLocationId()))
+                .collect(Collectors.toSet());
+        for (Map.Entry<StockPositionKey, BigDecimal> entry : expectedMap.entrySet()) {
+            StockPositionKey key = entry.getKey();
+            if (!actualKeys.contains(key) && entry.getValue().compareTo(BigDecimal.ZERO) != 0) {
+                discrepancies.add(new Discrepancy(
+                        key.lotId(), key.locationId(), entry.getValue(), BigDecimal.ZERO));
             }
         }
 

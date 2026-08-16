@@ -12,6 +12,7 @@ import type {
   MovementListResponse,
 } from "../../types/inventory"
 import type { ItemListResponse } from "../../types/catalog"
+import { INVENTORY_LOT_VERSION_CONFLICT } from "../../types/errorCodes"
 
 vi.mock("../../api/inventory", () => ({
   fetchLots: vi.fn(),
@@ -377,7 +378,7 @@ describe("LotDetailDrawer", () => {
     const { ApiError } = await import("../../api/http")
     const messageSpy = vi.spyOn(ElMessage, "error")
     updateLotMetaMock.mockRejectedValueOnce(
-      new ApiError("Version conflict", "lot_version_conflict", 409),
+      new ApiError("Version conflict", INVENTORY_LOT_VERSION_CONFLICT, 409),
     )
 
     await mountDrawer()

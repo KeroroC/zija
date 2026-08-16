@@ -52,6 +52,9 @@ cp .env.example .env
 | `ZIJA_POSTGRES_PORT` | 否 | `5432` | 宿主机暴露的 PostgreSQL 端口 |
 | `ZIJA_FILE_STORAGE_PATH` | 否 | `/var/lib/zija/files` | 容器内文件存储路径（卷挂载） |
 | `ZIJA_BACKUP_DIR` | 否 | `./backups` | 备份产物宿主机目录 |
+| `ZIJA_AI_OLLAMA_BASE_URL` | 否 | `http://localhost:11434` | Ollama 地址；Compose 会透传到 app 容器，需保证容器可达 |
+| `ZIJA_AI_CHAT_MODEL` | 否 | `qwen2.5:7b` | 默认聊天模型 |
+| `ZIJA_AI_EMBEDDING_MODEL` | 否 | `nomic-embed-text` | 默认 embedding 模型，必须输出 768 维 |
 | `ZIJA_SMTP_HOST` | 否 | *(空)* | SMTP 服务器地址（不配置则邮件功能静默禁用） |
 | `ZIJA_SMTP_PORT` | 否 | `587` | SMTP 端口 |
 | `ZIJA_SMTP_USERNAME` | 否 | | SMTP 用户名 |
@@ -79,14 +82,21 @@ ZIJA_HTTP_PORT=8088
 
 ## 4. 生产 Profile（prod）
 
-设置 `ZIJA_PROFILES_ACTIVE=prod` 后，Spring Boot 会额外加载 `application-prod.yml`，启用以下行为：
+设置 `ZIJA_PROFILES_ACTIVE=prod` 后，Spring Boot 会额外加载 `application-prod.yml`：
 
 | 配置项 | 效果 |
 |---|---|
-| `server.servlet.session.cookie.secure=true` | 会话 Cookie 仅通过 HTTPS 传输 |
 | `springdoc.swagger-ui.enabled=false` | 关闭 Swagger UI（生产环境不暴露 API 文档） |
 
-确保 TLS 反代正确设置 `X-Forwarded-Proto: https`（见 §5），否则 Secure Cookie 将无法正常工作。
+**Secure Cookie 由传输层自动决定**，prod profile 不强制设置 `cookie.secure`（应用注册了自定义
+`CookieSerializer`，`server.servlet.session.cookie.secure` 不会生效；Secure 标志跟随
+`request.isSecure()`，即反代透传的 `X-Forwarded-Proto`）。因此：
+
+- TLS 反代正确透传 `X-Forwarded-Proto: https` 时，会话 Cookie 自动带 Secure（仅 HTTPS 传输）；
+- 纯 HTTP 暴露时不带 Secure（浏览器不会拒收 Cookie，但无加密可言，生产必须接 TLS）。
+
+内置 `deploy/nginx/default.conf` 已实现透传（上游带 `X-Forwarded-Proto` 时原样转发，否则回退本机
+scheme），TLS 反代只需设置 `X-Forwarded-Proto $scheme`（见 §5），无需额外配置。
 
 ---
 
@@ -104,8 +114,8 @@ server {
     ssl_certificate     /etc/letsencrypt/live/zija.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/zija.example.com/privkey.pem;
 
-    # 可选：HTTP/2、HSTS、OCSP Stapling 等
-    # add_header Strict-Transport-Security "max-age=63072000" always;
+    # 推荐：HSTS（仅 HTTPS 下发；纯 HTTP 站点下发会被浏览器忽略）
+    add_header Strict-Transport-Security "max-age=63072000" always;
 
     location / {
         proxy_pass http://127.0.0.1:8088;   # 对应 ZIJA_HTTP_PORT
@@ -113,7 +123,7 @@ server {
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;   # 关键：传递 https
+        proxy_set_header X-Forwarded-Proto $scheme;   # 关键：传递 https（compose 内 nginx 会透传该头）
         proxy_set_header X-Request-Id      $http_x_request_id;
     }
 }
@@ -132,6 +142,7 @@ Caddy 自动管理 TLS 证书，配置更简洁：
 ```
 zija.example.com {
     reverse_proxy localhost:8088
+    header Strict-Transport-Security "max-age=63072000"   # 推荐：HSTS
 }
 ```
 

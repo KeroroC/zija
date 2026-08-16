@@ -8,6 +8,7 @@ export ZIJA_HTTP_PORT=18088
 export ZIJA_POSTGRES_PORT=15432
 
 cleanup() {
+  rm -f "${BIG_PROBE:-}"
   docker compose -p zija-smoke --env-file .env.example down -v
 }
 trap cleanup EXIT
@@ -44,6 +45,20 @@ if [ "$LIVENESS_STATUS" != "UP" ]; then
 fi
 echo "OK: liveness UP"
 
+# 回归防护：>1MB 上传必须穿过 nginx 到达 app。
+# nginx 缺 client_max_body_size 时默认 1m，会在反代层直接 413（text/html、无 X-Request-Id）；
+# 未认证探测下穿过 nginx 后 app 返回 401/403 problem+json，即可证明配置在位。
+echo "Checking >1MB upload passes nginx ..."
+BIG_PROBE=$(mktemp /tmp/zija-upload-probe.XXXXXX)
+dd if=/dev/urandom of="$BIG_PROBE" bs=1024 count=1536 2>/dev/null
+UPLOAD_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+  -X POST "$BASE_URL/api/v1/files" -F "file=@$BIG_PROBE")
+if [ "$UPLOAD_CODE" = "413" ]; then
+  echo "FAIL: nginx rejected >1MB upload with 413 (client_max_body_size missing)" >&2
+  exit 1
+fi
+echo "OK: >1MB upload passes nginx (app answered $UPLOAD_CODE)"
+
 # 安全 Cookie 断言：Secure 标志由传输层决定（app 侧 request.isSecure()，
 # 跟随反代 X-Forwarded-Proto），仅在 HTTPS 下出现；纯 HTTP smoke 下断言无意义。
 # 仅当 BASE_URL 为 https 时才检查 Secure。
@@ -59,6 +74,22 @@ case "$BASE_URL" in
     ;;
   *)
     echo "SKIP: plain HTTP smoke, Secure flag check skipped (Secure requires HTTPS)"
+
+    # 反代透传断言（回归防护）：nginx 不得用自身 $scheme 覆盖上游 X-Forwarded-Proto。
+    # 生产部署在 nginx 前置 TLS 反代时，Secure Cookie 依赖此透传（见 deploy/nginx/default.conf）。
+    # 1) 纯 HTTP 直连：任何 Cookie 都不得带 Secure（否则浏览器拒收，登录不可用）
+    if echo "$CSRF_HEADERS" | grep -i "^set-cookie" | grep -qi "secure"; then
+      echo "FAIL: plain HTTP but Set-Cookie carries Secure flag (browsers would reject it)" >&2
+      exit 1
+    fi
+    echo "OK: plain HTTP cookies carry no Secure flag"
+    # 2) 客户端带 X-Forwarded-Proto: https（模拟上游 TLS 终止）：Cookie 必须带 Secure
+    XFP_HEADERS=$(curl -si -H "X-Forwarded-Proto: https" "$BASE_URL/api/v1/auth/csrf" 2>/dev/null || true)
+    if ! echo "$XFP_HEADERS" | grep -i "^set-cookie" | grep -qi "secure"; then
+      echo "FAIL: X-Forwarded-Proto: https not passed through, Secure flag missing behind TLS terminator" >&2
+      exit 1
+    fi
+    echo "OK: X-Forwarded-Proto passthrough works (Secure flag present)"
     ;;
 esac
 

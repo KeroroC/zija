@@ -21,7 +21,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 public final class SharedPostgres {
 
     private static final PostgreSQLContainer<?> INSTANCE =
-            new PostgreSQLContainer<>("postgres:17-alpine");
+            new PostgreSQLContainer<>("pgvector/pgvector:pg17");
 
     static {
         INSTANCE.start();

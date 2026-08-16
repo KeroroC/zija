@@ -123,6 +123,57 @@ class FileControllerTest extends AbstractWebMvcSliceTest {
     }
 
     @Test
+    void downloadContentDispositionEscapesQuoteInFilename() throws Exception {
+        UUID fileId = UUID.randomUUID();
+        when(fileApi.findInfo(householdId, fileId)).thenReturn(Optional.of(new FileApi.StoredFileInfo(
+                fileId, householdId, "2026/07/k.jpg", "a\".jpg", "image/jpeg", 3L, "h")));
+        when(fileStorage.read("2026/07/k.jpg"))
+                .thenReturn(new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
+
+        mockMvc.perform(get("/api/v1/files/{fileId}/content", fileId)
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal)))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Content-Disposition",
+                                org.hamcrest.Matchers.is(
+                                        "inline; filename=\"a_.jpg\"; filename*=UTF-8''a%22.jpg")));
+    }
+
+    @Test
+    void downloadContentDispositionNeutralizesInjectedParameters() throws Exception {
+        UUID fileId = UUID.randomUUID();
+        when(fileApi.findInfo(householdId, fileId)).thenReturn(Optional.of(new FileApi.StoredFileInfo(
+                fileId, householdId, "k", "\"; filename=\"evil.jpg", "image/jpeg", 3L, "h")));
+        when(fileStorage.read("k")).thenReturn(new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
+
+        mockMvc.perform(get("/api/v1/files/{fileId}/content", fileId)
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal)))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Content-Disposition",
+                                org.hamcrest.Matchers.is(
+                                        "inline; filename=\"_; filename=_evil.jpg\"; filename*=UTF-8''"
+                                                + "%22%3B%20filename%3D%22evil.jpg")));
+    }
+
+    @Test
+    void downloadContentDispositionEncodesNonAsciiNameViaFilenameStar() throws Exception {
+        UUID fileId = UUID.randomUUID();
+        when(fileApi.findInfo(householdId, fileId)).thenReturn(Optional.of(new FileApi.StoredFileInfo(
+                fileId, householdId, "k", "户口本.jpg", "image/jpeg", 3L, "h")));
+        when(fileStorage.read("k")).thenReturn(new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
+
+        mockMvc.perform(get("/api/v1/files/{fileId}/content", fileId)
+                        .with(SecurityMockMvcRequestPostProcessors.user(principal)))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Content-Disposition",
+                                org.hamcrest.Matchers.is(
+                                        "inline; filename=\"___.jpg\"; filename*=UTF-8''"
+                                                + "%E6%88%B7%E5%8F%A3%E6%9C%AC.jpg")));
+    }
+
+    @Test
     void deleteRequiresAuthentication() throws Exception {
         UUID fileId = UUID.randomUUID();
         mockMvc.perform(delete("/api/v1/files/{fileId}", fileId)

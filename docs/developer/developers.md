@@ -6,7 +6,7 @@
 
 ## 技术栈
 
-- **后端：** Java 25, Spring Boot 4.1.x, Spring Modulith 2.0.5, MyBatis-Plus 3.5.16, Flyway, PostgreSQL 17
+- **后端：** Java 25, Spring Boot 4.1.x, Spring Modulith 2.0.5, MyBatis-Plus 3.5.16, Flyway, PostgreSQL 17 + pgvector
 - **前端：** Vue 3, TypeScript, Vite 7, Vue Router 4, Pinia 3, Element Plus, Vitest, Playwright
 - **基础设施：** Docker Compose (postgres + app + web/nginx), Maven Wrapper, npm
 
@@ -33,6 +33,7 @@
 | `ZIJA_FILE_STORAGE_PATH` | `/var/lib/zija/files` | 上传文件存储目录 |
 | `ZIJA_BACKUP_DIR` | `./backups` | 备份产物宿主机目录 |
 | `ZIJA_SMTP_HOST` / `_PORT` / `_USERNAME` / `_PASSWORD` / `_FROM` / `_TLS` | SMTP 邮件 | 不配置则邮件提醒静默禁用，站内通知不受影响 |
+| `ZIJA_AI_OLLAMA_BASE_URL` / `ZIJA_AI_CHAT_MODEL` / `_EMBEDDING_MODEL` | 本地 Ollama AI | 可选；Compose 会将配置传入 `app` 容器，未配置时核心业务仍可用 |
 
 `.env` 文件由 `docker compose` 和 `make dev-backend`（通过 `set -a; . ./.env; set +a`）自动加载。
 
