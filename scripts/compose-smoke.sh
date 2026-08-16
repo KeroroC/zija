@@ -8,6 +8,7 @@ export ZIJA_HTTP_PORT=18088
 export ZIJA_POSTGRES_PORT=15432
 
 cleanup() {
+  rm -f "${BIG_PROBE:-}"
   docker compose -p zija-smoke --env-file .env.example down -v
 }
 trap cleanup EXIT
@@ -43,6 +44,20 @@ if [ "$LIVENESS_STATUS" != "UP" ]; then
   exit 1
 fi
 echo "OK: liveness UP"
+
+# 回归防护：>1MB 上传必须穿过 nginx 到达 app。
+# nginx 缺 client_max_body_size 时默认 1m，会在反代层直接 413（text/html、无 X-Request-Id）；
+# 未认证探测下穿过 nginx 后 app 返回 401/403 problem+json，即可证明配置在位。
+echo "Checking >1MB upload passes nginx ..."
+BIG_PROBE=$(mktemp /tmp/zija-upload-probe.XXXXXX)
+dd if=/dev/urandom of="$BIG_PROBE" bs=1024 count=1536 2>/dev/null
+UPLOAD_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+  -X POST "$BASE_URL/api/v1/files" -F "file=@$BIG_PROBE")
+if [ "$UPLOAD_CODE" = "413" ]; then
+  echo "FAIL: nginx rejected >1MB upload with 413 (client_max_body_size missing)" >&2
+  exit 1
+fi
+echo "OK: >1MB upload passes nginx (app answered $UPLOAD_CODE)"
 
 # 安全 Cookie 断言：Secure 标志由传输层决定（app 侧 request.isSecure()，
 # 跟随反代 X-Forwarded-Proto），仅在 HTTPS 下出现；纯 HTTP smoke 下断言无意义。
