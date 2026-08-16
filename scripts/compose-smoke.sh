@@ -74,6 +74,22 @@ case "$BASE_URL" in
     ;;
   *)
     echo "SKIP: plain HTTP smoke, Secure flag check skipped (Secure requires HTTPS)"
+
+    # 反代透传断言（回归防护）：nginx 不得用自身 $scheme 覆盖上游 X-Forwarded-Proto。
+    # 生产部署在 nginx 前置 TLS 反代时，Secure Cookie 依赖此透传（见 deploy/nginx/default.conf）。
+    # 1) 纯 HTTP 直连：任何 Cookie 都不得带 Secure（否则浏览器拒收，登录不可用）
+    if echo "$CSRF_HEADERS" | grep -i "^set-cookie" | grep -qi "secure"; then
+      echo "FAIL: plain HTTP but Set-Cookie carries Secure flag (browsers would reject it)" >&2
+      exit 1
+    fi
+    echo "OK: plain HTTP cookies carry no Secure flag"
+    # 2) 客户端带 X-Forwarded-Proto: https（模拟上游 TLS 终止）：Cookie 必须带 Secure
+    XFP_HEADERS=$(curl -si -H "X-Forwarded-Proto: https" "$BASE_URL/api/v1/auth/csrf" 2>/dev/null || true)
+    if ! echo "$XFP_HEADERS" | grep -i "^set-cookie" | grep -qi "secure"; then
+      echo "FAIL: X-Forwarded-Proto: https not passed through, Secure flag missing behind TLS terminator" >&2
+      exit 1
+    fi
+    echo "OK: X-Forwarded-Proto passthrough works (Secure flag present)"
     ;;
 esac
 

@@ -79,14 +79,21 @@ ZIJA_HTTP_PORT=8088
 
 ## 4. 生产 Profile（prod）
 
-设置 `ZIJA_PROFILES_ACTIVE=prod` 后，Spring Boot 会额外加载 `application-prod.yml`，启用以下行为：
+设置 `ZIJA_PROFILES_ACTIVE=prod` 后，Spring Boot 会额外加载 `application-prod.yml`：
 
 | 配置项 | 效果 |
 |---|---|
-| `server.servlet.session.cookie.secure=true` | 会话 Cookie 仅通过 HTTPS 传输 |
 | `springdoc.swagger-ui.enabled=false` | 关闭 Swagger UI（生产环境不暴露 API 文档） |
 
-确保 TLS 反代正确设置 `X-Forwarded-Proto: https`（见 §5），否则 Secure Cookie 将无法正常工作。
+**Secure Cookie 由传输层自动决定**，prod profile 不强制设置 `cookie.secure`（应用注册了自定义
+`CookieSerializer`，`server.servlet.session.cookie.secure` 不会生效；Secure 标志跟随
+`request.isSecure()`，即反代透传的 `X-Forwarded-Proto`）。因此：
+
+- TLS 反代正确透传 `X-Forwarded-Proto: https` 时，会话 Cookie 自动带 Secure（仅 HTTPS 传输）；
+- 纯 HTTP 暴露时不带 Secure（浏览器不会拒收 Cookie，但无加密可言，生产必须接 TLS）。
+
+内置 `deploy/nginx/default.conf` 已实现透传（上游带 `X-Forwarded-Proto` 时原样转发，否则回退本机
+scheme），TLS 反代只需设置 `X-Forwarded-Proto $scheme`（见 §5），无需额外配置。
 
 ---
 
@@ -104,8 +111,8 @@ server {
     ssl_certificate     /etc/letsencrypt/live/zija.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/zija.example.com/privkey.pem;
 
-    # 可选：HTTP/2、HSTS、OCSP Stapling 等
-    # add_header Strict-Transport-Security "max-age=63072000" always;
+    # 推荐：HSTS（仅 HTTPS 下发；纯 HTTP 站点下发会被浏览器忽略）
+    add_header Strict-Transport-Security "max-age=63072000" always;
 
     location / {
         proxy_pass http://127.0.0.1:8088;   # 对应 ZIJA_HTTP_PORT
@@ -113,7 +120,7 @@ server {
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;   # 关键：传递 https
+        proxy_set_header X-Forwarded-Proto $scheme;   # 关键：传递 https（compose 内 nginx 会透传该头）
         proxy_set_header X-Request-Id      $http_x_request_id;
     }
 }
@@ -132,6 +139,7 @@ Caddy 自动管理 TLS 证书，配置更简洁：
 ```
 zija.example.com {
     reverse_proxy localhost:8088
+    header Strict-Transport-Security "max-age=63072000"   # 推荐：HSTS
 }
 ```
 

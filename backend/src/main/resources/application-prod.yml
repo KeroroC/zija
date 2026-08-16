@@ -1,9 +1,14 @@
-server:
-  servlet:
-    session:
-      cookie:
-        secure: true
-
+# 生产 Profile。
+#
+# 会话 Cookie 的 Secure 标志由传输层决定，而非此处配置：应用注册了自定义
+# CookieSerializer（ZijaSessionConfiguration），server.servlet.session.cookie.secure
+# 不会生效；DefaultCookieSerializer 在未显式设置时跟随 request.isSecure()，
+# 即透传的 X-Forwarded-Proto 头（server.forward-headers-strategy=native）。
+#
+# 因此：生产部署必须由 TLS 反代终止 HTTPS 并透传 X-Forwarded-Proto: https
+# （deploy/nginx/default.conf 已透传；见 docs/deploy/deploy.md §5），
+# 此时 Secure 标志自动生效；纯 HTTP 暴露下不设置 Secure（浏览器不会拒收）。
+# 切勿在此处重新添加 cookie.secure: true —— 一旦其生效，纯 HTTP 部署将无法登录。
 springdoc:
   api-docs:
     enabled: false

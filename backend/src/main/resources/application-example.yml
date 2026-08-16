@@ -86,7 +86,9 @@ server:
         name: ZIJA_SESSION
         http-only: true
         same-site: lax
-        # secure: true 由 application-prod.yml 在 prod profile 下开启（仅 HTTPS）
+        # 注意：secure 不在此处配置。应用注册了自定义 CookieSerializer，该属性不会生效；
+        # Secure 标志由传输层决定（request.isSecure()，经 X-Forwarded-Proto 透传），
+        # TLS 反代透传 X-Forwarded-Proto: https 后自动生效（见 deploy/nginx/default.conf）。
 
 # ---------- 应用信息（系统信息页展示） ----------
 info:

@@ -82,7 +82,7 @@ cd zija
 cp .env.example .env
 # 至少修改以下两项：
 #   ZIJA_POSTGRES_PASSWORD / ZIJA_DB_PASSWORD  设强随机密码
-#   ZIJA_PROFILES_ACTIVE=prod                   启用 Secure Cookie + 关闭 Swagger
+#   ZIJA_PROFILES_ACTIVE=prod                   生产模式（关闭 Swagger；Secure Cookie 由 TLS 传输层自动决定）
 
 # 3. 构建并启动
 docker compose --env-file .env up -d --build
@@ -93,10 +93,10 @@ docker compose ps                # 三个服务应均为 healthy
 
 ### 必读配置
 
-- **`ZIJA_PROFILES_ACTIVE=prod`**：生产环境必须设置。会话 Cookie 启用 `Secure` 标志（仅 HTTPS），并关闭 Swagger UI。
+- **`ZIJA_PROFILES_ACTIVE=prod`**：生产环境必须设置。关闭 Swagger UI；会话 Cookie 的 `Secure` 标志由传输层自动决定（TLS 反代透传 `X-Forwarded-Proto: https` 时生效，见下）。
 - **`ZIJA_POSTGRES_PASSWORD` 与 `ZIJA_DB_PASSWORD`**：须改为强随机值并保持一致。
 - **`ZIJA_DB_URL`** 用 `postgres:5432`（Compose 服务名），不要改。
-- **TLS 反向代理**：知家应用本身不处理 TLS 终止，需在前面部署 Nginx / Caddy / Traefik。详见 [`docs/deploy/deploy.md`](docs/deploy/deploy.md) §5。
+- **TLS 反向代理**：知家应用本身不处理 TLS 终止，需在前面部署 Nginx / Caddy / Traefik（并透传 `X-Forwarded-Proto: https`、下发 HSTS）。详见 [`docs/deploy/deploy.md`](docs/deploy/deploy.md) §5。
 
 ### 升级
 
@@ -187,7 +187,7 @@ CloudBase 节点是 amd64。在 Apple Silicon Mac 上直接 `docker build` 会�
 ### 登录与会话
 
 - 登录页：`/login`
-- 会话 Cookie：`ZIJA_SESSION`（HttpOnly、SameSite=Lax；生产 HTTPS 下 Secure）
+- 会话 Cookie：`ZIJA_SESSION`（HttpOnly、SameSite=Lax；Secure 标志跟随传输层，TLS 反代透传 `X-Forwarded-Proto: https` 后自动带 Secure）
 - 密码修改后当前账户全部会话失效，需重新登录
 
 ### 邀请成员
