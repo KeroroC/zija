@@ -85,6 +85,13 @@ class FileContentInspectorTest {
     }
 
     @Test
+    void stripsQuotesFromBasename() {
+        byte[] jpeg = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0x00, 0x01};
+        var result = inspector.inspect(jpeg, "a\".jpg", "image/jpeg");
+        assertThat(result.sanitizedBasename()).isEqualTo("a.jpg");
+    }
+
+    @Test
     void computesSha256() {
         byte[] content = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0x00, 0x01};
         var result = inspector.inspect(content, "test.jpg", "image/jpeg");

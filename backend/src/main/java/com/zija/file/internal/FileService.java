@@ -13,8 +13,10 @@ import com.zija.shared.ZijaAuditOutcome;
 import com.zija.system.SystemApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.text.Normalizer;
@@ -190,8 +192,12 @@ class FileService implements FileApi {
         if (entity == null) {
             return null;
         }
-        String trimmed = name.trim();
-        String nameNormalized = normalizeName(trimmed);
+        // 与上传同一套清洗：去路径分隔符、控制符与双引号，避免脏名进入 Content-Disposition
+        String sanitized = FileContentInspector.sanitizeName(name);
+        if (sanitized.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "文件名包含非法字符");
+        }
+        String nameNormalized = normalizeName(sanitized);
         assertNameAvailable(
                 householdId,
                 entity.getMountType(),
@@ -199,7 +205,7 @@ class FileService implements FileApi {
                 nameNormalized,
                 fileId
         );
-        entity.setOriginalFilename(trimmed);
+        entity.setOriginalFilename(sanitized);
         entity.setNameNormalized(nameNormalized);
         storedFileMapper.updateById(entity);
         audit(householdId, SystemApi.AuditAction.FILE_RENAMED, fileId);

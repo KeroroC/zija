@@ -62,7 +62,7 @@ class FileContentInspector {
             MEDIA_TYPE_DOCX, MEDIA_TYPE_XLSX, MEDIA_TYPE_PPTX,
             MEDIA_TYPE_DOC, MEDIA_TYPE_XLS, MEDIA_TYPE_PPT
     );
-    private static final Pattern CONTROL_CHARS = Pattern.compile("\\p{Cntrl}");
+    private static final Pattern UNSAFE_NAME_CHARS = Pattern.compile("[\\p{Cntrl}\"]");
     private static final Pattern PATH_SEPARATOR = Pattern.compile("[/\\\\]");
 
     private static boolean startsWith(byte[] content, int offset, byte[] signature) {
@@ -232,38 +232,50 @@ class FileContentInspector {
         return basename.substring(dot).toLowerCase(Locale.ROOT);
     }
 
-    private String sanitizeBasename(String originalFilename, String detectedMediaType) {
-        if (originalFilename == null || originalFilename.isBlank()) {
-            String ext = switch (detectedMediaType) {
-                case MEDIA_TYPE_JPEG -> ".jpg";
-                case MEDIA_TYPE_PNG -> ".png";
-                case MEDIA_TYPE_WEBP -> ".webp";
-                case MEDIA_TYPE_PDF -> ".pdf";
-                case MEDIA_TYPE_MARKDOWN -> ".md";
-                case MEDIA_TYPE_PLAIN -> ".txt";
-                case MEDIA_TYPE_HEIC -> ".heic";
-                case MEDIA_TYPE_HEIF -> ".heif";
-                case MEDIA_TYPE_DOCX -> ".docx";
-                case MEDIA_TYPE_XLSX -> ".xlsx";
-                case MEDIA_TYPE_PPTX -> ".pptx";
-                case MEDIA_TYPE_DOC -> ".doc";
-                case MEDIA_TYPE_XLS -> ".xls";
-                case MEDIA_TYPE_PPT -> ".ppt";
-                default -> ".bin";
-            };
-            return "file" + ext;
-        }
-        String basename = originalFilename;
+    /**
+     * 清洗展示名：只保留路径最后一段，去除控制符与双引号，并去首尾空白。
+     * 上传与改名共用，保证存储名不会破坏 Content-Disposition 等下游输出
+     * （双引号会破坏 quoted-string 语法并允许拼接伪造的头参数）。
+     */
+    static String sanitizeName(String name) {
+        String basename = name;
         String[] parts = PATH_SEPARATOR.split(basename);
         if (parts.length > 0) {
             basename = parts[parts.length - 1];
         }
-        basename = CONTROL_CHARS.matcher(basename).replaceAll("");
-        basename = basename.trim();
+        basename = UNSAFE_NAME_CHARS.matcher(basename).replaceAll("");
+        return basename.trim();
+    }
+
+    private String sanitizeBasename(String originalFilename, String detectedMediaType) {
+        if (originalFilename == null || originalFilename.isBlank()) {
+            return "file" + extensionFor(detectedMediaType);
+        }
+        String basename = sanitizeName(originalFilename);
         if (basename.isEmpty()) {
-            return sanitizeBasename(null, detectedMediaType);
+            return "file" + extensionFor(detectedMediaType);
         }
         return basename;
+    }
+
+    private static String extensionFor(String detectedMediaType) {
+        return switch (detectedMediaType) {
+            case MEDIA_TYPE_JPEG -> ".jpg";
+            case MEDIA_TYPE_PNG -> ".png";
+            case MEDIA_TYPE_WEBP -> ".webp";
+            case MEDIA_TYPE_PDF -> ".pdf";
+            case MEDIA_TYPE_MARKDOWN -> ".md";
+            case MEDIA_TYPE_PLAIN -> ".txt";
+            case MEDIA_TYPE_HEIC -> ".heic";
+            case MEDIA_TYPE_HEIF -> ".heif";
+            case MEDIA_TYPE_DOCX -> ".docx";
+            case MEDIA_TYPE_XLSX -> ".xlsx";
+            case MEDIA_TYPE_PPTX -> ".pptx";
+            case MEDIA_TYPE_DOC -> ".doc";
+            case MEDIA_TYPE_XLS -> ".xls";
+            case MEDIA_TYPE_PPT -> ".ppt";
+            default -> ".bin";
+        };
     }
 
     private String computeSha256(byte[] content) {

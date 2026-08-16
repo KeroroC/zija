@@ -394,7 +394,32 @@ class HouseholdAttachmentEndpointIntegrationTest extends AbstractMockMvcIntegrat
         mockMvc.perform(get("/api/v1/files/{id}/content", id).with(auth()))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition",
-                        org.hamcrest.Matchers.containsString("房产证.jpg")));
+                        org.hamcrest.Matchers.containsString(
+                                "filename*=UTF-8''%E6%88%BF%E4%BA%A7%E8%AF%81.jpg")));
+    }
+
+    @Test
+    void uploadAndRenameWithUnsafeCharactersKeepDownloadHeaderSafe() throws Exception {
+        // 上传路径：sanitizeBasename 去掉双引号
+        String id = uploadHousehold("a\".txt", "text/plain", "hello".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        mockMvc.perform(get("/api/v1/files/{id}/content", id).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.is("inline; filename=\"a.txt\"")));
+
+        // 改名路径：同样清洗，含引号与路径分隔符的名字被净化后存储
+        mockMvc.perform(patch("/api/v1/files/{id}", id)
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"b\\\"/c.txt\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("c.txt"));
+
+        mockMvc.perform(get("/api/v1/files/{id}/content", id).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.is("inline; filename=\"c.txt\"")));
     }
 
     @Test

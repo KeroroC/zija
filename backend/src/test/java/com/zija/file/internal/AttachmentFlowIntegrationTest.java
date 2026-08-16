@@ -273,7 +273,8 @@ class AttachmentFlowIntegrationTest extends AbstractMockMvcIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
                         .header().string("Content-Disposition",
-                                org.hamcrest.Matchers.containsString("户口本.jpg")));
+                                org.hamcrest.Matchers.containsString(
+                                        "filename*=UTF-8''%E6%88%B7%E5%8F%A3%E6%9C%AC.jpg")));
     }
 
     @Test

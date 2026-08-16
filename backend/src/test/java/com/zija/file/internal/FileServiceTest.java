@@ -11,6 +11,7 @@ import com.zija.file.internal.persistence.StoredFileEntity;
 import com.zija.file.internal.persistence.StoredFileMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.time.OffsetDateTime;
@@ -214,6 +215,36 @@ class FileServiceTest {
 
         assertThatThrownBy(() -> service.remount(householdId, fileId, FileApi.MOUNT_ITEM, UUID.randomUUID()))
                 .isInstanceOf(FileNotAvailableException.class);
+    }
+
+    @Test
+    void renameSanitizesUnsafeCharactersBeforeStoring() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "old.jpg", "image/jpeg", null);
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+        when(storedFileMapper.selectCount(any())).thenReturn(0L);
+
+        // 双引号与 NUL 会被清洗；路径分隔符只保留最后一段
+        var result = service.rename(householdId, fileId, "a\"b\u0000c.txt");
+
+        assertThat(result.name()).isEqualTo("abc.txt");
+        assertThat(entity.getOriginalFilename()).isEqualTo("abc.txt");
+        assertThat(entity.getNameNormalized()).isEqualTo("abc.txt");
+        verify(storedFileMapper).updateById(entity);
+        assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_RENAMED);
+    }
+
+    @Test
+    void renameRejectsNameThatSanitizesToEmpty() {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "old.jpg", "image/jpeg", null);
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+
+        assertThatThrownBy(() -> service.rename(householdId, fileId, "\"\"\""))
+                .isInstanceOf(ResponseStatusException.class);
+
+        verify(storedFileMapper, never()).updateById(any(StoredFileEntity.class));
+        assertThat(systemApi.actions).doesNotContain(com.zija.system.SystemApi.AuditAction.FILE_RENAMED);
     }
 
     @Test
