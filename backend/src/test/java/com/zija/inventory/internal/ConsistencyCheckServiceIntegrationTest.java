@@ -175,7 +175,59 @@ class ConsistencyCheckServiceIntegrationTest {
         assertThat(allResults.get(0).lotId()).isEqualTo(lotId2);
     }
 
+    // --- Test point 4: Movements say a position should exist but its stock-position row is missing → check must report it ---
+    @Test
+    void check_missingStockPositionRow_reportsDiscrepancy() {
+        UUID lotId = seedLot(householdId, itemId);
+        UUID accountId = seedAccount();
+
+        // 直接插入 INBOUND 流水（绕过 StockCommandService，不创建库存位）：
+        // 流水聚合说 (lotId, locationId) 应有 5，但 inventory_stock_position 中不存在该行。
+        insertMovement(lotId, itemId, accountId, "INBOUND", BigDecimal.valueOf(5), null, locationId);
+
+        List<ConsistencyCheckService.Discrepancy> discrepancies =
+                newTx().execute(s -> consistencyCheckService.check(householdId, null));
+
+        assertThat(discrepancies).hasSize(1);
+        var disc = discrepancies.get(0);
+        assertThat(disc.lotId()).isEqualTo(lotId);
+        assertThat(disc.locationId()).isEqualTo(locationId);
+        assertThat(disc.expected()).isEqualByComparingTo(BigDecimal.valueOf(5));
+        assertThat(disc.actual()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    // --- Test point 5: Missing row whose movements net to zero must NOT be reported (false positive guard) ---
+    @Test
+    void check_missingStockPositionRow_withNetZeroMovements_notReported() {
+        UUID lotId = seedLot(householdId, itemId);
+        UUID accountId = seedAccount();
+
+        insertMovement(lotId, itemId, accountId, "INBOUND", BigDecimal.valueOf(3), null, locationId);
+        insertMovement(lotId, itemId, accountId, "CONSUME", BigDecimal.valueOf(3), locationId, null);
+
+        List<ConsistencyCheckService.Discrepancy> discrepancies =
+                newTx().execute(s -> consistencyCheckService.check(householdId, null));
+
+        assertThat(discrepancies).isEmpty();
+    }
+
     // --- Helpers ---
+
+    /** 直接插入流水（绕过服务，不创建/更新库存位）。 */
+    private void insertMovement(UUID lotId, UUID itemId, UUID accountId,
+                                String type, BigDecimal quantity,
+                                UUID fromLocationId, UUID toLocationId) {
+        jdbc.update("""
+                INSERT INTO inventory_movement
+                    (id, household_id, lot_id, item_id, type, quantity,
+                     from_location_id, to_location_id, operator_account_id,
+                     business_time, idempotency_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                """,
+                UUID.randomUUID(), householdId, lotId, itemId, type, quantity,
+                fromLocationId, toLocationId, accountId,
+                UUID.randomUUID().toString());
+    }
 
     private UUID seedHousehold() {
         var h = new HouseholdEntity();

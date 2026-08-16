@@ -51,6 +51,7 @@ class StocktakeServiceIntegrationTest {
     @Autowired StocktakeItemMapper stocktakeItemMapper;
     @Autowired MovementMapper movementMapper;
     @Autowired StocktakeService stocktakeService;
+    @Autowired ConsistencyCheckService consistencyCheckService;
     @Autowired PlatformTransactionManager txManager;
 
     private UUID householdId;
@@ -592,9 +593,11 @@ class StocktakeServiceIntegrationTest {
         assertThat(mov.getToLocationId()).isEqualTo(locationId);
         assertThat(mov.getReason()).isEqualTo("发现遗漏批次");
 
-        // 一致性检查：当前实现下，expectedMap 有 (lotId, locationId)→5 但 actualPositions 不含此 key，
-        // ConsistencyCheckService.check() 只遍历 actualPositions，故漏报。修复后两者一致。
-        // 这里不强加断言一致性检查的输出（属另一个 bug），仅断言 stockPosition 与 movement 不再分裂。
+        // 一致性检查：expectedMap 有 (lotId, locationId)→5，库存位已创建且数量一致 → 无差异。
+        // 此前 check() 只遍历 actualPositions，"应有但缺行"会被漏报；修复后此类分裂必然被检出。
+        List<ConsistencyCheckService.Discrepancy> discrepancies = newTx().execute(s ->
+                consistencyCheckService.check(householdId, null));
+        assertThat(discrepancies).isEmpty();
     }
 
     // --- confirm test case 6: version conflict -> InventoryLotVersionConflictException ---
