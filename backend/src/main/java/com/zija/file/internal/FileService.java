@@ -6,6 +6,7 @@ import com.zija.file.FileApi;
 import com.zija.file.internal.event.FileEventPublisher;
 import com.zija.file.exception.FileNameDuplicateException;
 import com.zija.file.exception.FileNotAvailableException;
+import com.zija.file.exception.FileNotInRecycleBinException;
 import com.zija.file.internal.persistence.StoredFileEntity;
 import com.zija.file.internal.persistence.StoredFileMapper;
 import com.zija.shared.ZijaAuditOutcome;
@@ -284,6 +285,37 @@ class FileService implements FileApi {
                 householdId, fileId, oldMountType, oldMountId, mountType, mountId);
         audit(householdId, SystemApi.AuditAction.FILE_MOVED, fileId);
         return toAttachment(entity, householdId);
+    }
+
+    @Override
+    @Transactional
+    public boolean purge(UUID householdId, UUID fileId) {
+        var entity = requireEntity(householdId, fileId);
+        if (entity == null) {
+            return false;
+        }
+        if (entity.getDeletedAt() == null) {
+            throw new FileNotInRecycleBinException(fileId);
+        }
+        // 先以行级条件删除「认领」该行并判定并发：与「恢复」竞争时，恢复先赢则受影响行数为 0 → 冲突，
+        // 且不再触碰卷对象，避免已恢复的活附件内容被删造成悬空。
+        int rows = storedFileMapper.delete(new LambdaQueryWrapper<StoredFileEntity>()
+                .eq(StoredFileEntity::getId, fileId)
+                .eq(StoredFileEntity::getHouseholdId, householdId)
+                .isNotNull(StoredFileEntity::getDeletedAt));
+        if (rows == 0) {
+            throw new FileNotInRecycleBinException(fileId);
+        }
+        audit(householdId, SystemApi.AuditAction.FILE_PURGED, fileId);
+        try {
+            fileStorage.delete(entity.getStorageKey());
+        } catch (IOException e) {
+            // 卷上对象删除失败：抛异常使本事务回滚（认领删除与审计一并撤销），行留在回收站交定时任务重试
+            log.warn("永久删除附件卷对象失败，保留记录待重试: fileId={} storageKey={}",
+                    entity.getId(), entity.getStorageKey(), e);
+            throw new RuntimeException("Failed to purge file storage", e);
+        }
+        return true;
     }
 
     @Override

@@ -5,6 +5,7 @@ import com.zija.file.internal.event.FileEventPublisher;
 import com.zija.file.exception.FileMediaTypeUnsupportedException;
 import com.zija.file.exception.FileNameDuplicateException;
 import com.zija.file.exception.FileNotAvailableException;
+import com.zija.file.exception.FileNotInRecycleBinException;
 import com.zija.file.exception.FileTooLargeException;
 import com.zija.file.internal.persistence.StoredFileEntity;
 import com.zija.file.internal.persistence.StoredFileMapper;
@@ -241,6 +242,86 @@ class FileServiceTest {
 
         assertThat(purged).isZero();
         verify(storedFileMapper, never()).deleteById(any(UUID.class));
+    }
+
+    @Test
+    void purgeDeletesStorageThenRowAndAudits() throws IOException {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",
+                OffsetDateTime.now().minusDays(1));
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+        when(storedFileMapper.delete(any())).thenReturn(1);
+
+        boolean purged = service.purge(householdId, fileId);
+
+        assertThat(purged).isTrue();
+        // 认领（条件删除）必须先于卷对象删除：恢复先赢时不得触碰卷对象
+        var order = inOrder(storedFileMapper, fileStorage);
+        order.verify(storedFileMapper).delete(any());
+        order.verify(fileStorage).delete("2026/07/uuid.jpg");
+        assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_PURGED);
+        verify(eventPublisher, never()).publishRecycled(any(), any(), any(), any());
+        verify(eventPublisher, never()).publishMoved(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void purgeRejectsLiveAttachment() throws IOException {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg", null);
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+
+        assertThatThrownBy(() -> service.purge(householdId, fileId))
+                .isInstanceOf(FileNotInRecycleBinException.class);
+
+        verify(fileStorage, never()).delete(anyString());
+        verify(storedFileMapper, never()).delete(any());
+        assertThat(systemApi.actions).doesNotContain(com.zija.system.SystemApi.AuditAction.FILE_PURGED);
+    }
+
+    @Test
+    void purgeKeepsRowWhenStorageDeleteFails() throws IOException {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",
+                OffsetDateTime.now().minusDays(1));
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+        when(storedFileMapper.delete(any())).thenReturn(1);
+        doThrow(new IOException("disk")).when(fileStorage).delete(anyString());
+
+        // 请求失败；生产环境中 @Transactional 抛异常回滚整笔（认领删除与审计一并撤销），行留在回收站交定时任务重试。
+        // 审计在卷对象删除之前写入：卷删除失败时审计随事务回滚，不会留下「已记审计但删除失败」的记录。
+        assertThatThrownBy(() -> service.purge(householdId, fileId))
+                .isInstanceOf(RuntimeException.class);
+
+        verify(storedFileMapper).delete(any());
+        assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_PURGED);
+    }
+
+    @Test
+    void purgeReturnsFalseWhenNotFound() throws IOException {
+        UUID fileId = UUID.randomUUID();
+        when(storedFileMapper.selectById(fileId)).thenReturn(null);
+
+        boolean purged = service.purge(householdId, fileId);
+
+        assertThat(purged).isFalse();
+        verify(fileStorage, never()).delete(anyString());
+        verify(storedFileMapper, never()).delete(any());
+    }
+
+    @Test
+    void purgeThrowsConflictWhenRestoreWinsRace() throws IOException {
+        UUID fileId = UUID.randomUUID();
+        var entity = entity(fileId, householdId, "2026/07/uuid.jpg", "photo.jpg", "image/jpeg",
+                OffsetDateTime.now().minusDays(1));
+        when(storedFileMapper.selectById(fileId)).thenReturn(entity);
+        when(storedFileMapper.delete(any())).thenReturn(0);
+
+        assertThatThrownBy(() -> service.purge(householdId, fileId))
+                .isInstanceOf(FileNotInRecycleBinException.class);
+
+        // 恢复先赢：不触碰卷对象，避免已恢复的活附件内容被删
+        verify(fileStorage, never()).delete(anyString());
+        assertThat(systemApi.actions).doesNotContain(com.zija.system.SystemApi.AuditAction.FILE_PURGED);
     }
 
     @Test

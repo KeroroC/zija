@@ -1,4 +1,4 @@
-import ElementPlus, { ElMessage, ElMessageBox } from "element-plus";
+import ElementPlus, { ElMessage, ElMessageBox, ElOption } from "element-plus";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +9,10 @@ import {
   uploadHouseholdAttachment,
   deleteAttachment,
   restoreAttachment,
+  purgeAttachment,
   remountAttachmentToHousehold,
+  remountAttachmentToItem,
+  remountAttachmentToLot,
   type Attachment
 } from "../api/file";
 import { fetchItems } from "../api/catalog";
@@ -22,7 +25,10 @@ vi.mock("../api/file", () => ({
   renameAttachment: vi.fn(),
   deleteAttachment: vi.fn(),
   restoreAttachment: vi.fn(),
-  remountAttachmentToHousehold: vi.fn()
+  purgeAttachment: vi.fn(),
+  remountAttachmentToHousehold: vi.fn(),
+  remountAttachmentToItem: vi.fn(),
+  remountAttachmentToLot: vi.fn()
 }));
 
 vi.mock("../api/catalog", () => ({
@@ -38,7 +44,10 @@ const uploadMock = vi.mocked(uploadHouseholdAttachment);
 const renameMock = vi.mocked(renameAttachment);
 const deleteMock = vi.mocked(deleteAttachment);
 const restoreMock = vi.mocked(restoreAttachment);
+const purgeMock = vi.mocked(purgeAttachment);
 const remountMock = vi.mocked(remountAttachmentToHousehold);
+const remountItemMock = vi.mocked(remountAttachmentToItem);
+const remountLotMock = vi.mocked(remountAttachmentToLot);
 const fetchItemsMock = vi.mocked(fetchItems);
 const fetchLotsMock = vi.mocked(fetchLots);
 
@@ -99,9 +108,12 @@ describe("AttachmentsPage", () => {
     renameMock.mockResolvedValue(householdAttachment);
     deleteMock.mockResolvedValue({ ...householdAttachment, deletedAt: "2026-08-15T11:00:00Z" });
     restoreMock.mockResolvedValue(householdAttachment);
+    purgeMock.mockResolvedValue({ id: "f1", purged: true });
     remountMock.mockResolvedValue(householdAttachment);
+    remountItemMock.mockResolvedValue({ ...householdAttachment, mountType: "ITEM", mountId: "i1" });
+    remountLotMock.mockResolvedValue({ ...householdAttachment, mountType: "LOT", mountId: "l1" });
     fetchItemsMock.mockResolvedValue({
-      items: [{ id: "i1", name: "吸尘器" }] as never,
+      items: [{ id: "i1", name: "吸尘器", status: "ACTIVE" }] as never,
       total: 1,
       page: 1,
       pageSize: 1000
@@ -226,6 +238,77 @@ describe("AttachmentsPage", () => {
     expect(warningSpy).toHaveBeenCalledWith("原挂载点已有一份同名附件，请先改名再恢复");
   });
 
+  it("shows the permanent-delete button only in the recycle bin view", async () => {
+    wrapper = mountPage();
+    await flushPromises();
+
+    // 「全部」视图不暴露不可逆操作
+    expect(wrapper.find('[data-testid="attachment-purge"]').exists()).toBe(false);
+
+    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
+    await radioGroup.vm.$emit("update:modelValue", "recycled");
+    await radioGroup.vm.$emit("change", "recycled");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="attachment-purge"]').exists()).toBe(true);
+  });
+
+  it("purges a recycled attachment after an explicit confirmation", async () => {
+    listMock.mockResolvedValue(pageResult([{ ...householdAttachment, deletedAt: "2026-08-15T11:00:00Z" }]));
+    const successSpy = vi.spyOn(ElMessage, "success").mockReturnValue({} as never);
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+
+    wrapper = mountPage();
+    await flushPromises();
+    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
+    await radioGroup.vm.$emit("update:modelValue", "recycled");
+    await radioGroup.vm.$emit("change", "recycled");
+    await flushPromises();
+
+    await wrapper.get('[data-testid="attachment-purge"]').trigger("click");
+    await flushPromises();
+
+    expect(purgeMock).toHaveBeenCalledWith("f1");
+    expect(successSpy).toHaveBeenCalledWith("已永久删除");
+    expect(listMock).toHaveBeenCalled();
+  });
+
+  it("does not purge when the confirmation is cancelled", async () => {
+    listMock.mockResolvedValue(pageResult([{ ...householdAttachment, deletedAt: "2026-08-15T11:00:00Z" }]));
+    vi.spyOn(ElMessageBox, "confirm").mockRejectedValue("cancel");
+
+    wrapper = mountPage();
+    await flushPromises();
+    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
+    await radioGroup.vm.$emit("update:modelValue", "recycled");
+    await radioGroup.vm.$emit("change", "recycled");
+    await flushPromises();
+
+    await wrapper.get('[data-testid="attachment-purge"]').trigger("click");
+    await flushPromises();
+
+    expect(purgeMock).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when permanent delete fails", async () => {
+    listMock.mockResolvedValue(pageResult([{ ...householdAttachment, deletedAt: "2026-08-15T11:00:00Z" }]));
+    purgeMock.mockRejectedValue(new ApiError("附件不在回收站，无法永久删除", "FILE_NOT_IN_RECYCLE_BIN", 409));
+    const errorSpy = vi.spyOn(ElMessage, "error").mockReturnValue({} as never);
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+
+    wrapper = mountPage();
+    await flushPromises();
+    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
+    await radioGroup.vm.$emit("update:modelValue", "recycled");
+    await radioGroup.vm.$emit("change", "recycled");
+    await flushPromises();
+
+    await wrapper.get('[data-testid="attachment-purge"]').trigger("click");
+    await flushPromises();
+
+    expect(errorSpy).toHaveBeenCalledWith("附件不在回收站，无法永久删除");
+  });
+
   it("renames an attachment from the row action", async () => {
     renameMock.mockResolvedValue({ ...householdAttachment, name: "房产证.jpg" });
     vi.spyOn(ElMessageBox, "prompt").mockResolvedValue({ value: "房产证.jpg" } as never);
@@ -276,4 +359,130 @@ describe("AttachmentsPage", () => {
 
     expect(remountMock).toHaveBeenCalledWith("f2");
   });
+
+  it("moves a household attachment to an item via the target picker", async () => {
+    const successSpy = vi.spyOn(ElMessage, "success").mockReturnValue({} as never);
+    wrapper = mountPage();
+    await flushPromises();
+
+    await openMoveDialog("移到物品");
+    await pickMoveTarget("吸尘器", "i1");
+    await wrapper.get('[data-testid="attachment-move-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(remountItemMock).toHaveBeenCalledWith("i1", "f1");
+    expect(successSpy).toHaveBeenCalledWith("已移到物品");
+    expect(listMock).toHaveBeenCalled();
+  });
+
+  it("moves a household attachment to a lot via the target picker", async () => {
+    const successSpy = vi.spyOn(ElMessage, "success").mockReturnValue({} as never);
+    wrapper = mountPage();
+    await flushPromises();
+
+    await openMoveDialog("移到批次");
+    await pickMoveTarget("吸尘器 · B2026-01", "l1");
+    await wrapper.get('[data-testid="attachment-move-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(remountLotMock).toHaveBeenCalledWith("l1", "f1");
+    expect(successSpy).toHaveBeenCalledWith("已移到批次");
+    expect(listMock).toHaveBeenCalled();
+  });
+
+  it("warns to rename first when moving hits a duplicate name", async () => {
+    remountItemMock.mockRejectedValue(
+      new ApiError("同一挂载点下附件名字不可重复", "FILE_NAME_DUPLICATE", 409)
+    );
+    const warningSpy = vi.spyOn(ElMessage, "warning").mockReturnValue({} as never);
+    wrapper = mountPage();
+    await flushPromises();
+
+    await openMoveDialog("移到物品");
+    await pickMoveTarget("吸尘器", "i1");
+    await wrapper.get('[data-testid="attachment-move-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(warningSpy).toHaveBeenCalledWith("目标已有一份同名附件，请先改名再移动");
+  });
+
+  it("lists archived items with an archived badge in the item picker", async () => {
+    fetchItemsMock.mockResolvedValue({
+      items: [
+        { id: "i1", name: "吸尘器", status: "ACTIVE" },
+        { id: "i2", name: "旧冰箱", status: "ARCHIVED" }
+      ] as never,
+      total: 2,
+      page: 1,
+      pageSize: 1000
+    });
+    wrapper = mountPage();
+    await flushPromises();
+
+    await openMoveDialog("移到物品");
+
+    const options = wrapper.findAllComponents(ElOption);
+    const archived = options.find((o) => o.props("value") === "i2");
+    expect(archived).toBeDefined();
+    expect(archived!.text()).toContain("旧冰箱");
+    expect(archived!.text()).toContain("已归档");
+  });
+
+  it("shows an empty state when there are no items to move to", async () => {
+    fetchItemsMock.mockResolvedValue({
+      items: [] as never,
+      total: 0,
+      page: 1,
+      pageSize: 1000
+    });
+    wrapper = mountPage();
+    await flushPromises();
+
+    await openMoveDialog("移到物品");
+
+    expect(wrapper.get('[data-testid="attachment-move-empty"]').text()).toContain("家庭还没有");
+  });
+
+  it("shows an empty state when there are no lots to move to", async () => {
+    fetchLotsMock.mockResolvedValue({
+      items: [] as never,
+      total: 0,
+      page: 1,
+      pageSize: 1000
+    });
+    wrapper = mountPage();
+    await flushPromises();
+
+    await openMoveDialog("移到批次");
+
+    expect(wrapper.get('[data-testid="attachment-move-empty"]').text()).toContain("家庭还没有");
+  });
+
+  it("shows a load-failure hint instead of the empty state when target names fail to load", async () => {
+    fetchItemsMock.mockRejectedValue(new Error("boom"));
+    wrapper = mountPage();
+    await flushPromises();
+
+    await openMoveDialog("移到物品");
+
+    expect(wrapper.get('[data-testid="attachment-move-empty"]').text()).toContain("加载失败");
+  });
+
+  function openMoveDialog(buttonText: string) {
+    const button = wrapper!.findAll("button").find((b) => b.text().includes(buttonText));
+    expect(button).toBeDefined();
+    return button!.trigger("click").then(() => flushPromises());
+  }
+
+  function pickMoveTarget(optionLabel: string, value: string) {
+    const moveSelect = wrapper!
+      .findAllComponents({ name: "ElSelect" })
+      .find((c) => c.attributes("data-testid") === "attachment-move-select");
+    expect(moveSelect).toBeDefined();
+    expect(moveSelect!.props("filterable")).toBe(true);
+    const options = wrapper!.findAllComponents(ElOption);
+    expect(options.find((o) => o.props("value") === value)?.text()).toContain(optionLabel);
+    moveSelect!.vm.$emit("update:modelValue", value);
+    return flushPromises();
+  }
 });

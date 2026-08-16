@@ -25,6 +25,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -295,6 +296,103 @@ class AttachmentFlowIntegrationTest extends AbstractMockMvcIntegrationTest {
                 .andExpect(jsonPath("$.total").value(0));
         mockMvc.perform(get("/api/v1/files/{id}/content", id).with(auth()))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void purgePermanentlyDeletesRecycledAttachment() throws Exception {
+        String id = uploadHousehold("敏感.pdf", pdfBytes());
+        String siblingId = uploadHousehold("户口本.jpg", jpegBytes());
+
+        // 删除进回收站（保留期内仍可下载）
+        mockMvc.perform(delete("/api/v1/files/{id}", id).with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        // 永久删除：跳过保留期，立即生效
+        mockMvc.perform(delete("/api/v1/files/{id}?permanent=true", id).with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.purged").value(true))
+                .andExpect(jsonPath("$.id").value(id));
+
+        // 回收站清空，内容不再可下载
+        mockMvc.perform(get("/api/v1/files?recycled=true").with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        mockMvc.perform(get("/api/v1/files/{id}/content", id).with(auth()))
+                .andExpect(status().isNotFound());
+
+        // 同挂载点的其他附件不受影响
+        mockMvc.perform(get("/api/v1/files/{id}/content", siblingId).with(auth()))
+                .andExpect(status().isOk());
+
+        // 记审计 FILE_PURGED（区别于进回收站的 FILE_DELETED）
+        var audits = jdbcTemplate.queryForList("SELECT action FROM audit_log WHERE household_id = ?", householdId);
+        assertThat(audits).anyMatch(row -> "FILE_PURGED".equals(row.get("action")));
+    }
+
+    @Test
+    void purgeRejectsLiveAttachment() throws Exception {
+        String id = uploadHousehold("户口本.jpg", jpegBytes());
+
+        mockMvc.perform(delete("/api/v1/files/{id}?permanent=true", id).with(auth()).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("FILE_NOT_IN_RECYCLE_BIN"));
+
+        // 附件仍存在、可下载，未被误删
+        mockMvc.perform(get("/api/v1/files/{id}/content", id).with(auth()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void purgeReturns404ForAlreadyPurgedOrUnknown() throws Exception {
+        String id = uploadHousehold("过期.pdf", pdfBytes());
+        mockMvc.perform(delete("/api/v1/files/{id}", id).with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/v1/files/{id}?permanent=true", id).with(auth()).with(csrf()))
+                .andExpect(status().isOk());
+
+        // 再次永久删除（行已不在）→ 404
+        mockMvc.perform(delete("/api/v1/files/{id}?permanent=true", id).with(auth()).with(csrf()))
+                .andExpect(status().isNotFound());
+
+        // 不存在的附件 → 404
+        mockMvc.perform(delete("/api/v1/files/{id}?permanent=true", UUID.randomUUID())
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void ordinaryMemberCanPurgeRecycledAttachment() throws Exception {
+        UUID memberAccount = UUID.randomUUID();
+        seedAccount(memberAccount, "member", "成员");
+        seedMember(householdId, memberAccount, "MEMBER");
+        var memberPrincipal = new ZijaPrincipal(memberAccount, "member", "成员", "hash", true);
+
+        String id = uploadHouseholdAs("备注.txt", "text/plain",
+                "使用说明\n".getBytes(java.nio.charset.StandardCharsets.UTF_8), memberPrincipal);
+        mockMvc.perform(delete("/api/v1/files/{id}", id)
+                        .with(SecurityMockMvcRequestPostProcessors.user(memberPrincipal)).with(csrf()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/v1/files/{id}?permanent=true", id)
+                        .with(SecurityMockMvcRequestPostProcessors.user(memberPrincipal)).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.purged").value(true));
+    }
+
+    @Test
+    void deleteWithoutPermanentStillGoesToRecycleBin() throws Exception {
+        String id = uploadHousehold("户口本.jpg", jpegBytes());
+
+        mockMvc.perform(delete("/api/v1/files/{id}", id).with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deletedAt").exists());
+
+        // 进回收站而非物理删除：仍可下载、仍在回收站列表
+        mockMvc.perform(get("/api/v1/files/{id}/content", id).with(auth()))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/files?recycled=true").with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1));
     }
 
     @Test

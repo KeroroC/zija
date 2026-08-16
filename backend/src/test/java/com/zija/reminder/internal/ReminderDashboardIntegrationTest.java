@@ -175,6 +175,32 @@ class ReminderDashboardIntegrationTest {
     }
 
     @Test
+    void expiryTitle_countsDaysInHouseholdZoneAcrossCstMidnight() {
+        OffsetDateTime cstMidnightCrossed = OffsetDateTime.of(2026, 7, 26, 16, 30, 0, 0, ZoneOffset.UTC);
+        when(clock.getZone()).thenReturn(ZoneId.of("Asia/Shanghai"));
+        when(clock.instant()).thenReturn(cstMidnightCrossed.toInstant());
+
+        var t = new TaskEntity();
+        t.setId(UUID.randomUUID());
+        t.setHouseholdId(householdId);
+        t.setKind("EXPIRY");
+        t.setLotId(seedLot());
+        t.setItemId(itemId);
+        t.setStatus("OPEN");
+        t.setDueAt(cstMidnightCrossed.plusDays(7));
+        t.setSeverity("URGENT");
+        t.setThresholdSnapshot(Map.of());
+        t.setLastReconciledAt(cstMidnightCrossed);
+        t.setCreatedAt(cstMidnightCrossed);
+        t.setUpdatedAt(cstMidnightCrossed);
+        t.setVersion(0);
+        new TransactionTemplate(txManager).executeWithoutResult(s -> taskMapper.insert(t));
+
+        var d = dashboardService.dashboard(householdId, 7, 8);
+        assertThat(d.priorityTasks().items().get(0).title()).isEqualTo("「基准物品」还有 7 天到期");
+    }
+
+    @Test
     void snoozeExpired_taskStillShown() {
         seedExpiryTask(3, "WARN");
         var taskId = taskMapper.selectList(null).get(0).getId();

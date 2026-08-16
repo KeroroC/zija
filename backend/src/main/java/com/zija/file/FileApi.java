@@ -81,6 +81,17 @@ public interface FileApi {
     /** 恢复回收站附件：清除删除标记，挂载点保持删除前的值；恢复后是普通附件，不恢复封面指定。 */
     AttachmentInfo restore(UUID householdId, UUID fileId);
 
+    /**
+     * 永久删除回收站附件：立即物理删除（卷上对象 + 数据库行），跳过保留期，不可恢复。
+     *
+     * <p>任何成员可执行，与回收/恢复同级；成功后记审计 {@code FILE_PURGED}，不发布公开领域事件。</p>
+     *
+     * @return true 表示已删除；附件不存在或不属于该家庭返回 false（调用方映射为 404）
+     * @throws com.zija.file.exception.FileNotInRecycleBinException
+     *         附件未在回收站（活附件，或并发中被恢复）时抛 409
+     */
+    boolean purge(UUID householdId, UUID fileId);
+
     /** 改挂附件到新的挂载点。目标挂载点校验由调用方（catalog/inventory/本模块 HTTP）负责。 */
     AttachmentInfo remount(UUID householdId, UUID fileId, String mountType, UUID mountId);
 

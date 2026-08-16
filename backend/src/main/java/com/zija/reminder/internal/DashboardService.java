@@ -85,8 +85,9 @@ class DashboardService {
     }
 
     private String expiryTitle(String itemName, OffsetDateTime dueAt) {
-        // dueAt 由 reconcile 存为到期日 UTC 零点，故 toLocalDate() 即到期日，与 reconcile 的 LocalDate 计算一致
-        long daysLeft = ChronoUnit.DAYS.between(LocalDate.now(clock), dueAt.toLocalDate());
+        // 到期时刻统一换算到家庭时区再取日期，避免 dueAt 存储偏移（UTC）与「今天」口径（家庭时区）不一致导致天数差一天
+        long daysLeft = ChronoUnit.DAYS.between(LocalDate.now(clock),
+                dueAt.atZoneSameInstant(clock.getZone()).toLocalDate());
         if (daysLeft < 0) {
             return "「" + itemName + "」已过期 " + (-daysLeft) + " 天";
         }

@@ -172,10 +172,10 @@ describe("SearchView", () => {
     await wrapper.find("input").trigger("keyup.enter");
     await flushPromises();
 
-    // Matched field tags should appear
+    // Matched field tags should appear (mapped to Chinese labels)
     const tags = wrapper.findAll(".el-tag");
     const tagTexts = tags.map((t) => t.text());
-    expect(tagTexts).toContain("name");
-    expect(tagTexts).toContain("lotNumber");
+    expect(tagTexts).toContain("名称");
+    expect(tagTexts).toContain("批次号");
   });
 });

@@ -112,32 +112,81 @@
       @size-change="fetchItems"
     />
 
-    <el-drawer v-model="detailVisible" title="物品详情" size="400px">
-      <div v-if="selectedItem">
-        <img v-if="selectedItem.coverUrl" :src="selectedItem.coverUrl" class="detail-cover" alt="封面" />
-        <h3 class="detail-name">{{ selectedItem.name }}</h3>
-        <p class="detail-row">类型：{{ selectedItem.managementType === 'CONSUMABLE' ? '消耗品' : '耐用品' }}</p>
-        <p class="detail-row">状态：{{ selectedItem.status === 'ACTIVE' ? '活跃' : '归档' }}</p>
-        <p class="detail-row">分类：{{ categoryMap[(selectedItem.categoryId as string)] || '—' }}</p>
-        <p class="detail-row">品牌：{{ brandMap[(selectedItem.brandId as string)] || '—' }}</p>
-        <p class="detail-row">单位：{{ unitMap[selectedItem.unitId] || '—' }}<span v-if="unitDetailMap[selectedItem.unitId]">（精度：{{ unitDetailMap[selectedItem.unitId] }} 位小数）</span></p>
-        <p class="detail-row">标签：<template v-if="selectedItem.tagIds?.length">
-          <el-tag v-for="tid in selectedItem.tagIds" :key="tid" size="small" effect="plain" class="tag-item">{{ tagMap[tid] || tid }}</el-tag>
-        </template><template v-else>—</template></p>
-        <p v-if="selectedItem.expiryReminderMode">临期提醒：{{ selectedItem.expiryReminderMode }}{{ selectedItem.expiryReminderDays?.length ? `（${selectedItem.expiryReminderDays.join(', ')} 天）` : '' }}</p>
-        <p v-if="selectedItem.lowStockMode">低库存：{{ selectedItem.lowStockMode }}{{ selectedItem.lowStockThreshold ? `（阈值：${selectedItem.lowStockThreshold}）` : '' }}</p>
-        <p v-if="selectedItem.memo">备注：{{ selectedItem.memo }}</p>
-        <p>创建时间：{{ formatDate(selectedItem.createdAt) }}</p>
-        <el-divider />
+    <el-drawer v-model="detailVisible" title="物品详情" size="520px">
+      <div v-if="selectedItem" class="item-detail">
+        <div class="item-head">
+          <img v-if="selectedItem.coverUrl" :src="selectedItem.coverUrl" class="detail-cover" alt="封面" />
+          <div v-else class="detail-cover-placeholder" aria-hidden="true">—</div>
+          <div class="item-head-main">
+            <h3 class="detail-name">{{ selectedItem.name }}</h3>
+            <div class="item-badges">
+              <span :class="selectedItem.managementType === 'CONSUMABLE' ? 'zj-badge zj-badge-plain' : 'zj-badge zj-badge-pine'">
+                {{ selectedItem.managementType === 'CONSUMABLE' ? '消耗品' : '耐用品' }}
+              </span>
+              <span :class="selectedItem.status === 'ACTIVE' ? 'zj-badge zj-badge-pine' : 'zj-badge zj-badge-plain'">
+                {{ selectedItem.status === 'ACTIVE' ? '活跃' : '归档' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <dl class="detail-grid">
+          <div class="detail-field">
+            <dt>分类</dt>
+            <dd>{{ categoryMap[(selectedItem.categoryId as string)] || '—' }}</dd>
+          </div>
+          <div class="detail-field">
+            <dt>品牌</dt>
+            <dd>{{ brandMap[(selectedItem.brandId as string)] || '—' }}</dd>
+          </div>
+          <div class="detail-field">
+            <dt>单位</dt>
+            <dd>{{ unitMap[selectedItem.unitId] || '—' }}<span v-if="unitDetailMap[selectedItem.unitId]" class="detail-field-sub">精度 {{ unitDetailMap[selectedItem.unitId] }} 位小数</span></dd>
+          </div>
+          <div class="detail-field">
+            <dt>标签</dt>
+            <dd>
+              <template v-if="selectedItem.tagIds?.length">
+                <el-tag v-for="tid in selectedItem.tagIds" :key="tid" size="small" effect="plain" class="tag-item">{{ tagMap[tid] || tid }}</el-tag>
+              </template>
+              <template v-else>—</template>
+            </dd>
+          </div>
+          <div v-if="selectedItem.expiryReminderMode" class="detail-field">
+            <dt>临期提醒</dt>
+            <dd>{{ reminderModeLabel(selectedItem.expiryReminderMode) }}<span v-if="selectedItem.expiryReminderDays?.length" class="detail-field-sub">{{ selectedItem.expiryReminderDays.join('、') }} 天</span></dd>
+          </div>
+          <div v-if="selectedItem.lowStockMode" class="detail-field">
+            <dt>低库存</dt>
+            <dd>{{ reminderModeLabel(selectedItem.lowStockMode) }}<span v-if="selectedItem.lowStockThreshold" class="detail-field-sub">阈值 {{ selectedItem.lowStockThreshold }}</span></dd>
+          </div>
+          <div v-if="selectedItem.memo" class="detail-field detail-field-wide">
+            <dt>备注</dt>
+            <dd>{{ selectedItem.memo }}</dd>
+          </div>
+          <div class="detail-field">
+            <dt>创建时间</dt>
+            <dd class="zj-num">{{ formatDate(selectedItem.createdAt) }}</dd>
+          </div>
+        </dl>
+
         <div class="inventory-summary">
-          <p class="detail-row">库存总量：{{ inventoryTotal }}</p>
-          <p class="detail-row">批次数：{{ lotCount }}</p>
+          <div class="summary-stat">
+            <span class="summary-num zj-num">{{ inventoryTotal }}</span>
+            <span class="summary-label">库存总量</span>
+          </div>
+          <div class="summary-stat">
+            <span class="summary-num zj-num">{{ lotCount }}</span>
+            <span class="summary-label">批次数</span>
+          </div>
           <el-button type="primary" size="small" @click="goToInbound">入库</el-button>
         </div>
+
         <div class="detail-actions">
           <el-button v-if="selectedItem.status === 'ACTIVE'" @click="archiveItem(selectedItem)">归档</el-button>
           <el-button v-if="selectedItem.status === 'ARCHIVED'" @click="restoreItem(selectedItem)">恢复</el-button>
         </div>
+
         <el-divider />
         <div class="attachments-section">
           <div class="section-header">
@@ -154,31 +203,59 @@
             v-loading="attachmentsLoading"
             :data="itemAttachments"
             size="small"
+            class="att-table"
             empty-text="还没有附件"
           >
-            <el-table-column prop="name" label="名字" min-width="140" />
-            <el-table-column label="类型" min-width="110">
-              <template #default="{ row }"><span class="cell-secondary">{{ row.mediaType }}</span></template>
+            <el-table-column label="文件" min-width="150">
+              <template #default="{ row }">
+                <div class="att-file">
+                  <div class="att-tile">
+                    <img
+                      v-if="attIsImage(row.mediaType) && !failedAttImages.has(row.id)"
+                      :src="row.url"
+                      :alt="row.name"
+                      class="att-thumb"
+                      @error="onAttImgError(row.id)"
+                    />
+                    <span v-else class="att-ext">{{ attFileExt(row as Attachment) }}</span>
+                  </div>
+                  <div class="att-main">
+                    <div class="att-name">{{ row.name }}</div>
+                    <div class="att-type">{{ mediaTypeLabel(row.mediaType) }}</div>
+                  </div>
+                </div>
+              </template>
             </el-table-column>
-            <el-table-column label="大小" width="90">
+            <el-table-column label="大小" width="72">
               <template #default="{ row }"><span class="cell-secondary zj-num">{{ formatBytes(row.byteSize) }}</span></template>
             </el-table-column>
-            <el-table-column label="" width="230" align="right">
+            <el-table-column label="" width="200" align="right">
               <template #default="{ row }">
-                <el-button
-                  v-if="canDesignateCover(row as Attachment)"
-                  size="small"
-                  text
-                  type="primary"
-                  data-testid="designate-cover"
-                  @click="designateCover(row as Attachment)"
-                >
-                  {{ isCurrentCover(row as Attachment) ? '当前封面' : '设为封面' }}
-                </el-button>
-                <el-button size="small" text type="primary" @click="renameAttachment(row as Attachment)">改名</el-button>
-                <el-button size="small" text @click="downloadAttachment(row as Attachment)">下载</el-button>
-                <el-button size="small" text @click="moveAttachmentToHousehold(row as Attachment)">移走</el-button>
-                <el-button size="small" text type="danger" @click="deleteAttachment(row as Attachment)">删除</el-button>
+                <div class="att-actions">
+                  <el-button
+                    v-if="canDesignateCover(row as Attachment)"
+                    size="small"
+                    text
+                    type="primary"
+                    data-testid="designate-cover"
+                    @click="designateCover(row as Attachment)"
+                  >
+                    {{ isCurrentCover(row as Attachment) ? '当前封面' : '设为封面' }}
+                  </el-button>
+                  <el-button size="small" text @click="moveAttachmentToHousehold(row as Attachment)">移走</el-button>
+                  <el-dropdown trigger="click" @command="(c: string) => onAttCommand(c, row as Attachment)">
+                    <el-button size="small" text type="primary">
+                      更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="rename">改名</el-dropdown-item>
+                        <el-dropdown-item command="download">下载</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <el-button size="small" text type="danger" @click="deleteAttachment(row as Attachment)">删除</el-button>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -198,6 +275,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
 import {
   fetchItems as apiFetchItems,
   fetchItem as apiFetchItem,
@@ -352,9 +430,13 @@ function openEdit(item: CatalogItem) {
   formDrawerVisible.value = true
 }
 
-function onFormSaved() {
+async function onFormSaved() {
   formDrawerVisible.value = false
-  fetchItems()
+  // 抽屉里可能新建了标签/品牌/单位：先刷新字典，再重拉列表，
+  // 否则新字典项的 id 在 tagMap/brandMap/unitMap 中找不到名字，表格只显示裸 id。
+  // 必须 await 字典刷新完成后再拉列表，否则两个请求并行时列表先返回仍会裸 id。
+  await loadDictionaries()
+  await fetchItems()
 }
 
 async function openDetail(item: CatalogItem) {
@@ -381,6 +463,8 @@ async function openDetail(item: CatalogItem) {
 const itemAttachments = ref<Attachment[]>([])
 const attachmentsLoading = ref(false)
 const attachmentInput = ref<HTMLInputElement | null>(null)
+/** 缩略图加载失败的附件 id：回退为扩展名瓦片 */
+const failedAttImages = ref<Set<string>>(new Set())
 
 async function loadAttachments() {
   if (!selectedItem.value) return
@@ -435,6 +519,58 @@ function canDesignateCover(row: Attachment): boolean {
 
 function isCurrentCover(row: Attachment): boolean {
   return selectedItem.value?.coverFileId === row.id
+}
+
+// ==================== 附件：文件瓦片与类型标签 ====================
+
+const MEDIA_LABELS: Record<string, string> = {
+  "image/jpeg": "JPEG 图片",
+  "image/png": "PNG 图片",
+  "image/webp": "WebP 图片",
+  "image/heic": "HEIC 图片",
+  "image/heif": "HEIF 图片",
+  "application/pdf": "PDF 文档",
+  "text/markdown": "Markdown",
+  "text/plain": "TXT 文本",
+  "application/msword": "Word (.doc)",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word (.docx)",
+  "application/vnd.ms-excel": "Excel (.xls)",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "Excel (.xlsx)",
+  "application/vnd.ms-powerpoint": "PowerPoint (.ppt)",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PowerPoint (.pptx)"
+}
+
+function mediaTypeLabel(mediaType: string): string {
+  return MEDIA_LABELS[mediaType] ?? mediaType
+}
+
+function attIsImage(mediaType: string): boolean {
+  return mediaType.startsWith("image/")
+}
+
+/** 附件瓦片上的扩展名标识：图片取类型缩写，其余取文件名末段 */
+function attFileExt(row: Attachment): string {
+  if (attIsImage(row.mediaType)) {
+    const subtype = row.mediaType.split("/")[1] ?? ""
+    return subtype.slice(0, 4).toUpperCase()
+  }
+  const dot = row.name.lastIndexOf(".")
+  if (dot > 0 && dot < row.name.length - 1) {
+    return row.name.slice(dot + 1).slice(0, 4).toUpperCase()
+  }
+  return "FILE"
+}
+
+function onAttImgError(id: string) {
+  failedAttImages.value = new Set(failedAttImages.value).add(id)
+}
+
+function onAttCommand(command: string, row: Attachment) {
+  if (command === "rename") {
+    renameAttachment(row)
+  } else if (command === "download") {
+    downloadAttachment(row)
+  }
 }
 
 /** 把合格图片附件指定为封面；已有封面时先问旧封面处置。 */
@@ -549,6 +685,11 @@ async function restoreItem(item: CatalogItem) {
   fetchItems()
 }
 
+/** 提醒模式枚举的中文化映射（详情抽屉展示用） */
+function reminderModeLabel(mode: string): string {
+  return { INHERIT: '继承全局设置', DISABLED: '禁用', CUSTOM: '自定义' }[mode] ?? mode
+}
+
 function formatDate(iso: string): string {
   const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -618,23 +759,144 @@ async function openHighlightedItem(itemId: string) {
   color: var(--zj-ink-400);
 }
 .detail-name {
-  margin: 0 0 12px;
+  margin: 0;
   font-family: var(--zj-serif);
   font-size: 20px;
   font-weight: 600;
+  line-height: 1.35;
 }
-.detail-row {
-  margin: 0 0 10px;
-  font-size: 14px;
-  line-height: 1.7;
+
+/* ---------- 物品详情抽屉 ---------- */
+.item-detail {
+  display: flex;
+  flex-direction: column;
 }
+
+/* 头部：64px 封面 + 衬线名称 + 徽章 */
+.item-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.detail-cover {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--zj-radius-md);
+  background: var(--zj-surface-sunken);
+}
+
+.detail-cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--zj-radius-md);
+  background: var(--zj-surface-sunken);
+  color: var(--zj-ink-300);
+  font-size: 20px;
+}
+
+.item-head-main {
+  min-width: 0;
+}
+
+.item-badges {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.item-badges .zj-badge {
+  padding: 0 10px;
+  line-height: 18px;
+  font-size: 11px;
+}
+
+/* 属性 label/value 双列网格 */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 24px;
+  row-gap: 18px;
+  margin: 0 0 24px;
+}
+
+.detail-field {
+  min-width: 0;
+}
+
+.detail-field-wide {
+  grid-column: 1 / -1;
+}
+
+.detail-field dt {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--zj-ink-400);
+  letter-spacing: 0.04em;
+}
+
+.detail-field dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--zj-ink-900);
+  word-break: break-word;
+}
+
+.detail-field-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--zj-ink-400);
+}
+
+/* 库存汇总：双统计 + 入库 */
 .inventory-summary {
-  margin: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 16px 0;
+  border-top: 1px solid var(--zj-line);
+  border-bottom: 1px solid var(--zj-line);
 }
+
+.summary-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-num {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--zj-pine-600);
+  line-height: 1.2;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: var(--zj-ink-400);
+}
+
+.inventory-summary .el-button {
+  margin-left: auto;
+}
+
 .detail-actions {
-  margin-top: 20px;
+  margin-top: 16px;
   display: flex;
   gap: 12px;
+}
+
+.detail-actions .el-button + .el-button {
+  margin-left: 0;
 }
 .attachments-section {
   margin-top: 8px;
@@ -663,16 +925,93 @@ async function openHighlightedItem(itemId: string) {
 .cover-placeholder {
   color: var(--zj-ink-300);
 }
-.detail-cover {
-  width: 100%;
-  max-height: 200px;
-  object-fit: contain;
-  border-radius: var(--zj-radius-md);
-  margin-bottom: 12px;
-}
 .tag-item {
   margin-right: 4px;
   margin-bottom: 2px;
+}
+
+/* ---------- 附件表格 ---------- */
+.att-table {
+  border-radius: var(--zj-radius-sm);
+  overflow: hidden;
+}
+
+/* 文件单元格：小瓦片 + 名称/类型双行 */
+.att-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.att-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--zj-radius-sm);
+  background: var(--zj-surface-sunken);
+  overflow: hidden;
+}
+
+.att-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.att-ext {
+  font-family: var(--zj-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--zj-ink-600);
+}
+
+.att-main {
+  min-width: 0;
+}
+
+.att-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--zj-ink-900);
+}
+
+.att-type {
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--zj-ink-400);
+}
+
+.att-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.att-actions .el-button {
+  margin-left: 0;
+}
+
+.att-actions :deep(.el-button.is-text) {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.att-actions :deep(.el-icon--right) {
+  margin-left: 2px;
+  font-size: 12px;
+}
+
+.att-actions :deep(.el-dropdown) {
+  display: inline-flex;
 }
 
 @media (max-width: 1024px) {

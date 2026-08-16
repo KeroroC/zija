@@ -212,7 +212,7 @@ async function saveMail() {
   margin-top: 24px;
 }
 .section-title {
-  font-family: "Noto Serif SC Variable", serif;
+  font-family: var(--zj-serif);
   font-size: 16px;
   color: var(--zj-ink-900);
   margin-bottom: 16px;

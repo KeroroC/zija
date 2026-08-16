@@ -6,12 +6,12 @@
         <p class="page-subtitle">保管家庭、物品与批次上的文档和图片</p>
       </div>
       <div class="header-actions">
-        <el-radio-group v-model="view" size="default" @change="onViewChange">
+        <el-radio-group v-model="view" @change="onViewChange">
           <el-radio-button value="all">全部</el-radio-button>
           <el-radio-button value="recycled">回收站</el-radio-button>
         </el-radio-group>
-        <el-button v-if="view === 'all'" type="primary" data-testid="attachment-upload" @click="triggerUpload">
-          上传
+        <el-button type="primary" :disabled="view === 'recycled'" data-testid="attachment-upload" @click="triggerUpload">
+          <el-icon class="el-icon--left"><Upload /></el-icon>上传
         </el-button>
         <input ref="fileInput" class="file-input" type="file" @change="onFileChosen" />
       </div>
@@ -34,53 +34,101 @@
         v-model="filterQ"
         placeholder="按名字搜索"
         clearable
-        style="width: 220px"
+        style="width: 240px"
         @input="onSearchInput"
-      />
+      >
+        <template #prefix>
+          <el-icon><Search /></el-icon>
+        </template>
+      </el-input>
+      <span v-if="!loading && pagination.total > 0" class="filter-count">
+        共 <span class="zj-num">{{ pagination.total }}</span> 份
+      </span>
     </div>
 
-    <div class="card">
-      <el-table v-loading="loading" :data="items" :empty-text="view === 'all' ? '还没有附件' : '回收站是空的'">
-        <el-table-column prop="name" label="名字" min-width="200">
-          <template #default="{ row }">
-            <span class="attachment-name">{{ row.name }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="挂载点" min-width="160">
-          <template #default="{ row }">
-            <span v-if="row.mountType === 'HOUSEHOLD'" class="mount-label">家庭</span>
-            <el-link
-              v-else-if="row.mountType === 'ITEM'"
-              type="primary"
-              :underline="false"
-              @click="goToItem(row.mountId)"
+    <div class="card file-card">
+      <!-- 加载骨架：贴合行结构 -->
+      <el-skeleton v-if="loading" animated :loading="true" class="file-skeleton">
+        <template #template>
+          <div v-for="i in 6" :key="i" class="file-row skeleton-row">
+            <el-skeleton-item variant="rect" class="skeleton-tile" />
+            <div class="file-main">
+              <el-skeleton-item variant="text" style="width: 42%" />
+              <el-skeleton-item variant="text" style="width: 24%" />
+            </div>
+            <el-skeleton-item variant="text" style="width: 64px" class="skeleton-stat" />
+          </div>
+        </template>
+      </el-skeleton>
+
+      <!-- 空状态 -->
+      <div v-else-if="items.length === 0" class="file-empty">
+        <div class="file-empty-icon">
+          <el-icon><FolderOpened /></el-icon>
+        </div>
+        <p class="file-empty-title">{{ view === 'all' ? '还没有附件' : '回收站是空的' }}</p>
+        <p class="file-empty-hint">
+          {{ view === 'all' ? '上传保修单、说明书或照片，把每一件物品的凭证收进账册。' : '删除的附件会在这里保留一段时间，恢复后重新回到原挂载点。' }}
+        </p>
+        <el-button v-if="view === 'all'" type="primary" @click="triggerUpload">上传第一个附件</el-button>
+      </div>
+
+      <!-- 附件列表 -->
+      <div v-else class="file-list">
+        <div
+          v-for="row in items"
+          :key="row.id"
+          class="file-row"
+          :class="{ 'is-recycled': view === 'recycled' }"
+        >
+          <div class="file-tile" :class="{ 'is-image': isImageType(row.mediaType) && !failedImages.has(row.id) }">
+            <img
+              v-if="isImageType(row.mediaType) && !failedImages.has(row.id)"
+              :src="row.url"
+              :alt="row.name"
+              loading="lazy"
+              class="file-thumb"
+              @error="onImageError(row.id)"
+            />
+            <span v-else class="file-ext">{{ fileExtension(row) }}</span>
+          </div>
+
+          <div class="file-main">
+            <div class="file-name" :title="row.name">{{ row.name }}</div>
+            <div class="file-sub">
+              <span v-if="row.mountType === 'HOUSEHOLD'" class="zj-badge zj-badge-plain mount-badge">家庭</span>
+              <el-link
+                v-else-if="row.mountType === 'ITEM'"
+                type="primary"
+                underline="never"
+                @click="goToItem(row.mountId)"
+              >
+                {{ itemName(row.mountId) }}
+              </el-link>
+              <el-link
+                v-else
+                type="primary"
+                underline="never"
+                @click="goToLot(row.mountId)"
+              >
+                {{ lotLabel(row.mountId) }}
+              </el-link>
+              <span class="file-type">{{ mediaTypeLabel(row.mediaType) }}</span>
+            </div>
+          </div>
+
+          <div class="file-stat">
+            <span class="zj-num file-size">{{ formatBytes(row.byteSize) }}</span>
+            <span
+              class="zj-num file-date"
+              :title="view === 'recycled' ? '删除于 ' + formatDateTime(row.deletedAt ?? '') : undefined"
             >
-              {{ itemName(row.mountId) }}
-            </el-link>
-            <el-link
-              v-else
-              type="primary"
-              :underline="false"
-              @click="goToLot(row.mountId)"
-            >
-              {{ lotLabel(row.mountId) }}
-            </el-link>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="190" class-name="col-secondary">
-          <template #default="{ row }"><span class="cell-secondary">{{ mediaTypeLabel(row.mediaType) }}</span></template>
-        </el-table-column>
-        <el-table-column label="大小" width="100">
-          <template #default="{ row }"><span class="zj-num">{{ formatBytes(row.byteSize) }}</span></template>
-        </el-table-column>
-        <el-table-column label="日期" width="160" class-name="col-secondary">
-          <template #default="{ row }">
-            <span class="cell-secondary zj-num">{{ formatDateTime(row.createdAt) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="" width="220" align="right">
-          <template #default="{ row }">
-            <el-button text type="primary" data-testid="attachment-rename" @click="rename(row as Attachment)">改名</el-button>
+              {{ formatDateTime(view === 'recycled' ? (row.deletedAt ?? row.createdAt) : row.createdAt) }}
+            </span>
+          </div>
+
+          <div class="file-actions">
+            <el-button text data-testid="attachment-rename" @click="rename(row as Attachment)">改名</el-button>
             <el-button
               v-if="view === 'all' && row.mountType !== 'HOUSEHOLD'"
               text
@@ -89,39 +137,105 @@
             >
               移到家庭
             </el-button>
+            <el-button
+              v-if="view === 'all' && row.mountType === 'HOUSEHOLD'"
+              text
+              type="primary"
+              data-testid="attachment-move-item"
+              @click="openMoveDialog('item', row as Attachment)"
+            >
+              移到物品
+            </el-button>
+            <el-button
+              v-if="view === 'all' && row.mountType === 'HOUSEHOLD'"
+              text
+              type="primary"
+              data-testid="attachment-move-lot"
+              @click="openMoveDialog('lot', row as Attachment)"
+            >
+              移到批次
+            </el-button>
             <el-button v-if="view === 'all'" text type="danger" data-testid="attachment-delete" @click="remove(row as Attachment)">
               删除
             </el-button>
-            <el-button v-else text type="primary" data-testid="attachment-restore" @click="restore(row as Attachment)">
+            <el-button v-if="view === 'recycled'" text type="primary" data-testid="attachment-restore" @click="restore(row as Attachment)">
               恢复
             </el-button>
+            <el-button v-if="view === 'recycled'" text type="danger" data-testid="attachment-purge" @click="purge(row as Attachment)">
+              永久删除
+            </el-button>
             <el-button text @click="download(row as Attachment)">下载</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.pageSize"
-        :total="pagination.total"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next"
-        @current-change="load"
-        @size-change="load"
-      />
+          </div>
+        </div>
+
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          class="file-pagination"
+          @current-change="load"
+          @size-change="load"
+        />
+      </div>
     </div>
+
+    <!-- 改挂目标选择框 -->
+    <el-dialog
+      v-model="moveDialogVisible"
+      :title="moveType === 'item' ? '移到物品' : '移到批次'"
+      width="480px"
+      align-center
+    >
+      <p class="move-dialog-subtitle">
+        把「{{ moveTarget?.name }}」挂到所选目标上，内容与展示名保持不变。
+      </p>
+      <div v-if="moveOptions.length === 0" class="move-empty" data-testid="attachment-move-empty">
+        {{ mountNamesFailed
+          ? '目标信息加载失败，请刷新后重试。'
+          : (moveType === 'item' ? '家庭还没有可选的物品，先到物品页添加。' : '家庭还没有可选的批次，先到库存页录入批次。') }}
+      </div>
+      <el-select
+        v-else
+        v-model="moveSelection"
+        filterable
+        :placeholder="moveType === 'item' ? '搜索并选择物品' : '搜索并选择批次'"
+        style="width: 100%"
+        data-testid="attachment-move-select"
+      >
+        <el-option v-for="opt in moveOptions" :key="opt.id" :label="opt.label" :value="opt.id">
+          <span>{{ opt.label }}</span>
+          <span v-if="opt.archived" class="zj-badge zj-badge-plain move-badge">已归档</span>
+        </el-option>
+        <template #empty>
+          <span data-testid="attachment-move-empty-filter">没有匹配的目标</span>
+        </template>
+      </el-select>
+      <template #footer>
+        <el-button @click="closeMoveDialog">取消</el-button>
+        <el-button type="primary" :disabled="!moveSelection" data-testid="attachment-move-confirm" @click="confirmMove">
+          {{ moveType === 'item' ? '移到物品' : '移到批次' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { Upload, Search, FolderOpened } from "@element-plus/icons-vue";
 import {
   listAttachments,
   renameAttachment,
   deleteAttachment,
   restoreAttachment,
+  purgeAttachment,
   remountAttachmentToHousehold,
+  remountAttachmentToItem,
+  remountAttachmentToLot,
   uploadHouseholdAttachment,
   type Attachment
 } from "../api/file";
@@ -141,8 +255,40 @@ const filterMountType = ref("");
 const filterQ = ref("");
 const pagination = ref({ page: 1, pageSize: 20, total: 0 });
 
-const itemNames = ref<Map<string, string>>(new Map());
+interface ItemMeta {
+  name: string;
+  archived: boolean;
+}
+
+const itemMeta = ref<Map<string, ItemMeta>>(new Map());
 const lotLabels = ref<Map<string, string>>(new Map());
+
+/** 目标映射加载失败标记：改挂选择框据此区分「无目标」与「加载失败」。 */
+const mountNamesFailed = ref(false);
+
+/** 改挂目标选择框状态 */
+const moveDialogVisible = ref(false);
+const moveType = ref<"item" | "lot">("item");
+const moveTarget = ref<Attachment | null>(null);
+const moveSelection = ref("");
+
+const moveOptions = computed(() => {
+  if (moveType.value === "item") {
+    return Array.from(itemMeta.value.entries()).map(([id, meta]) => ({
+      id,
+      label: meta.name,
+      archived: meta.archived
+    }));
+  }
+  return Array.from(lotLabels.value.entries()).map(([id, label]) => ({
+    id,
+    label,
+    archived: false
+  }));
+});
+
+/** 缩略图加载失败的附件 id：回退为扩展名瓦片 */
+const failedImages = ref<Set<string>>(new Set());
 
 const MEDIA_LABELS: Record<string, string> = {
   "image/jpeg": "JPEG 图片",
@@ -202,27 +348,35 @@ async function load() {
   }
 }
 
-/** 加载物品名与批次标识，用于挂载点列展示。 */
+/** 加载物品名与批次标识，用于挂载点列展示与改挂目标选择。 */
 async function loadMountNames() {
   try {
     const [itemsResp, lotsResp] = await Promise.all([
       fetchItems({ pageSize: 1000 }),
       fetchLots({ pageSize: 1000 })
     ]);
-    itemNames.value = new Map(itemsResp.items.map((i) => [i.id, i.name]));
+    itemMeta.value = new Map(
+      itemsResp.items.map((i) => [i.id, { name: i.name, archived: i.status === "ARCHIVED" }])
+    );
     lotLabels.value = new Map(
       lotsResp.items.map((l) => [
         l.lotId,
         [l.itemName, l.lotNumber, l.serialNumber].filter(Boolean).join(" · ") || l.lotId.slice(0, 8)
       ])
     );
+    mountNamesFailed.value = false;
   } catch {
-    // 名称加载失败时回退为短 ID
+    // 名称加载失败时回退为短 ID；改挂选择框显示加载失败提示
+    mountNamesFailed.value = true;
   }
 }
 
+function isDuplicateNameError(error: unknown): boolean {
+  return error instanceof ApiError && error.errorCode === "FILE_NAME_DUPLICATE";
+}
+
 function itemName(id: string): string {
-  return itemNames.value.get(id) ?? id.slice(0, 8);
+  return itemMeta.value.get(id)?.name ?? id.slice(0, 8);
 }
 
 function lotLabel(id: string): string {
@@ -231,6 +385,27 @@ function lotLabel(id: string): string {
 
 function mediaTypeLabel(mediaType: string): string {
   return MEDIA_LABELS[mediaType] ?? mediaType;
+}
+
+function isImageType(mediaType: string): boolean {
+  return mediaType.startsWith("image/");
+}
+
+/** 文件瓦片上的扩展名标识：取文件名末段，图片取类型缩写 */
+function fileExtension(row: Attachment): string {
+  if (isImageType(row.mediaType)) {
+    const subtype = row.mediaType.split("/")[1] ?? "";
+    return subtype.slice(0, 4).toUpperCase();
+  }
+  const dot = row.name.lastIndexOf(".");
+  if (dot > 0 && dot < row.name.length - 1) {
+    return row.name.slice(dot + 1).slice(0, 4).toUpperCase();
+  }
+  return "FILE";
+}
+
+function onImageError(id: string) {
+  failedImages.value = new Set(failedImages.value).add(id);
 }
 
 function triggerUpload() {
@@ -299,11 +474,34 @@ async function restore(row: Attachment) {
     ElMessage.success("已恢复");
     await load();
   } catch (error) {
-    if (error instanceof ApiError && error.errorCode === "FILE_NAME_DUPLICATE") {
+    if (isDuplicateNameError(error)) {
       ElMessage.warning("原挂载点已有一份同名附件，请先改名再恢复");
       return;
     }
     ElMessage.error(error instanceof ApiError ? error.message : "恢复失败");
+  }
+}
+
+async function purge(row: Attachment) {
+  try {
+    await ElMessageBox.confirm(
+      `永久删除「${row.name}」后不可恢复，此后生成的备份中也不再包含此文件。确定继续吗？`,
+      "永久删除附件",
+      {
+        confirmButtonText: "永久删除",
+        cancelButtonText: "取消",
+        type: "warning"
+      }
+    );
+  } catch {
+    return;
+  }
+  try {
+    await purgeAttachment(row.id);
+    ElMessage.success("已永久删除");
+    await load();
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : "永久删除失败");
   }
 }
 
@@ -313,6 +511,39 @@ async function moveToHousehold(row: Attachment) {
     ElMessage.success("已移到家庭");
     await load();
   } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : "改挂失败");
+  }
+}
+
+function openMoveDialog(type: "item" | "lot", row: Attachment) {
+  moveType.value = type;
+  moveTarget.value = row;
+  moveSelection.value = "";
+  moveDialogVisible.value = true;
+}
+
+function closeMoveDialog() {
+  moveDialogVisible.value = false;
+}
+
+async function confirmMove() {
+  const target = moveTarget.value;
+  if (!target || !moveSelection.value) return;
+  try {
+    if (moveType.value === "item") {
+      await remountAttachmentToItem(moveSelection.value, target.id);
+      ElMessage.success("已移到物品");
+    } else {
+      await remountAttachmentToLot(moveSelection.value, target.id);
+      ElMessage.success("已移到批次");
+    }
+    closeMoveDialog();
+    await load();
+  } catch (error) {
+    if (isDuplicateNameError(error)) {
+      ElMessage.warning("目标已有一份同名附件，请先改名再移动");
+      return;
+    }
     ElMessage.error(error instanceof ApiError ? error.message : "改挂失败");
   }
 }
@@ -331,32 +562,250 @@ function goToLot(lotId: string) {
 .file-input {
   display: none;
 }
+
 .header-actions {
   display: flex;
   align-items: center;
   gap: 12px;
 }
+
 .filters {
   display: flex;
   gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
   margin-bottom: 16px;
   padding: 10px 12px;
   background: var(--zj-surface-sunken);
   border-radius: var(--zj-radius-md);
 }
-.card {
-  background: var(--zj-surface);
-  border-radius: var(--zj-radius-md);
-  padding: 8px 16px 16px;
-  box-shadow: var(--zj-shadow-sm);
+
+.filter-count {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--zj-ink-400);
 }
-.attachment-name {
+
+/* ---------- 文件卡片 ---------- */
+.file-card {
+  padding: 4px 16px 16px;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 行：瓦片 | 主信息 | 数值 | 操作，hover 时轻浮起 */
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--zj-line);
+  transition: background-color var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.file-row:hover {
+  background: var(--zj-pine-50);
+}
+
+.file-row:last-child {
+  border-bottom: 0;
+}
+
+/* 回收站行：整体降调，操作仍可用 */
+.file-row.is-recycled .file-name {
+  color: var(--zj-ink-400);
+}
+
+/* ---------- 文件瓦片 ---------- */
+.file-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: var(--zj-radius-sm);
+  background: var(--zj-surface-sunken);
+  overflow: hidden;
+}
+
+.file-tile.is-image {
+  background: var(--zj-canvas);
+}
+
+.file-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.file-ext {
+  font-family: var(--zj-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--zj-ink-600);
+}
+
+/* ---------- 主信息 ---------- */
+.file-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--zj-ink-900);
 }
-.mount-label {
+
+.file-sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.mount-badge {
+  padding: 0 8px;
+  line-height: 16px;
+  font-size: 11px;
+}
+
+.file-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--zj-ink-400);
+}
+
+/* ---------- 数值列 ---------- */
+.file-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.file-size {
+  font-size: 13px;
   color: var(--zj-ink-600);
 }
-.cell-secondary {
+
+.file-date {
+  font-size: 12px;
+  color: var(--zj-ink-400);
+}
+
+/* ---------- 操作 ---------- */
+.file-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.file-actions .el-button {
+  margin-left: 0;
+}
+
+/* ---------- 骨架 ---------- */
+.file-skeleton :deep(.skeleton-row) {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 4px;
+}
+
+.file-skeleton :deep(.skeleton-tile) {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--zj-radius-sm);
+  flex-shrink: 0;
+}
+
+.file-skeleton :deep(.file-main) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.file-skeleton :deep(.skeleton-stat) {
+  margin-left: auto;
+}
+
+/* ---------- 空状态 ---------- */
+.file-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 56px 0 64px;
+}
+
+.file-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 16px;
+  border-radius: var(--zj-radius-md);
+  background: var(--zj-pine-50);
+  color: var(--zj-pine-500);
+}
+
+.file-empty-icon .el-icon {
+  font-size: 26px;
+}
+
+.file-empty-title {
+  margin: 0;
+  font-family: var(--zj-serif);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--zj-ink-900);
+}
+
+.file-empty-hint {
+  margin: 8px 0 20px;
+  max-width: 420px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
   color: var(--zj-ink-600);
+}
+
+.file-pagination {
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+/* ---------- 改挂目标选择框 ---------- */
+.move-dialog-subtitle {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--zj-ink-600);
+}
+
+.move-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--zj-ink-400);
+}
+
+.move-badge {
+  margin-left: 8px;
+  padding: 0 8px;
+  line-height: 16px;
+  font-size: 11px;
 }
 </style>

@@ -162,14 +162,26 @@ class FileController {
     }
 
     /**
-     * 删除附件：进入回收站（保留期内可恢复），不物理删除。
+     * 删除附件。默认进入回收站（保留期内可恢复），不物理删除；
+     * {@code permanent=true} 时永久删除：跳过保留期，立即物理清除（卷上对象 + 数据库行），不可恢复。
      */
     @DeleteMapping("/{fileId}")
     Map<String, Object> remove(
             @AuthenticationPrincipal ZijaPrincipal principal,
-            @PathVariable UUID fileId
+            @PathVariable UUID fileId,
+            @RequestParam(defaultValue = "false") boolean permanent
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
+        if (permanent) {
+            boolean purged = fileApi.purge(member.householdId(), fileId);
+            if (!purged) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+            }
+            var response = new LinkedHashMap<String, Object>();
+            response.put("id", fileId.toString());
+            response.put("purged", true);
+            return response;
+        }
         var info = fileApi.recycle(member.householdId(), fileId);
         if (info == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);

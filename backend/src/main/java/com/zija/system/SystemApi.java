@@ -108,6 +108,7 @@ public interface SystemApi {
         String FILE_MOVED = "FILE_MOVED";
         String FILE_DELETED = "FILE_DELETED";
         String FILE_RESTORED = "FILE_RESTORED";
+        String FILE_PURGED = "FILE_PURGED";
 
         // ---------- location ----------
         String LOCATION_CREATED = "LOCATION_CREATED";

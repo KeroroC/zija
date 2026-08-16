@@ -129,6 +129,11 @@ export async function restoreAttachment(id: string): Promise<Attachment> {
   return postJson<Attachment>(`/api/v1/files/${id}/restore`)
 }
 
+/** 永久删除回收站附件：跳过保留期，物理删除，不可恢复。 */
+export async function purgeAttachment(id: string): Promise<{ id: string; purged: boolean }> {
+  return deleteJson(`/api/v1/files/${id}?permanent=true`)
+}
+
 /** 改挂到家庭（当前家庭）。 */
 export async function remountAttachmentToHousehold(id: string): Promise<Attachment> {
   return patchJson<Attachment>(`/api/v1/files/${id}/mount`, { mountType: 'HOUSEHOLD' })
