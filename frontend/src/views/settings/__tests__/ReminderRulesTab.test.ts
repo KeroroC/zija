@@ -20,6 +20,10 @@ import {
   updateMailSettings,
 } from "../../../api/reminder";
 import { ApiError } from "../../../api/http";
+import {
+  MAIL_SETTING_VERSION_CONFLICT,
+  REMINDER_RULE_VERSION_CONFLICT,
+} from "../../../types/errorCodes";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -55,7 +59,7 @@ describe("ReminderRulesTab", () => {
 
   it("saving with stale version shows conflict and reloads", async () => {
     (updateRules as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      new ApiError("版本冲突", "REMINDER_RULE_VERSION_CONFLICT", 409),
+      new ApiError("版本冲突", REMINDER_RULE_VERSION_CONFLICT, 409),
     );
     const w = mountV();
     await flushPromises();
@@ -89,7 +93,7 @@ describe("ReminderRulesTab", () => {
 
   it("saving mail with stale version shows conflict and reloads", async () => {
     (updateMailSettings as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      new ApiError("版本冲突", "REMINDER_MAIL_SETTING_VERSION_CONFLICT", 409),
+      new ApiError("版本冲突", MAIL_SETTING_VERSION_CONFLICT, 409),
     );
     const w = mountV();
     await flushPromises();

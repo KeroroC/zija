@@ -91,6 +91,10 @@ import {
 import type { MailSetting } from "../../api/reminder";
 import { useSessionStore } from "../../stores/session";
 import { ApiError } from "../../api/http";
+import {
+  MAIL_SETTING_VERSION_CONFLICT,
+  REMINDER_RULE_VERSION_CONFLICT,
+} from "../../types/errorCodes";
 
 const session = useSessionStore();
 const canEdit = computed(
@@ -160,7 +164,7 @@ async function save() {
   } catch (e) {
     if (
       e instanceof ApiError &&
-      e.errorCode === "REMINDER_RULE_VERSION_CONFLICT"
+      e.errorCode === REMINDER_RULE_VERSION_CONFLICT
     ) {
       ElMessage.warning("规则已被他人修改，已为您重新加载");
       await load();
@@ -185,7 +189,7 @@ async function saveMail() {
   } catch (e) {
     if (
       e instanceof ApiError &&
-      e.errorCode === "REMINDER_MAIL_SETTING_VERSION_CONFLICT"
+      e.errorCode === MAIL_SETTING_VERSION_CONFLICT
     ) {
       ElMessage.warning("邮件设置已被他人修改，已为您重新加载");
       await loadMail();

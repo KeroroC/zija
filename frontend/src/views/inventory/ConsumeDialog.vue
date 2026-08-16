@@ -160,6 +160,7 @@ import { fetchItems } from '../../api/catalog'
 import { fetchStockPositions, consumeStock } from '../../api/inventory'
 import { fetchLocationTree } from '../../api/location'
 import { ApiError } from '../../api/http'
+import { INVENTORY_INSUFFICIENT_STOCK } from '../../types/errorCodes'
 import type { CatalogItem } from '../../types/catalog'
 import type { StockPosition } from '../../types/inventory'
 import type { LocationNode, LocationTree } from '../../types/location'
@@ -296,7 +297,7 @@ async function handleSubmit() {
     emit('update:modelValue', false)
   } catch (err) {
     if (err instanceof ApiError) {
-      if (err.errorCode === 'INVENTORY_INSUFFICIENT_STOCK') {
+      if (err.errorCode === INVENTORY_INSUFFICIENT_STOCK) {
         ElMessage.error('库存不足，请减少领用数量或选择其他批次。')
       } else {
         ElMessage.error(err.message)

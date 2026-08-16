@@ -79,6 +79,11 @@ import { reverseMovement } from '../../api/inventory'
 import { useSessionStore } from '../../stores/session'
 import { ApiError } from '../../api/http'
 import type { Movement, MovementType } from '../../types/inventory'
+import {
+  INVENTORY_MOVEMENT_ALREADY_REVERSED,
+  INVENTORY_REVERSAL_NOT_ALLOWED,
+  INVENTORY_REVERSAL_WOULD_NEGATIVE,
+} from '../../types/errorCodes'
 
 const props = defineProps<{
   modelValue: boolean
@@ -192,11 +197,11 @@ async function onReverse() {
     emit('update:modelValue', false)
   } catch (err) {
     if (err instanceof ApiError) {
-      if (err.errorCode === 'INVENTORY_MOVEMENT_ALREADY_REVERSED') {
+      if (err.errorCode === INVENTORY_MOVEMENT_ALREADY_REVERSED) {
         ElMessage.error('该流水已被冲正')
-      } else if (err.errorCode === 'INVENTORY_REVERSAL_NOT_ALLOWED') {
+      } else if (err.errorCode === INVENTORY_REVERSAL_NOT_ALLOWED) {
         ElMessage.error('该类型流水不允许冲正')
-      } else if (err.errorCode === 'INVENTORY_REVERSAL_WOULD_NEGATIVE') {
+      } else if (err.errorCode === INVENTORY_REVERSAL_WOULD_NEGATIVE) {
         ElMessage.error('冲正会导致库存为负，无法执行')
       } else {
         ElMessage.error(err.message || '冲正失败')

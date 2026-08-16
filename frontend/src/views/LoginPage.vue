@@ -55,6 +55,7 @@ import { reactive, ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useSessionStore } from "../stores/session";
+import { AUTH_LOGIN_RATE_LIMITED } from "../types/errorCodes";
 
 const router = useRouter();
 const route = useRoute();
@@ -71,7 +72,7 @@ async function submit() {
     router.push(redirect ?? { name: "home" });
   } catch (e: unknown) {
     const err = e as { errorCode?: string };
-    if (err.errorCode === "AUTH_LOGIN_RATE_LIMITED") {
+    if (err.errorCode === AUTH_LOGIN_RATE_LIMITED) {
       ElMessage.error("尝试过多，请稍后再试");
     } else {
       ElMessage.error("用户名或密码错误");

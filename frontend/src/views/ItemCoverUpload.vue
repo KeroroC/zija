@@ -78,6 +78,11 @@ import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { uploadItemCover, removeItemCover, COVER_IMAGE_TYPES } from '../api/file'
 import type { CoverResult } from '../api/file'
+import {
+  FILE_MEDIA_TYPE_UNSUPPORTED,
+  FILE_SIGNATURE_MISMATCH,
+  FILE_TOO_LARGE,
+} from '../types/errorCodes'
 
 const props = defineProps<{
   itemId: string
@@ -114,11 +119,11 @@ function validateFile(file: File): string | null {
 
 function mapServerError(errorCode: string): string {
   switch (errorCode) {
-    case 'FILE_TOO_LARGE':
+    case FILE_TOO_LARGE:
       return '文件大小超过服务端限制'
-    case 'FILE_MEDIA_TYPE_UNSUPPORTED':
+    case FILE_MEDIA_TYPE_UNSUPPORTED:
       return '不支持的文件类型'
-    case 'FILE_SIGNATURE_MISMATCH':
+    case FILE_SIGNATURE_MISMATCH:
       return '文件签名与扩展名不匹配'
     default:
       return '上传失败，请重试'
