@@ -351,6 +351,87 @@ class InventoryConcurrencyIntegrationTest {
     }
 
     // =====================================================================
+    // Test 4b: Two concurrent reverses of the same movement WITHOUT an
+    // Idempotency-Key must still produce only one REVERSAL row.
+    //
+    // Regression test for the TOCTOU in ReversalService.reverse():
+    // countReversalOf is a non-locking SELECT COUNT(*), so two no-key
+    // callers can both observe count=0 and both insert a REVERSAL
+    // (double reversal, double stock restitution). The DB-level UNIQUE
+    // constraint on reversal_of is what makes the second insert fail.
+    // =====================================================================
+
+    @Test
+    void concurrentReverse_withoutIdempotencyKey_onlyOneReversal() throws Exception {
+        UUID lotId = seedLot(householdId, itemId);
+        UUID accountId = seedAccount();
+
+        // Seed: inbound 10, consume 6 → stock = 4
+        newTx().executeWithoutResult(s ->
+                stockCommandService.inboundExistingLot(householdId, accountId,
+                        locationId, lotId, BigDecimal.TEN, null, null));
+        var consumeResult = newTx().execute(s ->
+                stockCommandService.consume(householdId, accountId, lotId, locationId,
+                        BigDecimal.valueOf(6), "领用", null, null));
+        UUID originalMovementId = consumeResult.movementId();
+
+        var spBefore = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(spBefore.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(4));
+
+        // N concurrent reverses, NO idempotency key, same target movement.
+        // 8 threads: with the TOCTOU un-fixed, several callers pass the count
+        // check before the first commit and each insert a REVERSAL.
+        int threadCount = 8;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch latch = new CountDownLatch(1);
+
+        List<Callable<String>> tasks = new ArrayList<>();
+        for (int i = 0; i < threadCount; i++) {
+            tasks.add(() -> {
+                latch.await();
+                try {
+                    newTx().execute(s ->
+                            reversalService.reverse(householdId, accountId, originalMovementId,
+                                    "冲正", "memo", null));
+                    return "SUCCESS";
+                } catch (Exception ex) {
+                    // Losing racer: unique-violation / already-reversed / rollback —
+                    // any failure is fine as long as exactly one reversal commits.
+                    return "FAILED:" + ex.getClass().getSimpleName();
+                }
+            });
+        }
+
+        latch.countDown();
+        List<Future<String>> futures = executor.invokeAll(tasks);
+        executor.shutdown();
+
+        List<String> results = futures.stream().map(f -> {
+            try { return f.get(); } catch (Exception e) { throw new RuntimeException(e); }
+        }).toList();
+        long successCount = results.stream().filter("SUCCESS"::equals).count();
+
+        // Exactly one caller may commit the reversal
+        assertThat(successCount).isEqualTo(1);
+
+        // Exactly 1 REVERSAL row (no double reversal)
+        Long reversalCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM inventory_movement " +
+                "WHERE household_id = ? AND type = 'REVERSAL' AND reversal_of = ?",
+                Long.class, householdId, originalMovementId);
+        assertThat(reversalCount).isEqualTo(1);
+
+        // Stock position: 4 + 6 = 10 (NOT 16, which would indicate double-reversal)
+        var spAfter = stockPositionMapper.lockOne(householdId, lotId, locationId);
+        assertThat(spAfter).isNotNull();
+        assertThat(spAfter.getQuantity()).isEqualByComparingTo(BigDecimal.TEN);
+
+        // Total movements: INBOUND + CONSUME + REVERSAL = 3
+        var movements = movementMapper.selectList(null);
+        assertThat(movements).hasSize(3);
+    }
+
+    // =====================================================================
     // Test 4: Movements are immutable / rebuildable
     // =====================================================================
 

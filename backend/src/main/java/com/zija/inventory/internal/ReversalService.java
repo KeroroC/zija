@@ -51,7 +51,8 @@ public class ReversalService {
      *       这一步为携带相同 {@code Idempotency-Key} 的并发冲正提供串行化保证，
      *       避免两个并发请求都通过后续的 {@code countReversalOf} 检查而插入两条 REVERSAL、导致库存双重反转。</li>
      *   <li>加载原始流水，不存在则拒绝</li>
-     *   <li>检查是否已被冲正（无 key 调用方的兜底；存在 TOCTOU 风险，详见内联注释）</li>
+     *   <li>检查是否已被冲正（快速路径；无 key 并发调用的最终保证来自
+     *       {@code inventory_movement.reversal_of} 唯一索引，见内联注释）</li>
      *   <li>类型检查：REVERSAL 类型不可冲正</li>
      *   <li>计算逆向影响并执行库存位增减（若导致负库存则全量回滚）</li>
      *   <li>插入 REVERSAL 流水</li>
@@ -86,11 +87,12 @@ public class ReversalService {
             throw new InventoryReversalNotAllowedException("movement not found: " + originalMovementId);
         }
 
-        // 3. Check if already reversed.
-        //    Note: countReversalOf is a non-locking SELECT COUNT(*), so for concurrent
-        //    calls WITHOUT an Idempotency-Key this check has a TOCTOU window — both
-        //    callers may see count=0 and each insert a REVERSAL. This is the deliberate
-        //    fallback for the no-key path; keyed callers are protected by lockOrFind above.
+        // 3. Check if already reversed (fast path).
+        //    countReversalOf is a non-locking SELECT COUNT(*), so concurrent calls
+        //    WITHOUT an Idempotency-Key can both see count=0 here (TOCTOU). The hard
+        //    guarantee is the UNIQUE index on inventory_movement.reversal_of (V9):
+        //    the second concurrent INSERT fails with a unique violation and rolls
+        //    back, so no application-level lock is needed on this path.
         if (movementMapper.countReversalOf(householdId, originalMovementId) > 0) {
             throw new InventoryMovementAlreadyReversedException(
                     "movement already reversed: " + originalMovementId);
