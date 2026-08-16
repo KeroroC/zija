@@ -20,6 +20,25 @@ public interface AiApi {
     /** Create embeddings for a batch of texts through the configured provider. */
     EmbeddingReply embed(EmbeddingRequest request);
 
+    /** Return the current provider availability without making AI availability a core dependency. */
+    AiStatus status();
+
+    /** Current provider and resource status visible to the AI orchestration layer. */
+    record AiStatus(
+            boolean available,
+            String reasonCode,
+            String detail,
+            String providerId,
+            String chatModel,
+            String embeddingModel,
+            boolean outboundEnabled,
+            int requestsPerMinute,
+            int maxContextTokens,
+            int maxConcurrentRequests,
+            int requestTimeoutSeconds
+    ) {
+    }
+
     record ChatRequest(String prompt) {
         public ChatRequest {
             if (prompt == null || prompt.isBlank()) {

@@ -24,6 +24,7 @@ export const router = createRouter({
     { path: "/settings/units", name: "units-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "目录设置" } },
     { path: "/settings/tags", name: "tags-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "目录设置" } },
     { path: "/settings/reminder", name: "reminder-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "提醒规则" } },
+    { path: "/settings/ai", name: "ai-settings", component: () => import("../views/CatalogSettingsPage.vue"), meta: { title: "AI 能力" } },
     { path: "/inventory", name: "inventory", component: () => import("../views/InventoryPage.vue"), meta: { title: "库存管理" } },
     {
       path: "/reports",

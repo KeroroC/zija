@@ -140,6 +140,9 @@ public interface SystemApi {
         String EXPORT_PERFORMED = "EXPORT_PERFORMED";
         String REPORTING_PROJECTION_REBUILT = "REPORTING_PROJECTION_REBUILT";
         String REPORTING_EVENT_ABANDONED = "REPORTING_EVENT_ABANDONED";
+
+        // ---------- ai ----------
+        String AI_SETTING_UPDATED = "AI_SETTING_UPDATED";
     }
 
     /** 审计日志条目。 */

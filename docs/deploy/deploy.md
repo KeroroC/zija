@@ -62,6 +62,10 @@ cp .env.example .env
 | `ZIJA_SMTP_FROM` | 否 | | 发件人地址 |
 | `ZIJA_SMTP_TLS` | 否 | `true` | 是否启用 STARTTLS |
 
+上述 AI 环境变量定义部署中安装的 Ollama 适配器。部署完成后，Owner/Admin 还需在「家庭设置 → AI
+能力」中启用 AI 并保存提供方、凭据、出网开关和资源限制。凭据不会通过读取 API 回显；运行设置存入
+PostgreSQL 并随数据库备份保存。未启用 AI 或 Ollama 不可达不会使核心应用 readiness 变为 DOWN。
+
 ### 生产环境最小配置示例
 
 ```dotenv

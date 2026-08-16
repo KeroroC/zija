@@ -37,6 +37,11 @@
 
 `.env` 文件由 `docker compose` 和 `make dev-backend`（通过 `set -a; . ./.env; set +a`）自动加载。
 
+AI 环境变量决定当前安装的 Ollama 地址和模型；Owner/Admin 在「家庭设置 → AI 能力」中启用
+AI、选择提供方并设置凭据、出网开关和资源限制。提供方凭据仅允许写入，设置与状态 API 只返回
+`credentialConfigured`，不会回显原值。设置保存在 PostgreSQL 的 `ai_provider_setting` 单例表中，
+随完整数据库备份保存；未启用或 Ollama/模型不可达时只影响 AI 状态，不影响核心业务 readiness。
+
 ---
 
 ## 测试
