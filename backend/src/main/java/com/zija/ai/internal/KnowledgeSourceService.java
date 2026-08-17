@@ -60,7 +60,10 @@ class KnowledgeSourceService {
         this.scopeResolver = scopeResolver;
     }
 
-    /** 显式选择附件为知识来源：进入处理中。已选择则幂等返回当前状态；已停用则重新激活。 */
+    /**
+     * 显式选择附件为知识来源：进入处理中。已选择（处理中/可用）则幂等返回当前状态；
+     * 已失败或已停用则重新发起准备（重置自动重试计数并栅栏掉滞留的过期批次）。
+     */
     @Transactional
     public KnowledgeSourceView select(UUID householdId, UUID actorAccountId, UUID fileId) {
         var attachment = fileApi.findAttachment(householdId, fileId)
@@ -75,6 +78,7 @@ class KnowledgeSourceService {
         var existing = findByFile(householdId, fileId);
         if (existing == null) {
             var entity = new KnowledgeSourceEntity();
+            // 全局 assign_uuid 对 UUID 类型字段不生效（与 file 模块一致），显式生成
             entity.setId(UUID.randomUUID());
             entity.setHouseholdId(householdId);
             entity.setFileId(fileId);
@@ -88,8 +92,9 @@ class KnowledgeSourceService {
             entity.setCreatedAt(now);
             entity.setUpdatedAt(now);
             mapper.insert(entity);
-        } else if (KnowledgeSourceStates.STATUS_DISABLED.equals(existing.getStatus())) {
-            // 取消后重新选择：重新进入处理中（显式 SQL 清空失败信息与停用原因）
+        } else if (KnowledgeSourceStates.STATUS_FAILED.equals(existing.getStatus())
+                || KnowledgeSourceStates.STATUS_DISABLED.equals(existing.getStatus())) {
+            // 失败后重新选择 / 取消后重新选择：重新进入处理中（显式 SQL 清空失败信息与停用原因）
             stateStore.reactivate(existing.getId(), now);
         }
         audit(householdId, actorAccountId, SystemApi.AuditAction.AI_KNOWLEDGE_SOURCE_SELECTED, fileId);
@@ -214,25 +219,31 @@ class KnowledgeSourceService {
     }
 
     private KnowledgeSourceView view(KnowledgeSourceEntity entity) {
+        // 自动重试计划仅在失败状态下对外可见（处理中的 next_attempt_at 是内部处理租约）
+        OffsetDateTime nextRetryAt = KnowledgeSourceStates.STATUS_FAILED.equals(entity.getStatus())
+                ? entity.getNextAttemptAt()
+                : null;
         return new KnowledgeSourceView(
                 entity.getFileId(),
                 entity.getStatus(),
                 entity.getFailureCode(),
                 entity.getFailureMessage(),
                 entity.getDisabledReason(),
+                nextRetryAt,
                 entity.getProcessingVersion(),
                 entity.getSelectedAt(),
                 entity.getProcessedAt(),
                 entity.getUpdatedAt());
     }
 
-    /** 知识来源对外视图（不含内部调度字段）。 */
+    /** 知识来源对外视图（不含内部调度字段；nextRetryAt 仅供前端感知待自动重试）。 */
     record KnowledgeSourceView(
             UUID fileId,
             String status,
             String failureCode,
             String failureMessage,
             String disabledReason,
+            OffsetDateTime nextRetryAt,
             Integer processingVersion,
             OffsetDateTime selectedAt,
             OffsetDateTime processedAt,

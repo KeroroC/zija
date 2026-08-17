@@ -90,6 +90,9 @@ class KnowledgeSourceController {
         if (view.disabledReason() != null) {
             item.put("disabledReason", view.disabledReason());
         }
+        if (view.nextRetryAt() != null) {
+            item.put("nextRetryAt", view.nextRetryAt());
+        }
         item.put("processingVersion", view.processingVersion());
         item.put("selectedAt", view.selectedAt());
         if (view.processedAt() != null) {
