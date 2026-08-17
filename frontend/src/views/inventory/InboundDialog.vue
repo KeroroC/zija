@@ -141,16 +141,34 @@
 
         <!-- Location selection -->
         <el-form-item label="入库位置" required>
-          <el-tree-select
-            v-model="form.locationId"
-            :data="locationTreeData"
-            node-key="id"
-            :props="{ label: 'name', children: 'children' }"
-            placeholder="选择位置"
-            check-strictly
-            style="width: 100%"
-            @change="resetIdempotencyKey"
-          />
+          <div class="item-select-row">
+            <el-tree-select
+              v-model="form.locationId"
+              :data="locationTreeData"
+              node-key="id"
+              :props="{ label: 'name', children: 'children' }"
+              placeholder="选择位置"
+              check-strictly
+              class="item-select"
+              @change="resetIdempotencyKey"
+            >
+              <template #empty>
+                <div class="item-select-empty">
+                  <span>无匹配位置</span>
+                  <el-button link type="primary" @click="createLocationVisible = true">
+                    新建位置
+                  </el-button>
+                </div>
+              </template>
+            </el-tree-select>
+            <el-button
+              data-testid="btn-create-location"
+              :disabled="formLoading"
+              @click="createLocationVisible = true"
+            >
+              新建
+            </el-button>
+          </div>
         </el-form-item>
       </el-form>
     </div>
@@ -221,6 +239,15 @@
     :preset-name="createItemPresetName"
     @saved="onItemCreated"
   />
+
+  <LocationCreateDialog
+    v-if="createLocationVisible"
+    v-model="createLocationVisible"
+    :parent-id="locationCreateParent?.id ?? null"
+    :parent-name="locationCreateParent?.name ?? null"
+    :existing-names="locationSiblingNames"
+    @created="onLocationCreated"
+  />
 </template>
 
 <script setup lang="ts">
@@ -233,9 +260,11 @@ import { ApiError } from '../../api/http'
 import { INVENTORY_ARCHIVED_ITEM } from '../../types/errorCodes'
 import type { CatalogItem, Unit } from '../../types/catalog'
 import type { LotSummary } from '../../types/inventory'
-import type { LocationNode, LocationTree } from '../../types/location'
+import type { LocationNode, LocationInfo, LocationTree } from '../../types/location'
 import { futureDateShortcuts, pastDateShortcuts } from '../../utils/date'
+import { compareLocationNodes, findLocationNode } from '../../utils/location'
 import ItemFormDrawer from '../ItemFormDrawer.vue'
+import LocationCreateDialog from '../LocationCreateDialog.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -263,6 +292,7 @@ const itemSelectRef = ref<{ $el?: HTMLElement } | null>(null)
 const itemFilterQuery = ref('')
 const createItemVisible = ref(false)
 const createItemPresetName = ref('')
+const createLocationVisible = ref(false)
 
 const form = ref({
   itemId: '',
@@ -312,16 +342,19 @@ const selectedLotLabel = computed(() => {
   return lot ? lotLabel(lot) : ''
 })
 
-const selectedLocationName = computed(() => {
-  const find = (nodes: LocationNode[]): string => {
-    for (const n of nodes) {
-      if (n.id === form.value.locationId) return n.name
-      const child = find(n.children)
-      if (child) return child
-    }
-    return ''
-  }
-  return find(locationTreeData.value)
+const selectedLocationName = computed(
+  () => findLocationNode(locationTreeData.value, form.value.locationId)?.name ?? '',
+)
+
+const locationCreateParent = computed(() => {
+  if (!form.value.locationId) return null
+  return findLocationNode(locationTreeData.value, form.value.locationId)
+})
+
+const locationSiblingNames = computed(() => {
+  const parent = locationCreateParent.value
+  const siblings = parent ? parent.children : locationTreeData.value
+  return siblings.map((s) => s.name)
 })
 
 const canProceedToPreview = computed(() => {
@@ -415,6 +448,43 @@ async function onItemCreated(item: CatalogItem) {
   }
 }
 
+async function refreshLocationTree() {
+  try {
+    locationTreeData.value = (await fetchLocationTree()).roots
+  } catch {
+    // 保留现有树，下次打开时重试
+  }
+}
+
+function insertLocationNode(location: LocationInfo) {
+  const node: LocationNode = {
+    id: location.id,
+    parentId: location.parentId,
+    name: location.name,
+    sortOrder: location.sortOrder,
+    everReferenced: location.everReferenced,
+    version: location.version,
+    children: [],
+  }
+  if (location.parentId) {
+    const parent = findLocationNode(locationTreeData.value, location.parentId)
+    if (!parent) {
+      // 树已过期（理论上不会发生）：重新拉取而不是静默丢弃新位置
+      void refreshLocationTree()
+      return
+    }
+    parent.children = [...parent.children, node].sort(compareLocationNodes)
+  } else {
+    locationTreeData.value = [...locationTreeData.value, node].sort(compareLocationNodes)
+  }
+}
+
+function onLocationCreated(location: LocationInfo) {
+  insertLocationNode(location)
+  form.value.locationId = location.id
+  resetIdempotencyKey()
+}
+
 function nextStep() {
   if (!canProceedToPreview.value) return
   currentStep.value = 1
@@ -493,6 +563,7 @@ function resetState() {
   idempotencyKey.value = crypto.randomUUID()
   createItemVisible.value = false
   createItemPresetName.value = ''
+  createLocationVisible.value = false
   itemFilterQuery.value = ''
   form.value = {
     itemId: '',
