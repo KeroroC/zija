@@ -50,6 +50,8 @@ export interface KnowledgeSourceInfo {
   failureCode?: string;
   failureMessage?: string;
   disabledReason?: KnowledgeSourceDisabledReason;
+  /** 下次自动重试时间（仅失败且自动重试未耗尽时返回，用于感知待重试状态）。 */
+  nextRetryAt?: string;
   processingVersion: number;
   selectedAt: string;
   processedAt?: string;

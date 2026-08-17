@@ -573,10 +573,11 @@ describe("AttachmentsPage", () => {
     expect(wrapper.text()).toContain("处理中");
   });
 
-  it("cancels a selected knowledge source and returns to selectable state", async () => {
+  it("cancels a selected knowledge source and shows the disabled state", async () => {
     fetchKnowledgeMock
       .mockResolvedValueOnce([knowledgeSource("f2", "AVAILABLE")])
-      .mockResolvedValueOnce([knowledgeSource("f2", "DISABLED", { disabledReason: "CANCELLED" })]);
+      .mockResolvedValueOnce([knowledgeSource("f2", "DISABLED", { disabledReason: "CANCELLED" })])
+      .mockResolvedValueOnce([knowledgeSource("f2", "PROCESSING")]);
     wrapper = mountPage();
     await flushPromises();
 
@@ -585,9 +586,55 @@ describe("AttachmentsPage", () => {
     await flushPromises();
 
     expect(cancelKnowledgeMock).toHaveBeenCalledWith("f2");
-    // 已停用来源回到「设为知识来源」状态，可再次选择（后端重新激活）
-    expect(wrapper.find('[data-testid="knowledge-select"]').exists()).toBe(true);
+    // 已停用状态可见（含停用原因），并提供重新选择操作（后端重新发起准备）
+    expect(wrapper.text()).toContain("已停用");
+    expect(wrapper.text()).toContain("成员取消选定");
+    expect(wrapper.find('[data-testid="knowledge-reselect"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="knowledge-cancel"]').exists()).toBe(false);
+
+    await wrapper.get('[data-testid="knowledge-reselect"]').trigger("click");
+    await flushPromises();
+
+    expect(selectKnowledgeMock).toHaveBeenCalledWith("f2");
+    expect(wrapper.text()).toContain("处理中");
+  });
+
+  it("keeps polling while a failed source awaits auto-retry", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchKnowledgeMock.mockResolvedValue([
+        knowledgeSource("f2", "FAILED", { nextRetryAt: "2026-08-15T11:00:00Z" })
+      ]);
+      wrapper = mountPage();
+      await flushPromises();
+
+      const callsAfterMount = fetchKnowledgeMock.mock.calls.length;
+      vi.advanceTimersByTime(5000);
+      await flushPromises();
+
+      // 失败但自动重试未耗尽：继续轮询以呈现重试触发的状态变化
+      expect(fetchKnowledgeMock.mock.calls.length).toBeGreaterThan(callsAfterMount);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops polling when a failed source has exhausted auto-retries", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchKnowledgeMock.mockResolvedValue([knowledgeSource("f2", "FAILED")]);
+      wrapper = mountPage();
+      await flushPromises();
+
+      const callsAfterMount = fetchKnowledgeMock.mock.calls.length;
+      vi.advanceTimersByTime(20000);
+      await flushPromises();
+
+      // 自动重试耗尽（无 nextRetryAt）：不再轮询
+      expect(fetchKnowledgeMock.mock.calls.length).toBe(callsAfterMount);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the backend message when selecting an unsupported format fails", async () => {

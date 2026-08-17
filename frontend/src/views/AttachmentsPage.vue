@@ -127,15 +127,26 @@
             </span>
           </div>
 
-          <!-- 知识来源状态与操作（仅未删除附件）；已停用回到可重新选择状态 -->
+          <!-- 知识来源状态与操作（仅未删除附件）：处理中/可用/失败/已停用四态均可见 -->
           <div v-if="view === 'all'" class="file-knowledge">
-            <template v-if="knowledgeOf(row.id) && knowledgeOf(row.id)!.status !== 'DISABLED'">
+            <template v-if="knowledgeOf(row.id)">
               <span class="ks-status" data-testid="knowledge-status">
-                <span class="zj-dot" :class="ksDotClass(knowledgeOf(row.id)!)"></span>
-                {{ ksLabel(knowledgeOf(row.id)!) }}
+                <span class="zj-dot" :class="ksMeta(knowledgeOf(row.id)!).dot"></span>
+                {{ ksMeta(knowledgeOf(row.id)!).label }}
               </span>
-              <span v-if="knowledgeOf(row.id)!.status === 'FAILED'" class="ks-failure" :title="knowledgeOf(row.id)!.failureMessage ?? '处理失败'">
+              <span
+                v-if="knowledgeOf(row.id)!.status === 'FAILED'"
+                class="ks-hint ks-hint-danger"
+                :title="knowledgeOf(row.id)!.failureMessage ?? '处理失败'"
+              >
                 失败原因
+              </span>
+              <span
+                v-else-if="knowledgeOf(row.id)!.status === 'DISABLED'"
+                class="ks-hint"
+                :title="disabledReasonText(knowledgeOf(row.id)!)"
+              >
+                {{ disabledReasonText(knowledgeOf(row.id)!) }}
               </span>
               <div class="ks-actions">
                 <el-button
@@ -148,6 +159,16 @@
                   重试
                 </el-button>
                 <el-button
+                  v-if="knowledgeOf(row.id)!.status === 'DISABLED'"
+                  text
+                  type="primary"
+                  data-testid="knowledge-reselect"
+                  @click="selectSource(row as Attachment)"
+                >
+                  重新选择
+                </el-button>
+                <el-button
+                  v-else
                   text
                   data-testid="knowledge-cancel"
                   @click="cancelSource(row as Attachment)"
@@ -295,7 +316,7 @@ import {
   retryKnowledgeSource,
   type KnowledgeSourceInfo
 } from "../api/ai";
-import { KNOWLEDGE_SOURCE_MEDIA_TYPES } from "../types/ai";
+import { KNOWLEDGE_SOURCE_MEDIA_TYPES, type KnowledgeSourceStatus } from "../types/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
 import { ApiError } from "../api/http";
@@ -442,32 +463,29 @@ async function loadMountNames() {
 
 // ==================== 知识来源 ====================
 
-const KNOWLEDGE_STATUS_LABELS: Record<string, string> = {
-  PROCESSING: "处理中",
-  AVAILABLE: "可用",
-  FAILED: "失败",
-  DISABLED: "已停用"
+/** 状态元数据（标签 + 状态点）的唯一来源，避免标签与状态点两处分发漂移。 */
+const KNOWLEDGE_STATUS_META: Record<KnowledgeSourceStatus, { label: string; dot: string }> = {
+  PROCESSING: { label: "处理中", dot: "zj-dot-warn" },
+  AVAILABLE: { label: "可用", dot: "zj-dot-pine" },
+  FAILED: { label: "失败", dot: "zj-dot-danger" },
+  DISABLED: { label: "已停用", dot: "zj-dot-off" }
+};
+
+const DISABLED_REASON_TEXTS: Record<string, string> = {
+  CANCELLED: "成员取消选定",
+  RECYCLED: "附件已回收"
 };
 
 function knowledgeOf(fileId: string): KnowledgeSourceInfo | undefined {
   return knowledgeSources.value.get(fileId);
 }
 
-function ksLabel(source: KnowledgeSourceInfo): string {
-  return KNOWLEDGE_STATUS_LABELS[source.status] ?? source.status;
+function ksMeta(source: KnowledgeSourceInfo): { label: string; dot: string } {
+  return KNOWLEDGE_STATUS_META[source.status] ?? { label: source.status, dot: "zj-dot-off" };
 }
 
-function ksDotClass(source: KnowledgeSourceInfo): string {
-  switch (source.status) {
-    case "AVAILABLE":
-      return "zj-dot-pine";
-    case "PROCESSING":
-      return "zj-dot-warn";
-    case "FAILED":
-      return "zj-dot-danger";
-    default:
-      return "zj-dot-off";
-  }
+function disabledReasonText(source: KnowledgeSourceInfo): string {
+  return (source.disabledReason && DISABLED_REASON_TEXTS[source.disabledReason]) || "已停用";
 }
 
 function isKnowledgeEligible(mediaType: string): boolean {
@@ -484,10 +502,10 @@ async function loadKnowledgeSources() {
   syncKnowledgePolling();
 }
 
-/** 有处理中的来源时轮询其状态（含自动重试触发的状态变化）。 */
+/** 有处理中、或失败且等待自动重试的来源时轮询其状态（含自动重试触发的状态变化）。 */
 function syncKnowledgePolling() {
   const hasLive = Array.from(knowledgeSources.value.values()).some(
-    (s) => s.status === "PROCESSING"
+    (s) => s.status === "PROCESSING" || (s.status === "FAILED" && s.nextRetryAt)
   );
   if (hasLive && view.value === "all") {
     startKnowledgePolling();
@@ -880,7 +898,7 @@ function goToLot(lotId: string) {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 4px;
   width: 96px;
   flex-shrink: 0;
 }
@@ -894,17 +912,21 @@ function goToLot(lotId: string) {
 }
 
 .ks-status .zj-dot {
-  margin-right: 5px;
+  margin-right: 4px;
 }
 
-.ks-failure {
+.ks-hint {
   max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
-  color: var(--zj-danger);
+  font-size: 12px;
+  color: var(--zj-ink-400);
   cursor: help;
+}
+
+.ks-hint-danger {
+  color: var(--zj-danger);
 }
 
 .ks-actions {
@@ -915,7 +937,7 @@ function goToLot(lotId: string) {
 .ks-actions .el-button {
   margin-left: 0;
   padding: 0 4px;
-  height: 22px;
+  height: 24px;
   font-size: 12px;
 }
 
