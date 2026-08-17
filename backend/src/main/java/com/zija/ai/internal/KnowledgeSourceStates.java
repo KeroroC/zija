@@ -48,15 +48,10 @@ final class KnowledgeSourceStates {
     /** 每轮扫描最多认领的知识来源数。 */
     static final int CLAIM_BATCH_SIZE = 10;
 
-    /** 首期可处理为知识来源的媒体类型。 */
-    static final java.util.Set<String> SUPPORTED_MEDIA_TYPES = java.util.Set.of(
-            "application/pdf",
-            "text/markdown",
-            "text/plain",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    );
+    /** 首期可处理为知识来源的媒体类型（唯一词汇来源见 {@link KnowledgeSourceFormat}）。 */
+    static final java.util.Set<String> SUPPORTED_MEDIA_TYPES = java.util.Arrays.stream(KnowledgeSourceFormat.values())
+            .map(KnowledgeSourceFormat::mediaType)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
 
     private KnowledgeSourceStates() {
     }

@@ -32,22 +32,22 @@ class KnowledgeTextExtractor {
     }
 
     /**
-     * 按检测媒体类型抽取正文。
+     * 按检测媒体类型抽取正文（格式词汇路由见 {@link KnowledgeSourceFormat}）。
      *
      * @throws KnowledgeExtractionException 解析异常或媒体类型不在首期支持范围内
      */
     List<TextUnit> extract(String mediaType, byte[] content) {
-        return switch (mediaType) {
-            case "application/pdf" -> extractPdf(content);
-            case "text/markdown" -> extractMarkdown(content);
-            case "text/plain" -> extractPlain(content);
-            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ->
-                    extractDocx(content);
-            case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ->
-                    extractXlsx(content);
-            case "application/vnd.openxmlformats-officedocument.presentationml.presentation" ->
-                    extractPptx(content);
-            default -> throw new KnowledgeExtractionException("不支持的媒体类型: " + mediaType);
+        KnowledgeSourceFormat format = KnowledgeSourceFormat.fromMediaType(mediaType);
+        if (format == null) {
+            throw new KnowledgeExtractionException("不支持的媒体类型: " + mediaType);
+        }
+        return switch (format) {
+            case PDF -> extractPdf(content);
+            case MARKDOWN -> extractMarkdown(content);
+            case PLAIN -> extractPlain(content);
+            case DOCX -> extractDocx(content);
+            case XLSX -> extractXlsx(content);
+            case PPTX -> extractPptx(content);
         };
     }
 
