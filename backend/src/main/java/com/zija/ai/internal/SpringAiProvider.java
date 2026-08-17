@@ -52,11 +52,11 @@ class SpringAiProvider implements AiModelProvider {
     @Override
     public ProbeResult probe(AiProviderConfiguration configuration) {
         try {
+            // OllamaApi.listModels() is non-null by contract (Objects.requireNonNull); the
+            // ListModelResponse record component is not @Nullable. An empty list means the
+            // provider is reachable but has no matching models — the chat/embedding checks
+            // below report the appropriate "MODEL_MISSING" status.
             var models = ollamaApi.listModels();
-            if (models == null || models.models() == null) {
-                return ProbeResult.unavailable("PROVIDER_UNREACHABLE", "provider returned no model list",
-                        modelNames.chatModel(), modelNames.embeddingModel());
-            }
             boolean chatAvailable = models.models().stream()
                     .anyMatch(model -> modelMatches(model, modelNames.chatModel()));
             boolean embeddingAvailable = models.models().stream()
