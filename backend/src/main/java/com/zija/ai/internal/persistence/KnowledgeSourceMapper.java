@@ -21,22 +21,28 @@ public interface KnowledgeSourceMapper extends BaseMapper<KnowledgeSourceEntity>
 
     /**
      * 认领到期可处理的知识来源（PROCESSING 或 FAILED 且 {@code next_attempt_at} 已到）：
-     * 状态置回 PROCESSING、处理租约顺延，返回被认领行的 id。
+     * 状态置回 PROCESSING、处理租约顺延、栅栏版本自增，返回被认领行的 id 与新版本号。
      */
-    List<UUID> claimDue(
+    List<ClaimedKnowledgeSource> claimDue(
             @Param("now") OffsetDateTime now,
             @Param("leaseUntil") OffsetDateTime leaseUntil,
             @Param("limit") int limit
     );
 
-    /** 仅当仍处于 PROCESSING 时标记为可用（防止与回收/取消并发时复活已停用来源）。 */
+    /**
+     * 仅当仍处于 PROCESSING 且栅栏版本等于认领版本时标记为可用
+     * （防止与回收/取消并发时复活已停用来源，或被更高版本认领接管后重复翻转）。
+     */
     int markAvailableIfProcessing(
             @Param("id") UUID id,
             @Param("processingVersion") int processingVersion,
             @Param("processedAt") OffsetDateTime processedAt
     );
 
-    /** 标记失败：记录失败原因/次数，并安排（或停止）自动重试。 */
+    /**
+     * 标记失败：记录失败原因/次数，并安排（或停止）自动重试。
+     * 仅当仍处于 PROCESSING 且栅栏版本等于认领版本时生效，过期工作者的失败标记被丢弃。
+     */
     @Update("""
             UPDATE ai_knowledge_source
             SET status = 'FAILED',
@@ -46,9 +52,12 @@ public interface KnowledgeSourceMapper extends BaseMapper<KnowledgeSourceEntity>
                 next_attempt_at = #{nextAttemptAt},
                 updated_at = #{now}
             WHERE id = #{id}
+              AND status = 'PROCESSING'
+              AND processing_version = #{expectedVersion}
             """)
     int markFailed(
             @Param("id") UUID id,
+            @Param("expectedVersion") int expectedVersion,
             @Param("now") OffsetDateTime now,
             @Param("attempt") int attempt,
             @Param("code") String code,
@@ -69,7 +78,10 @@ public interface KnowledgeSourceMapper extends BaseMapper<KnowledgeSourceEntity>
             """)
     int disable(@Param("id") UUID id, @Param("reason") String reason, @Param("now") OffsetDateTime now);
 
-    /** 手动重试：重新进入处理中并重置自动重试计数。 */
+    /**
+     * 手动重试：重新进入处理中并重置自动重试计数。栅栏版本自增，
+     * 使重试前滞留的过期处理批次全部失效。
+     */
     @Update("""
             UPDATE ai_knowledge_source
             SET status = 'PROCESSING',
@@ -77,12 +89,16 @@ public interface KnowledgeSourceMapper extends BaseMapper<KnowledgeSourceEntity>
                 attempt_count = 0,
                 failure_code = NULL,
                 failure_message = NULL,
+                processing_version = processing_version + 1,
                 updated_at = #{now}
             WHERE id = #{id}
             """)
     int retry(@Param("id") UUID id, @Param("now") OffsetDateTime now);
 
-    /** 附件恢复后重新进入处理中（不自动恢复旧索引）。 */
+    /**
+     * 附件恢复后重新进入处理中（不自动恢复旧索引）。栅栏版本自增，
+     * 使回收前滞留的过期处理批次全部失效。
+     */
     @Update("""
             UPDATE ai_knowledge_source
             SET status = 'PROCESSING',
@@ -91,6 +107,7 @@ public interface KnowledgeSourceMapper extends BaseMapper<KnowledgeSourceEntity>
                 failure_code = NULL,
                 failure_message = NULL,
                 disabled_reason = NULL,
+                processing_version = processing_version + 1,
                 updated_at = #{now}
             WHERE id = #{id}
             """)

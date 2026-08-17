@@ -4,12 +4,14 @@
 
     <!--
         认领到期知识来源。单条 UPDATE ... RETURNING 原子完成「选行（FOR UPDATE SKIP LOCKED）
-        + 状态置回 PROCESSING + 处理租约顺延」，返回被认领行 id。
-        多实例/多线程并发调用时，SKIP LOCKED 保证每行只会被一个工作者处理。
+        + 状态置回 PROCESSING + 处理租约顺延 + 栅栏版本自增」，返回被认领行 id 与新版本号。
+        多实例/多线程并发调用时，SKIP LOCKED 保证每行只会被一个工作者处理；
+        版本自增使租约到期仍滞留的过期工作者写入全部被后续栅栏拒绝，不会重复接管。
     -->
-    <select id="claimDue" resultType="java.util.UUID">
+    <select id="claimDue" resultType="com.zija.ai.internal.persistence.ClaimedKnowledgeSource">
         UPDATE ai_knowledge_source
         SET status = 'PROCESSING',
+            processing_version = processing_version + 1,
             next_attempt_at = #{leaseUntil},
             updated_at = #{now}
         WHERE id IN (
@@ -22,10 +24,13 @@
             LIMIT #{limit}
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id
+        RETURNING id, processing_version
     </select>
 
-    <!-- 仅当仍处于 PROCESSING 时置为 AVAILABLE；返回 0 表示并发已被停用/取消。 -->
+    <!--
+        仅当仍处于 PROCESSING 且栅栏版本等于认领版本时置为 AVAILABLE。
+        返回 0 表示并发已被停用/取消，或已被更高版本的认领接管。
+    -->
     <update id="markAvailableIfProcessing">
         UPDATE ai_knowledge_source
         SET status = 'AVAILABLE',
@@ -34,10 +39,10 @@
             attempt_count = 0,
             next_attempt_at = NULL,
             processed_at = #{processedAt},
-            processing_version = #{processingVersion},
             updated_at = #{processedAt}
         WHERE id = #{id}
           AND status = 'PROCESSING'
+          AND processing_version = #{processingVersion}
     </update>
 
 </mapper>

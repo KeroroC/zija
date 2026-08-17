@@ -4,6 +4,8 @@ import com.zija.AbstractMockMvcIntegrationTest;
 import com.zija.TestDb;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
+import com.zija.ai.internal.persistence.ClaimedKnowledgeSource;
+import com.zija.ai.internal.persistence.KnowledgeChunkMapper;
 import com.zija.ai.internal.persistence.KnowledgeSourceEntity;
 import com.zija.ai.internal.persistence.KnowledgeSourceMapper;
 import com.zija.file.FileApi;
@@ -72,7 +74,11 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     @Autowired
     private KnowledgePreparationService preparationService;
     @Autowired
+    private KnowledgeSourceStateStore stateStore;
+    @Autowired
     private KnowledgeSourceMapper knowledgeSourceMapper;
+    @Autowired
+    private KnowledgeChunkMapper knowledgeChunkMapper;
     @Autowired
     private DeterministicEmbeddingModel embeddingModel;
 
@@ -292,6 +298,73 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         // 退避预算耗尽后不再被认领
         assertThat(preparationService.prepareDue(t0.plusSeconds(10000))).isZero();
         assertThat(sourceOf(fileId).getAttemptCount()).isEqualTo(3);
+    }
+
+    @Test
+    void reselectFailedSourceRestartsPreparation() throws Exception {
+        embeddingModel.setFailEmbedding(true);
+        UUID fileId = storePdfAttachment(FileApi.MOUNT_ITEM, ITEM_ID, "失败后重选.pdf");
+        select(fileId);
+        preparationService.prepareDue(OffsetDateTime.now());
+        assertThat(sourceOf(fileId).getStatus()).isEqualTo("FAILED");
+        assertThat(sourceOf(fileId).getAttemptCount()).isEqualTo(1);
+        embeddingModel.setFailEmbedding(false);
+
+        // 对失败来源重新执行选择：重新进入处理中并重置自动重试计数
+        mvc.perform(put("/api/v1/ai/knowledge-sources/{fileId}", fileId).with(auth(member())).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PROCESSING"));
+        assertThat(sourceOf(fileId).getAttemptCount()).isZero();
+
+        preparationService.prepareDue(OffsetDateTime.now());
+        assertThat(sourceOf(fileId).getStatus()).isEqualTo("AVAILABLE");
+    }
+
+    @Test
+    void contentReadFailureMarksContentUnreadable() throws Exception {
+        UUID fileId = storePdfAttachment(FileApi.MOUNT_ITEM, ITEM_ID, "存储损坏.pdf");
+        select(fileId);
+        // 物理删除存储卷上的文件，模拟读取失败（存储卷异常）
+        String storageKey = jdbc.queryForObject(
+                "SELECT storage_key FROM stored_file WHERE id = ?", String.class, fileId);
+        java.nio.file.Files.delete(java.nio.file.Path.of(
+                System.getProperty("java.io.tmpdir"), "zija-test-files", storageKey));
+
+        preparationService.prepareDue(OffsetDateTime.now());
+
+        KnowledgeSourceEntity entity = sourceOf(fileId);
+        assertThat(entity.getStatus()).isEqualTo("FAILED");
+        assertThat(entity.getFailureCode()).isEqualTo("CONTENT_UNREADABLE");
+        assertThat(entity.getFailureMessage()).contains("读取失败");
+    }
+
+    @Test
+    void staleWorkerCannotOverrideNewerClaim() throws Exception {
+        UUID fileId = storePdfAttachment(FileApi.MOUNT_ITEM, ITEM_ID, "租约竞争.pdf");
+        select(fileId);
+        OffsetDateTime now = OffsetDateTime.now();
+
+        // 第一次认领（栅栏版本 1），随后租约到期被第二次认领接管（栅栏版本 2）
+        List<ClaimedKnowledgeSource> first = knowledgeSourceMapper.claimDue(now, now.plusSeconds(300), 10);
+        assertThat(first).hasSize(1);
+        UUID sourceId = first.getFirst().getId();
+        List<ClaimedKnowledgeSource> second =
+                knowledgeSourceMapper.claimDue(now.plusSeconds(301), now.plusSeconds(601), 10);
+        assertThat(second).hasSize(1);
+        assertThat(sourceOf(fileId).getProcessingVersion()).isEqualTo(2);
+
+        // 过期工作者的成功/失败写入与分块清理全部被栅栏拒绝
+        assertThat(knowledgeSourceMapper.markAvailableIfProcessing(sourceId, 1, now)).isZero();
+        stateStore.markFailed(sourceId, 1, now, "PREPARATION_FAILED", "过期批次");
+        assertThat(knowledgeChunkMapper.deleteByAttachmentIfCurrent(HOUSEHOLD_ID, fileId, sourceId, 1)).isZero();
+        KnowledgeSourceEntity entity = sourceOf(fileId);
+        assertThat(entity.getStatus()).isEqualTo("PROCESSING");
+        assertThat(entity.getFailureCode()).isNull();
+        assertThat(entity.getAttemptCount()).isZero();
+
+        // 现任认领者（版本 2）不受影响
+        assertThat(knowledgeSourceMapper.markAvailableIfProcessing(sourceId, 2, now)).isOne();
+        assertThat(sourceOf(fileId).getStatus()).isEqualTo("AVAILABLE");
     }
 
     @Test
