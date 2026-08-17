@@ -128,6 +128,20 @@ class FileService implements FileApi {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<byte[]> readContent(UUID householdId, UUID fileId) {
+        var entity = storedFileMapper.selectById(fileId);
+        if (entity == null || !entity.getHouseholdId().equals(householdId)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(fileStorage.read(entity.getStorageKey()));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read file content", e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<AttachmentInfo> findAttachment(UUID householdId, UUID fileId) {
         var entity = storedFileMapper.selectById(fileId);
         if (entity == null || !entity.getHouseholdId().equals(householdId)) {
@@ -263,6 +277,8 @@ class FileService implements FileApi {
         );
         entity.setDeletedAt(null);
         storedFileMapper.updateById(entity);
+        eventPublisher.publishRestored(
+                householdId, fileId, entity.getMountType(), entity.getMountId());
         audit(householdId, SystemApi.AuditAction.FILE_RESTORED, fileId);
         return toAttachment(entity, householdId);
     }
@@ -313,6 +329,7 @@ class FileService implements FileApi {
             throw new FileNotInRecycleBinException(fileId);
         }
         audit(householdId, SystemApi.AuditAction.FILE_PURGED, fileId);
+        eventPublisher.publishPurged(householdId, fileId);
         try {
             fileStorage.delete(entity.getStorageKey());
         } catch (IOException e) {
@@ -339,6 +356,7 @@ class FileService implements FileApi {
                 continue;
             }
             storedFileMapper.deleteById(entity.getId());
+            eventPublisher.publishPurged(entity.getHouseholdId(), entity.getId());
             purged++;
         }
         return purged;

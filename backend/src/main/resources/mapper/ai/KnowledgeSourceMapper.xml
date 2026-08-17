@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.ai.internal.persistence.KnowledgeSourceMapper">
+
+    <!--
+        认领到期知识来源。单条 UPDATE ... RETURNING 原子完成「选行（FOR UPDATE SKIP LOCKED）
+        + 状态置回 PROCESSING + 处理租约顺延」，返回被认领行 id。
+        多实例/多线程并发调用时，SKIP LOCKED 保证每行只会被一个工作者处理。
+    -->
+    <select id="claimDue" resultType="java.util.UUID">
+        UPDATE ai_knowledge_source
+        SET status = 'PROCESSING',
+            next_attempt_at = #{leaseUntil},
+            updated_at = #{now}
+        WHERE id IN (
+            SELECT id
+            FROM ai_knowledge_source
+            WHERE status IN ('PROCESSING', 'FAILED')
+              AND next_attempt_at IS NOT NULL
+              AND next_attempt_at &lt;= #{now}
+            ORDER BY next_attempt_at ASC
+            LIMIT #{limit}
+            FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id
+    </select>
+
+    <!-- 仅当仍处于 PROCESSING 时置为 AVAILABLE；返回 0 表示并发已被停用/取消。 -->
+    <update id="markAvailableIfProcessing">
+        UPDATE ai_knowledge_source
+        SET status = 'AVAILABLE',
+            failure_code = NULL,
+            failure_message = NULL,
+            attempt_count = 0,
+            next_attempt_at = NULL,
+            processed_at = #{processedAt},
+            processing_version = #{processingVersion},
+            updated_at = #{processedAt}
+        WHERE id = #{id}
+          AND status = 'PROCESSING'
+    </update>
+
+</mapper>

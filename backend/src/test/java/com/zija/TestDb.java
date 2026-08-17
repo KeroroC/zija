@@ -33,6 +33,7 @@ public final class TestDb {
             "reporting_processed_event",
             // AI knowledge vector store
             "ai_knowledge_chunk",
+            "ai_knowledge_source",
             "ai_provider_setting",
             // inventory
             "inventory_stocktake_item",

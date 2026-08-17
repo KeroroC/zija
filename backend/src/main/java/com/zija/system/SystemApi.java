@@ -143,6 +143,9 @@ public interface SystemApi {
 
         // ---------- ai ----------
         String AI_SETTING_UPDATED = "AI_SETTING_UPDATED";
+        String AI_KNOWLEDGE_SOURCE_SELECTED = "AI_KNOWLEDGE_SOURCE_SELECTED";
+        String AI_KNOWLEDGE_SOURCE_CANCELLED = "AI_KNOWLEDGE_SOURCE_CANCELLED";
+        String AI_KNOWLEDGE_SOURCE_RETRIED = "AI_KNOWLEDGE_SOURCE_RETRIED";
     }
 
     /** 审计日志条目。 */

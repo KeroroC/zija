@@ -42,6 +42,15 @@ public interface FileApi {
     /** 查询附件元信息（含存储键，供内容下载）。未物理删除（含回收站内）均可查到；不存在返回空。 */
     Optional<StoredFileInfo> findInfo(UUID householdId, UUID fileId);
 
+    /**
+     * 读取附件原始字节内容（供知识来源抽取等派生处理使用的安全公共契约）。
+     *
+     * <p>跨模块消费者不得直接接触文件卷或本模块内部存储类型，必须经此契约读取。
+     * 附件不存在或不属于该家庭返回空；物理文件读取失败抛出运行时异常。
+     * 回收站内未物理删除的附件同样可读（是否可用于派生用途由调用方按业务规则判断）。</p>
+     */
+    Optional<byte[]> readContent(UUID householdId, UUID fileId);
+
     /** 查询附件信息（不含存储键）。不存在或不属于该家庭返回空。 */
     Optional<AttachmentInfo> findAttachment(UUID householdId, UUID fileId);
 

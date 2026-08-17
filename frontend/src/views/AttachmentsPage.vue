@@ -127,6 +127,55 @@
             </span>
           </div>
 
+          <!-- 知识来源状态与操作（仅未删除附件）；已停用回到可重新选择状态 -->
+          <div v-if="view === 'all'" class="file-knowledge">
+            <template v-if="knowledgeOf(row.id) && knowledgeOf(row.id)!.status !== 'DISABLED'">
+              <span class="ks-status" data-testid="knowledge-status">
+                <span class="zj-dot" :class="ksDotClass(knowledgeOf(row.id)!)"></span>
+                {{ ksLabel(knowledgeOf(row.id)!) }}
+              </span>
+              <span v-if="knowledgeOf(row.id)!.status === 'FAILED'" class="ks-failure" :title="knowledgeOf(row.id)!.failureMessage ?? '处理失败'">
+                失败原因
+              </span>
+              <div class="ks-actions">
+                <el-button
+                  v-if="knowledgeOf(row.id)!.status === 'FAILED'"
+                  text
+                  type="primary"
+                  data-testid="knowledge-retry"
+                  @click="retrySource(row as Attachment)"
+                >
+                  重试
+                </el-button>
+                <el-button
+                  text
+                  data-testid="knowledge-cancel"
+                  @click="cancelSource(row as Attachment)"
+                >
+                  取消
+                </el-button>
+              </div>
+            </template>
+            <el-tooltip
+              v-else
+              :disabled="isKnowledgeEligible(row.mediaType)"
+              content="图片与旧版 Office 格式暂不支持作为知识来源"
+              placement="top"
+            >
+              <span>
+                <el-button
+                  text
+                  type="primary"
+                  :disabled="!isKnowledgeEligible(row.mediaType)"
+                  data-testid="knowledge-select"
+                  @click="selectSource(row as Attachment)"
+                >
+                  设为知识来源
+                </el-button>
+              </span>
+            </el-tooltip>
+          </div>
+
           <div class="file-actions">
             <el-button text data-testid="attachment-rename" @click="rename(row as Attachment)">改名</el-button>
             <el-button
@@ -223,7 +272,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Upload, Search, FolderOpened } from "@element-plus/icons-vue";
@@ -239,6 +288,14 @@ import {
   uploadHouseholdAttachment,
   type Attachment
 } from "../api/file";
+import {
+  fetchKnowledgeSources,
+  selectKnowledgeSource,
+  cancelKnowledgeSource,
+  retryKnowledgeSource,
+  type KnowledgeSourceInfo
+} from "../api/ai";
+import { KNOWLEDGE_SOURCE_MEDIA_TYPES } from "../types/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
 import { ApiError } from "../api/http";
@@ -255,6 +312,11 @@ const view = ref<"all" | "recycled">("all");
 const filterMountType = ref("");
 const filterQ = ref("");
 const pagination = ref({ page: 1, pageSize: 20, total: 0 });
+
+/** 知识来源状态（fileId → 状态），异步准备期间轮询刷新。 */
+const knowledgeSources = ref<Map<string, KnowledgeSourceInfo>>(new Map());
+const KNOWLEDGE_POLL_INTERVAL_MS = 5000;
+let knowledgePollTimer: ReturnType<typeof setInterval> | null = null;
 
 interface ItemMeta {
   name: string;
@@ -311,6 +373,11 @@ const MEDIA_LABELS: Record<string, string> = {
 onMounted(() => {
   load();
   loadMountNames();
+  loadKnowledgeSources();
+});
+
+onBeforeUnmount(() => {
+  stopKnowledgePolling();
 });
 
 let searchTimer: ReturnType<typeof setTimeout>;
@@ -323,6 +390,7 @@ function onSearchInput() {
 function onViewChange() {
   pagination.value.page = 1;
   load();
+  syncKnowledgePolling();
 }
 
 function onFilterChange() {
@@ -369,6 +437,106 @@ async function loadMountNames() {
   } catch {
     // 名称加载失败时回退为短 ID；改挂选择框显示加载失败提示
     mountNamesFailed.value = true;
+  }
+}
+
+// ==================== 知识来源 ====================
+
+const KNOWLEDGE_STATUS_LABELS: Record<string, string> = {
+  PROCESSING: "处理中",
+  AVAILABLE: "可用",
+  FAILED: "失败",
+  DISABLED: "已停用"
+};
+
+function knowledgeOf(fileId: string): KnowledgeSourceInfo | undefined {
+  return knowledgeSources.value.get(fileId);
+}
+
+function ksLabel(source: KnowledgeSourceInfo): string {
+  return KNOWLEDGE_STATUS_LABELS[source.status] ?? source.status;
+}
+
+function ksDotClass(source: KnowledgeSourceInfo): string {
+  switch (source.status) {
+    case "AVAILABLE":
+      return "zj-dot-pine";
+    case "PROCESSING":
+      return "zj-dot-warn";
+    case "FAILED":
+      return "zj-dot-danger";
+    default:
+      return "zj-dot-off";
+  }
+}
+
+function isKnowledgeEligible(mediaType: string): boolean {
+  return KNOWLEDGE_SOURCE_MEDIA_TYPES.includes(mediaType);
+}
+
+async function loadKnowledgeSources() {
+  try {
+    const sources = await fetchKnowledgeSources();
+    knowledgeSources.value = new Map(sources.map((s) => [s.fileId, s]));
+  } catch {
+    // 知识来源状态加载失败不阻塞附件列表
+  }
+  syncKnowledgePolling();
+}
+
+/** 有处理中的来源时轮询其状态（含自动重试触发的状态变化）。 */
+function syncKnowledgePolling() {
+  const hasLive = Array.from(knowledgeSources.value.values()).some(
+    (s) => s.status === "PROCESSING"
+  );
+  if (hasLive && view.value === "all") {
+    startKnowledgePolling();
+  } else {
+    stopKnowledgePolling();
+  }
+}
+
+function startKnowledgePolling() {
+  if (knowledgePollTimer !== null) return;
+  knowledgePollTimer = setInterval(() => {
+    loadKnowledgeSources();
+  }, KNOWLEDGE_POLL_INTERVAL_MS);
+}
+
+function stopKnowledgePolling() {
+  if (knowledgePollTimer !== null) {
+    clearInterval(knowledgePollTimer);
+    knowledgePollTimer = null;
+  }
+}
+
+async function selectSource(row: Attachment) {
+  try {
+    await selectKnowledgeSource(row.id);
+    ElMessage.success("已加入知识来源，正在准备内容");
+    await loadKnowledgeSources();
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : "选择失败");
+  }
+}
+
+async function cancelSource(row: Attachment) {
+  try {
+    await cancelKnowledgeSource(row.id);
+    ElMessage.success("已取消知识来源");
+    await loadKnowledgeSources();
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : "取消失败");
+  }
+}
+
+async function retrySource(row: Attachment) {
+  try {
+    await retryKnowledgeSource(row.id);
+    ElMessage.success("已重新处理");
+    await loadKnowledgeSources();
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : "重试失败");
   }
 }
 
@@ -705,6 +873,50 @@ function goToLot(lotId: string) {
 .file-date {
   font-size: 12px;
   color: var(--zj-ink-400);
+}
+
+/* ---------- 知识来源列 ---------- */
+.file-knowledge {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 96px;
+  flex-shrink: 0;
+}
+
+.ks-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--zj-ink-600);
+  white-space: nowrap;
+}
+
+.ks-status .zj-dot {
+  margin-right: 5px;
+}
+
+.ks-failure {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--zj-danger);
+  cursor: help;
+}
+
+.ks-actions {
+  display: flex;
+  gap: 0;
+}
+
+.ks-actions .el-button {
+  margin-left: 0;
+  padding: 0 4px;
+  height: 22px;
+  font-size: 12px;
 }
 
 /* ---------- 操作 ---------- */

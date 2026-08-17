@@ -17,6 +17,13 @@ import {
 } from "../api/file";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
+import {
+  fetchKnowledgeSources,
+  selectKnowledgeSource,
+  cancelKnowledgeSource,
+  retryKnowledgeSource,
+  type KnowledgeSourceInfo
+} from "../api/ai";
 import { ApiError } from "../api/http";
 
 vi.mock("../api/file", () => ({
@@ -29,6 +36,13 @@ vi.mock("../api/file", () => ({
   remountAttachmentToHousehold: vi.fn(),
   remountAttachmentToItem: vi.fn(),
   remountAttachmentToLot: vi.fn()
+}));
+
+vi.mock("../api/ai", () => ({
+  fetchKnowledgeSources: vi.fn(),
+  selectKnowledgeSource: vi.fn(),
+  cancelKnowledgeSource: vi.fn(),
+  retryKnowledgeSource: vi.fn()
 }));
 
 vi.mock("../api/catalog", () => ({
@@ -50,6 +64,26 @@ const remountItemMock = vi.mocked(remountAttachmentToItem);
 const remountLotMock = vi.mocked(remountAttachmentToLot);
 const fetchItemsMock = vi.mocked(fetchItems);
 const fetchLotsMock = vi.mocked(fetchLots);
+const fetchKnowledgeMock = vi.mocked(fetchKnowledgeSources);
+const selectKnowledgeMock = vi.mocked(selectKnowledgeSource);
+const cancelKnowledgeMock = vi.mocked(cancelKnowledgeSource);
+const retryKnowledgeMock = vi.mocked(retryKnowledgeSource);
+
+/** 构造知识来源视图的测试数据。 */
+function knowledgeSource(
+  fileId: string,
+  status: KnowledgeSourceInfo["status"],
+  extra: Partial<KnowledgeSourceInfo> = {}
+): KnowledgeSourceInfo {
+  return {
+    fileId,
+    status,
+    processingVersion: status === "AVAILABLE" ? 1 : 0,
+    selectedAt: "2026-08-15T10:00:00Z",
+    updatedAt: "2026-08-15T10:00:00Z",
+    ...extra
+  };
+}
 
 const householdAttachment: Attachment = {
   id: "f1",
@@ -131,6 +165,10 @@ describe("AttachmentsPage", () => {
       page: 1,
       pageSize: 1000
     });
+    fetchKnowledgeMock.mockResolvedValue([]);
+    selectKnowledgeMock.mockResolvedValue(knowledgeSource("f2", "PROCESSING"));
+    cancelKnowledgeMock.mockResolvedValue(knowledgeSource("f2", "DISABLED", { disabledReason: "CANCELLED" }));
+    retryKnowledgeMock.mockResolvedValue(knowledgeSource("f1", "PROCESSING"));
   });
 
   afterEach(() => {
@@ -466,6 +504,105 @@ describe("AttachmentsPage", () => {
     await openMoveDialog("移到物品");
 
     expect(wrapper.get('[data-testid="attachment-move-empty"]').text()).toContain("加载失败");
+  });
+
+  // ==================== 知识来源 ====================
+
+  it("shows knowledge source statuses with failure reasons", async () => {
+    fetchKnowledgeMock.mockResolvedValue([
+      knowledgeSource("f1", "FAILED", {
+        failureCode: "TEXT_NOT_EXTRACTABLE",
+        failureMessage: "未在文档中提取到文字，可能是扫描件或空文档"
+      }),
+      knowledgeSource("f2", "AVAILABLE")
+    ]);
+    wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("可用");
+    expect(wrapper.text()).toContain("失败");
+    // 失败行展示失败原因与重试操作
+    expect(wrapper.get('[data-testid="knowledge-status"]').text()).toContain("失败");
+    expect(wrapper.find('[data-testid="knowledge-retry"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="knowledge-cancel"]').exists()).toBe(true);
+  });
+
+  it("disables knowledge-source selection for unsupported formats", async () => {
+    wrapper = mountPage();
+    await flushPromises();
+
+    const selectButtons = wrapper.findAll('[data-testid="knowledge-select"]');
+    expect(selectButtons).toHaveLength(3);
+    // f1/f3 是图片（不支持），f2 是 PDF（支持）
+    expect((selectButtons[0].element as HTMLButtonElement).disabled).toBe(true);
+    expect((selectButtons[1].element as HTMLButtonElement).disabled).toBe(false);
+    expect((selectButtons[2].element as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("selects a PDF attachment as knowledge source and shows processing", async () => {
+    fetchKnowledgeMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([knowledgeSource("f2", "PROCESSING")]);
+    wrapper = mountPage();
+    await flushPromises();
+
+    const selectButtons = wrapper.findAll('[data-testid="knowledge-select"]');
+    await selectButtons[1].trigger("click");
+    await flushPromises();
+
+    expect(selectKnowledgeMock).toHaveBeenCalledWith("f2");
+    expect(wrapper.text()).toContain("处理中");
+  });
+
+  it("retries a failed knowledge source", async () => {
+    fetchKnowledgeMock
+      .mockResolvedValueOnce([
+        knowledgeSource("f1", "FAILED", {
+          failureCode: "PROVIDER_UNAVAILABLE",
+          failureMessage: "模型提供方不可用"
+        })
+      ])
+      .mockResolvedValueOnce([knowledgeSource("f1", "PROCESSING")]);
+    wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="knowledge-retry"]').trigger("click");
+    await flushPromises();
+
+    expect(retryKnowledgeMock).toHaveBeenCalledWith("f1");
+    expect(wrapper.text()).toContain("处理中");
+  });
+
+  it("cancels a selected knowledge source and returns to selectable state", async () => {
+    fetchKnowledgeMock
+      .mockResolvedValueOnce([knowledgeSource("f2", "AVAILABLE")])
+      .mockResolvedValueOnce([knowledgeSource("f2", "DISABLED", { disabledReason: "CANCELLED" })]);
+    wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("可用");
+    await wrapper.get('[data-testid="knowledge-cancel"]').trigger("click");
+    await flushPromises();
+
+    expect(cancelKnowledgeMock).toHaveBeenCalledWith("f2");
+    // 已停用来源回到「设为知识来源」状态，可再次选择（后端重新激活）
+    expect(wrapper.find('[data-testid="knowledge-select"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="knowledge-cancel"]').exists()).toBe(false);
+  });
+
+  it("shows the backend message when selecting an unsupported format fails", async () => {
+    selectKnowledgeMock.mockRejectedValue(
+      new ApiError("该格式暂不支持作为知识来源", "AI_KNOWLEDGE_SOURCE_FORMAT_UNSUPPORTED", 422)
+    );
+    const errorSpy = vi.spyOn(ElMessage, "error").mockReturnValue({} as never);
+    wrapper = mountPage();
+    await flushPromises();
+
+    const selectButtons = wrapper.findAll('[data-testid="knowledge-select"]');
+    await selectButtons[1].trigger("click");
+    await flushPromises();
+
+    expect(errorSpy).toHaveBeenCalledWith("该格式暂不支持作为知识来源");
   });
 
   function openMoveDialog(buttonText: string) {

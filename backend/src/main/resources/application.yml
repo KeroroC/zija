@@ -129,6 +129,7 @@ zija:
     dead-letter-retry: ${ZIJA_SCHEDULE_DEAD_LETTER_RETRY:*/30 * * * * *}   # 事件死信重投
     reporting-dead-letter-retry: ${ZIJA_SCHEDULE_REPORTING_DLQ_RETRY:*/30 * * * * *}  # 报表死信重投
     file-purge: ${ZIJA_SCHEDULE_FILE_PURGE:0 20 3 * * *}               # 附件回收站保留期清除
+    knowledge-prepare: ${ZIJA_SCHEDULE_KNOWLEDGE_PREPARE:*/10 * * * * *}  # 知识来源异步准备/重试扫描
 
   login:
     rate-limit:

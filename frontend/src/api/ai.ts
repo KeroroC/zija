@@ -1,7 +1,7 @@
-import { getJson, putJson } from "./http";
-import type { AiSettings, AiSettingsUpdate, AiStatus } from "../types/ai";
+import { deleteJson, getJson, postJson, putJson } from "./http";
+import type { AiSettings, AiSettingsUpdate, AiStatus, KnowledgeSourceInfo } from "../types/ai";
 
-export type { AiSettings, AiSettingsUpdate, AiStatus } from "../types/ai";
+export type { AiSettings, AiSettingsUpdate, AiStatus, KnowledgeSourceInfo } from "../types/ai";
 
 export function fetchAiSettings(): Promise<AiSettings> {
   return getJson<AiSettings>("/api/v1/ai/settings");
@@ -13,4 +13,25 @@ export function fetchAiStatus(): Promise<AiStatus> {
 
 export function updateAiSettings(body: AiSettingsUpdate): Promise<AiSettings> {
   return putJson<AiSettings>("/api/v1/ai/settings", body);
+}
+
+/** 列出当前家庭全部知识来源（含处理状态与失败原因）。 */
+export async function fetchKnowledgeSources(): Promise<KnowledgeSourceInfo[]> {
+  const res = await getJson<{ items: KnowledgeSourceInfo[] }>("/api/v1/ai/knowledge-sources");
+  return res.items;
+}
+
+/** 选择附件为知识来源（进入异步准备）。 */
+export function selectKnowledgeSource(fileId: string): Promise<KnowledgeSourceInfo> {
+  return putJson<KnowledgeSourceInfo>(`/api/v1/ai/knowledge-sources/${fileId}`);
+}
+
+/** 取消选定（已停用，不参与检索）。 */
+export function cancelKnowledgeSource(fileId: string): Promise<KnowledgeSourceInfo> {
+  return deleteJson<KnowledgeSourceInfo>(`/api/v1/ai/knowledge-sources/${fileId}`);
+}
+
+/** 手动重试失败的知识来源。 */
+export function retryKnowledgeSource(fileId: string): Promise<KnowledgeSourceInfo> {
+  return postJson<KnowledgeSourceInfo>(`/api/v1/ai/knowledge-sources/${fileId}/retry`);
 }

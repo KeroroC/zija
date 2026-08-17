@@ -96,6 +96,11 @@ export const ACTION_LABELS: Record<string, string> = {
   EXPORT_PERFORMED: "导出报表",
   REPORTING_PROJECTION_REBUILT: "重建报表投影",
   REPORTING_EVENT_ABANDONED: "放弃报表事件",
+  // AI
+  AI_SETTING_UPDATED: "更新 AI 配置",
+  AI_KNOWLEDGE_SOURCE_SELECTED: "选择知识来源",
+  AI_KNOWLEDGE_SOURCE_CANCELLED: "取消知识来源",
+  AI_KNOWLEDGE_SOURCE_RETRIED: "重试知识来源",
   // 提醒
   REMINDER_RULE_UPDATE: "更新提醒规则",
   REMINDER_TASK_SNOOZED: "稍后提醒",
