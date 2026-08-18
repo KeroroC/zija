@@ -214,7 +214,7 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .contains("\"attachment_id\": \"" + fileId + "\"")
                 .contains("\"readiness_status\": \"AVAILABLE\"")
                 .contains("\"page_number\": 1")
-                .contains("\"embedding_dimensions\": 768")
+                .contains("\"embedding_dimensions\": 1024")
                 .contains("\"chunker_version\": \"1\"")
                 .contains("\"processing_version\": 1");
         assertThat(chunks.get(1).get("metadata").toString()).contains("\"page_number\": 2");
@@ -663,7 +663,7 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         }
     }
 
-    /** 确定性的嵌入模型：默认返回 768 维固定向量；可切换为失败以验证失败与重试路径。 */
+    /** 确定性的嵌入模型：默认返回 1024 维固定向量；可切换为失败以验证失败与重试路径。 */
     static final class DeterministicEmbeddingModel implements EmbeddingModel {
 
         private final AtomicBoolean failEmbedding = new AtomicBoolean(false);
@@ -689,7 +689,7 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         @Override
         public int dimensions() {
-            return 768;
+            return 1024;
         }
 
         void setFailEmbedding(boolean fail) {
@@ -705,7 +705,7 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         }
 
         private static float[] vector() {
-            float[] vector = new float[768];
+            float[] vector = new float[1024];
             vector[0] = 1.0f;
             return vector;
         }

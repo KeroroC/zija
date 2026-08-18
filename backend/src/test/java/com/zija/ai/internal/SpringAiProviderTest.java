@@ -24,7 +24,7 @@ import static org.mockito.Mockito.when;
 class SpringAiProviderTest {
 
     private static final String CHAT_MODEL = "qwen2.5:7b";
-    private static final String EMBEDDING_MODEL = "nomic-embed-text:latest";
+    private static final String EMBEDDING_MODEL = "qwen3-embedding:0.6b";
 
     private static final AiProviderConfiguration CONFIG = new AiProviderConfiguration(
             "ollama", null, false, 60, 4096, 4, 30);

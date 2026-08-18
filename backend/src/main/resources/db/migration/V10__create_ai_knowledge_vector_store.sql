@@ -7,7 +7,7 @@ CREATE TABLE ai_knowledge_chunk (
     id                    UUID PRIMARY KEY,
     content               TEXT NOT NULL,
     metadata              JSONB NOT NULL DEFAULT '{}'::jsonb,
-    embedding             vector(768) NOT NULL,
+    embedding             vector(1024) NOT NULL,
     household_id          UUID GENERATED ALWAYS AS (
         NULLIF(metadata ->> 'household_id', '')::uuid
     ) STORED,
@@ -48,7 +48,7 @@ CREATE TABLE ai_knowledge_chunk (
 COMMENT ON TABLE ai_knowledge_chunk IS 'AI 知识来源分块与向量（可重建派生数据）';
 COMMENT ON COLUMN ai_knowledge_chunk.metadata IS
     '服务端生成的过滤与引用元数据：household_id、mount_type、mount_id、item_id、lot_id、attachment_id、readiness_status、page_number、section_path、char_start、char_end、embedding_model、embedding_dimensions、chunker_version';
-COMMENT ON COLUMN ai_knowledge_chunk.embedding IS '当前 embedding 模型生成的 768 维向量';
+COMMENT ON COLUMN ai_knowledge_chunk.embedding IS '当前 embedding 模型生成的 1024 维向量';
 
 CREATE INDEX idx_ai_knowledge_chunk_scope
     ON ai_knowledge_chunk(household_id, readiness_status, mount_type, mount_id);

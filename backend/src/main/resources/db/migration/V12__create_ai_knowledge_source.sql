@@ -35,3 +35,17 @@ COMMENT ON COLUMN ai_knowledge_source.processing_version IS '成功处理的版�
 
 CREATE INDEX idx_ai_knowledge_source_household ON ai_knowledge_source (household_id);
 CREATE INDEX idx_ai_knowledge_source_due ON ai_knowledge_source (status, next_attempt_at);
+
+-- Embedding baseline changes invalidate all derived vectors. Keep explicit selections,
+-- but requeue every source that is not disabled for the new model and dimension.
+UPDATE ai_knowledge_source
+SET status = 'PROCESSING',
+    failure_code = NULL,
+    failure_message = NULL,
+    attempt_count = 0,
+    next_attempt_at = CURRENT_TIMESTAMP,
+    disabled_reason = NULL,
+    processed_at = NULL,
+    processing_version = processing_version + 1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE status <> 'DISABLED';

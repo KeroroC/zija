@@ -15,7 +15,7 @@ class AiModelNames {
 
     AiModelNames(
             @Value("${spring.ai.ollama.chat.model:qwen2.5:7b}") String chatModel,
-            @Value("${spring.ai.ollama.embedding.model:nomic-embed-text:latest}") String embeddingModel
+            @Value("${spring.ai.ollama.embedding.model:qwen3-embedding:0.6b}") String embeddingModel
     ) {
         this.chatModel = chatModel;
         this.embeddingModel = embeddingModel;

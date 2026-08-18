@@ -48,12 +48,12 @@ spring:
       chat:
         model: ${ZIJA_AI_CHAT_MODEL:qwen2.5:7b}
       embedding:
-        model: ${ZIJA_AI_EMBEDDING_MODEL:nomic-embed-text:latest}
+        model: ${ZIJA_AI_EMBEDDING_MODEL:qwen3-embedding:0.6b}
     vectorstore:
       pgvector:
         schema-name: public
         table-name: ai_knowledge_chunk
-        dimensions: 768
+        dimensions: 1024
         distance-type: COSINE_DISTANCE
         index-type: HNSW
         initialize-schema: false

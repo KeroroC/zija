@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.ai.vectorstore.pgvector.initialize-schema=false",
         "spring.ai.vectorstore.pgvector.schema-validation=true",
         "spring.ai.vectorstore.pgvector.table-name=ai_knowledge_chunk",
-        "spring.ai.vectorstore.pgvector.dimensions=768"
+        "spring.ai.vectorstore.pgvector.dimensions=1024"
 })
 @Import(SpringAiBaselineIntegrationTest.TestEmbeddingConfiguration.class)
 class SpringAiBaselineIntegrationTest {
@@ -92,7 +92,7 @@ class SpringAiBaselineIntegrationTest {
         assertThat(aiApi.providerId()).isEqualTo("ollama");
         List<float[]> vectors = aiApi.embed(new AiApi.EmbeddingRequest(List.of("test embedding"))).vectors();
         assertThat(vectors).hasSize(1);
-        assertThat(vectors.getFirst()).hasSize(768);
+        assertThat(vectors.getFirst()).hasSize(1024);
     }
 
     @Test
@@ -195,7 +195,7 @@ class SpringAiBaselineIntegrationTest {
                         Map.entry("char_start", 10),
                         Map.entry("char_end", 26),
                         Map.entry("embedding_model", "test-embedding"),
-                        Map.entry("embedding_dimensions", 768),
+                        Map.entry("embedding_dimensions", 1024),
                         Map.entry("chunker_version", "v1")))
                 .build();
     }
@@ -269,11 +269,11 @@ class SpringAiBaselineIntegrationTest {
 
         @Override
         public int dimensions() {
-            return 768;
+            return 1024;
         }
 
         private static float[] vector() {
-            float[] vector = new float[768];
+            float[] vector = new float[1024];
             vector[0] = 1.0f;
             return vector;
         }
