@@ -1,7 +1,9 @@
 package com.zija.file.internal.event;
 
 import com.zija.file.AttachmentMovedEvent;
+import com.zija.file.AttachmentPurgedEvent;
 import com.zija.file.AttachmentRecycledEvent;
+import com.zija.file.AttachmentRestoredEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
@@ -35,5 +37,15 @@ public class FileEventPublisher {
                 UUID.randomUUID(), householdId, fileId,
                 oldMountType, oldMountId, newMountType, newMountId,
                 OffsetDateTime.now()));
+    }
+
+    public void publishRestored(UUID householdId, UUID fileId, String mountType, UUID mountId) {
+        publisher.publishEvent(new AttachmentRestoredEvent(
+                UUID.randomUUID(), householdId, fileId, mountType, mountId, OffsetDateTime.now()));
+    }
+
+    public void publishPurged(UUID householdId, UUID fileId) {
+        publisher.publishEvent(new AttachmentPurgedEvent(
+                UUID.randomUUID(), householdId, fileId, OffsetDateTime.now()));
     }
 }

@@ -131,6 +131,9 @@
       <el-tab-pane label="提醒规则" name="reminder">
         <ReminderRulesTab />
       </el-tab-pane>
+      <el-tab-pane label="AI 能力" name="ai">
+        <AiSettingsTab />
+      </el-tab-pane>
     </el-tabs>
 
     <!-- Create Category Dialog -->
@@ -233,6 +236,7 @@ import {
 } from '../api/catalog'
 import type { Category, Brand, Unit, Tag } from '../types/catalog'
 import ReminderRulesTab from './settings/ReminderRulesTab.vue'
+import AiSettingsTab from './settings/AiSettingsTab.vue'
 
 const route = useRoute();
 const router = useRouter();
@@ -245,9 +249,9 @@ interface CategoryTreeNode extends Category {
 
 // --------------- State ---------------
 
-// 活动标签 = 当前路由的末段路径（catalog/brands/units/tags/reminder）。
+// 活动标签 = 当前路由的末段路径（catalog/brands/units/tags/reminder/ai）。
 // 未知段回退到 catalog；切换 tab 即跳转到 /settings/<segment>。
-const SETTING_TABS = ['catalog', 'brands', 'units', 'tags', 'reminder'] as const;
+const SETTING_TABS = ['catalog', 'brands', 'units', 'tags', 'reminder', 'ai'] as const;
 const activeTab = computed({
   get: () => {
     const seg = route.path.replace(/^\/settings\/?/, '') || 'catalog';
@@ -264,6 +268,7 @@ const TITLE_MAP: Record<string, { title: string; subtitle: string }> = {
   units: { title: '目录设置', subtitle: '分类、品牌、单位与标签的字典维护' },
   tags: { title: '目录设置', subtitle: '分类、品牌、单位与标签的字典维护' },
   reminder: { title: '提醒规则', subtitle: '家庭默认值（物品级可覆盖）' },
+  ai: { title: 'AI 能力', subtitle: '模型提供方、隐私边界与资源限制' },
 };
 const pageTitle = computed(() => TITLE_MAP[activeTab.value].title);
 const pageSubtitle = computed(() => TITLE_MAP[activeTab.value].subtitle);

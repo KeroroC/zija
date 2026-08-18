@@ -3,49 +3,99 @@ package com.zija.ai.internal;
 import com.zija.ai.AiApi;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.stereotype.Service;
+
+import java.util.Objects;
 
 /**
  * Spring AI adapter for the configured provider.
  *
- * <p>Only this adapter knows about Spring AI. The orchestration layer can add read-only
- * tool callbacks to the ChatClient request without leaking those framework types through
- * {@link AiApi}.
+ * <p>The adapter reports availability by asking Ollama for its local model list. A failed
+ * probe is converted into a status result; it never prevents the application from starting.
  */
 @Service
-class SpringAiProvider implements AiApi {
+class SpringAiProvider implements AiModelProvider {
 
     private final ChatClient.Builder chatClientBuilder;
     private final EmbeddingModel embeddingModel;
-    private final String providerId;
+    private final OllamaApi ollamaApi;
+    private final AiModelNames modelNames;
 
     SpringAiProvider(
             ChatClient.Builder chatClientBuilder,
             EmbeddingModel embeddingModel,
-            @Value("${spring.ai.model.chat:ollama}") String providerId
+            OllamaApi ollamaApi,
+            AiModelNames modelNames
     ) {
         this.chatClientBuilder = chatClientBuilder;
         this.embeddingModel = embeddingModel;
-        this.providerId = providerId;
+        this.ollamaApi = ollamaApi;
+        this.modelNames = modelNames;
     }
 
     @Override
-    public String providerId() {
-        return providerId;
+    public String id() {
+        return "ollama";
     }
 
     @Override
-    public ChatReply complete(ChatRequest request) {
+    public boolean requiresOutboundAccess() {
+        return false;
+    }
+
+    @Override
+    public boolean requiresCredential() {
+        return false;
+    }
+
+    @Override
+    public ProbeResult probe(AiProviderConfiguration configuration) {
+        try {
+            // OllamaApi.listModels() is non-null by contract (Objects.requireNonNull); the
+            // ListModelResponse record component is not @Nullable. An empty list means the
+            // provider is reachable but has no matching models — the chat/embedding checks
+            // below report the appropriate "MODEL_MISSING" status.
+            var models = ollamaApi.listModels();
+            boolean chatAvailable = models.models().stream()
+                    .anyMatch(model -> modelMatches(model, modelNames.chatModel()));
+            boolean embeddingAvailable = models.models().stream()
+                    .anyMatch(model -> modelMatches(model, modelNames.embeddingModel()));
+            if (!chatAvailable) {
+                return ProbeResult.unavailable("CHAT_MODEL_MISSING", "configured chat model is unavailable",
+                        modelNames.chatModel(), modelNames.embeddingModel());
+            }
+            if (!embeddingAvailable) {
+                return ProbeResult.unavailable("EMBEDDING_MODEL_MISSING", "configured embedding model is unavailable",
+                        modelNames.chatModel(), modelNames.embeddingModel());
+            }
+            if (embeddingModel.dimensions() != AiService.EMBEDDING_DIMENSIONS) {
+                return ProbeResult.unavailable("EMBEDDING_DIMENSION_MISMATCH",
+                        "embedding model must produce 768 dimensions",
+                        modelNames.chatModel(), modelNames.embeddingModel());
+            }
+            return ProbeResult.available(modelNames.chatModel(), modelNames.embeddingModel());
+        } catch (RuntimeException ex) {
+            return ProbeResult.unavailable("PROVIDER_UNREACHABLE", "provider is unavailable",
+                    modelNames.chatModel(), modelNames.embeddingModel());
+        }
+    }
+
+    private boolean modelMatches(OllamaApi.Model model, String expected) {
+        return Objects.equals(expected, model.name()) || Objects.equals(expected, model.model());
+    }
+
+    @Override
+    public AiApi.ChatReply complete(AiApi.ChatRequest request, AiProviderConfiguration configuration) {
         String content = chatClientBuilder.build()
                 .prompt(request.prompt())
                 .call()
                 .content();
-        return new ChatReply(content == null ? "" : content);
+        return new AiApi.ChatReply(content == null ? "" : content);
     }
 
     @Override
-    public EmbeddingReply embed(EmbeddingRequest request) {
-        return new EmbeddingReply(embeddingModel.embed(request.inputs()));
+    public AiApi.EmbeddingReply embed(AiApi.EmbeddingRequest request, AiProviderConfiguration configuration) {
+        return new AiApi.EmbeddingReply(embeddingModel.embed(request.inputs()));
     }
 }

@@ -3,12 +3,13 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 import { fetchItems, fetchUnits } from "../../api/catalog"
 import { fetchLots, inboundNewLot, inboundExistingLot } from "../../api/inventory"
-import { fetchLocationTree } from "../../api/location"
+import { fetchLocationTree, createLocation } from "../../api/location"
 import { ApiError } from "../../api/http"
 import InboundDialog from "./InboundDialog.vue"
+import LocationCreateDialog from "../LocationCreateDialog.vue"
 import type { ItemListResponse, Unit } from "../../types/catalog"
 import type { LotListResponse, InboundResult } from "../../types/inventory"
-import type { LocationTree } from "../../types/location"
+import type { LocationInfo, LocationTree } from "../../types/location"
 
 vi.mock("../../api/catalog", () => ({
   fetchItems: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("../../api/inventory", () => ({
 
 vi.mock("../../api/location", () => ({
   fetchLocationTree: vi.fn(),
+  createLocation: vi.fn(),
 }))
 
 const fetchItemsMock = vi.mocked(fetchItems)
@@ -31,6 +33,7 @@ const fetchLotsMock = vi.mocked(fetchLots)
 const inboundNewLotMock = vi.mocked(inboundNewLot)
 const inboundExistingLotMock = vi.mocked(inboundExistingLot)
 const fetchLocationTreeMock = vi.mocked(fetchLocationTree)
+const createLocationMock = vi.mocked(createLocation)
 
 const itemsResponse: ItemListResponse = {
   items: [
@@ -148,6 +151,7 @@ describe("InboundDialog", () => {
     fetchUnitsMock.mockReset().mockResolvedValue(units)
     fetchLotsMock.mockReset().mockResolvedValue(lotsResponse)
     fetchLocationTreeMock.mockReset().mockResolvedValue(locationTree)
+    createLocationMock.mockReset()
     inboundNewLotMock.mockReset().mockResolvedValue(inboundResult)
     inboundExistingLotMock.mockReset().mockResolvedValue(inboundResult)
   })
@@ -172,6 +176,17 @@ describe("InboundDialog", () => {
         },
       },
     })
+    await flushPromises()
+  }
+
+  async function submitCreateLocation(name: string) {
+    const createDlg = wrapper!.findComponent(LocationCreateDialog)
+    await createDlg.findComponent({ name: "ElInput" }).vm.$emit("update:modelValue", name)
+    const dlgDom = document.querySelector('[data-testid="location-create-dialog"]')!
+    const confirm = Array.from(dlgDom.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "确定",
+    )
+    confirm!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
     await flushPromises()
   }
 
@@ -710,5 +725,179 @@ describe("InboundDialog", () => {
     expect(infoSpy).toHaveBeenCalled()
     const infoMsg = String(infoSpy.mock.calls[0]?.[0] ?? "")
     expect(infoMsg).toContain("新建批次")
+  })
+
+  it("shows a create-location button next to the location field", async () => {
+    await mountDialog()
+
+    const createBtn = wrapper!.find('[data-testid="btn-create-location"]')
+    expect(createBtn.exists()).toBe(true)
+    expect(createBtn.attributes("disabled")).toBeUndefined()
+  })
+
+  it("disables the create-location button while the form is loading", async () => {
+    let resolveItems!: (value: ItemListResponse) => void
+    fetchItemsMock.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolveItems = r
+        }),
+    )
+
+    wrapper = mount(InboundDialog, {
+      props: { modelValue: true },
+      global: {
+        plugins: [ElementPlus],
+        stubs: {
+          ItemFormDrawer: {
+            name: "ItemFormDrawer",
+            props: ["modelValue", "item", "presetName"],
+            emits: ["update:modelValue", "saved"],
+            template: '<div data-testid="item-form-drawer-stub" />',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    const createBtn = wrapper!.find('[data-testid="btn-create-location"]')
+    expect(createBtn.attributes("disabled")).toBeDefined()
+
+    resolveItems(itemsResponse)
+    await flushPromises()
+    expect(createBtn.attributes("disabled")).toBeUndefined()
+  })
+
+  it("opens the location create dialog in root mode when no location is selected", async () => {
+    await mountDialog()
+
+    await wrapper!.find('[data-testid="btn-create-location"]').trigger("click")
+    await flushPromises()
+
+    const createDlg = document.querySelector('[data-testid="location-create-dialog"]')
+    expect(createDlg).not.toBeNull()
+    expect(createDlg!.querySelector(".el-dialog__title")?.textContent).toContain("新增根位置")
+  })
+
+  it("opens the location create dialog in child mode with the selected location as parent", async () => {
+    await mountDialog()
+
+    const treeSelect = wrapper!.findComponent({ name: "ElTreeSelect" })
+    await treeSelect.vm.$emit("update:modelValue", "loc-1")
+    await treeSelect.vm.$emit("change", "loc-1")
+    await flushPromises()
+
+    await wrapper!.find('[data-testid="btn-create-location"]').trigger("click")
+    await flushPromises()
+
+    const createDlg = wrapper!.findComponent(LocationCreateDialog)
+    const dlg = document.querySelector('[data-testid="location-create-dialog"]')!
+    expect(dlg.querySelector(".el-dialog__title")?.textContent).toContain("新增子位置")
+    expect(dlg.textContent).toContain("父位置：家")
+    expect(createDlg.props("parentId")).toBe("loc-1")
+    expect(createDlg.props("existingNames")).toEqual(["卧室"])
+  })
+
+  it("opens the location create dialog from the empty state", async () => {
+    fetchLocationTreeMock.mockResolvedValueOnce({ roots: [] })
+    await mountDialog()
+
+    const treeSelect = wrapper!.findComponent({ name: "ElTreeSelect" })
+    await treeSelect.trigger("click")
+    await flushPromises()
+
+    const emptyCreate = Array.from(document.querySelectorAll("button")).find((el) =>
+      el.textContent?.includes("新建位置"),
+    )
+    expect(emptyCreate).toBeDefined()
+    emptyCreate!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    const dlg = document.querySelector('[data-testid="location-create-dialog"]')
+    expect(dlg).not.toBeNull()
+    expect(dlg!.querySelector(".el-dialog__title")?.textContent).toContain("新增根位置")
+  })
+
+  it("creates a root location inline and auto-selects it as the inbound location", async () => {
+    const created: LocationInfo = {
+      id: "loc-new",
+      householdId: "h1",
+      parentId: null,
+      name: "冰箱",
+      sortOrder: 0,
+      everReferenced: false,
+      version: 0,
+    }
+    createLocationMock.mockResolvedValue(created)
+
+    await mountDialog()
+    await wrapper!.find('[data-testid="btn-create-location"]').trigger("click")
+    await flushPromises()
+
+    await submitCreateLocation("冰箱")
+
+    expect(createLocationMock).toHaveBeenCalledWith({
+      name: "冰箱",
+      parentId: null,
+      sortOrder: 0,
+    })
+    expect(wrapper!.findComponent(LocationCreateDialog).exists()).toBe(false)
+    const treeSelect = wrapper!.findComponent({ name: "ElTreeSelect" })
+    expect(treeSelect.props("modelValue")).toBe("loc-new")
+    expect(treeSelect.text()).toContain("冰箱")
+  })
+
+  it("creates a child location under the selected parent and auto-selects it", async () => {
+    const created: LocationInfo = {
+      id: "loc-new",
+      householdId: "h1",
+      parentId: "loc-1",
+      name: "储物间",
+      sortOrder: 0,
+      everReferenced: false,
+      version: 0,
+    }
+    createLocationMock.mockResolvedValue(created)
+
+    await mountDialog()
+    const treeSelect = wrapper!.findComponent({ name: "ElTreeSelect" })
+    await treeSelect.vm.$emit("update:modelValue", "loc-1")
+    await treeSelect.vm.$emit("change", "loc-1")
+    await flushPromises()
+
+    await wrapper!.find('[data-testid="btn-create-location"]').trigger("click")
+    await flushPromises()
+
+    await submitCreateLocation("储物间")
+
+    expect(createLocationMock).toHaveBeenCalledWith({
+      name: "储物间",
+      parentId: "loc-1",
+      sortOrder: 0,
+    })
+    expect(treeSelect.props("modelValue")).toBe("loc-new")
+    expect(treeSelect.text()).toContain("储物间")
+  })
+
+  it("resets the idempotency key when a location is created inline", async () => {
+    createLocationMock.mockResolvedValue({
+      id: "loc-new",
+      householdId: "h1",
+      parentId: null,
+      name: "冰箱",
+      sortOrder: 0,
+      everReferenced: false,
+      version: 0,
+    })
+
+    await mountDialog()
+    const keyBefore = (wrapper!.vm as unknown as { idempotencyKey: string }).idempotencyKey
+    await wrapper!.find('[data-testid="btn-create-location"]').trigger("click")
+    await flushPromises()
+    await submitCreateLocation("冰箱")
+
+    expect((wrapper!.vm as unknown as { idempotencyKey: string }).idempotencyKey).not.toBe(
+      keyBefore,
+    )
   })
 })

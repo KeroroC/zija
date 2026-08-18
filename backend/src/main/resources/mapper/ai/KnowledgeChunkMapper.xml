@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zija.ai.internal.persistence.KnowledgeChunkMapper">
+
+    <!-- 生命周期清理（回收/取消/永久删除）：用户意图优先，无条件生效。 -->
+    <delete id="deleteByAttachment">
+        DELETE FROM ai_knowledge_chunk
+        WHERE household_id = #{householdId}
+          AND attachment_id = #{fileId}::text
+    </delete>
+
+    <!--
+        准备路径的分块清理：栅栏条件（来源仍处于 PROCESSING 且版本等于认领版本）。
+        租约到期被更高版本认领接管后，过期工作者的清理落空，不误删现任认领者的分块。
+    -->
+    <delete id="deleteByAttachmentIfCurrent">
+        DELETE FROM ai_knowledge_chunk
+        WHERE household_id = #{householdId}
+          AND attachment_id = #{fileId}::text
+          AND EXISTS (
+              SELECT 1
+              FROM ai_knowledge_source
+              WHERE id = #{sourceId}
+                AND status = 'PROCESSING'
+                AND processing_version = #{processingVersion}
+          )
+    </delete>
+
+    <!--
+        准备路径的可用翻转（JSONB 元数据翻转，生成列自动跟随）：栅栏条件同上，
+        过期批次写入的 readiness_status=PROCESSING 分块不得翻转为可检索。
+    -->
+    <update id="markAllAvailableIfCurrent">
+        UPDATE ai_knowledge_chunk
+        SET metadata = metadata || '{"readiness_status":"AVAILABLE"}',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE household_id = #{householdId}
+          AND attachment_id = #{fileId}::text
+          AND EXISTS (
+              SELECT 1
+              FROM ai_knowledge_source
+              WHERE id = #{sourceId}
+                AND status = 'PROCESSING'
+                AND processing_version = #{processingVersion}
+          )
+    </update>
+
+    <!-- 改挂后原地更新分块检索范围元数据（挂载点与物品/批次定位）。 -->
+    <update id="updateScope">
+        UPDATE ai_knowledge_chunk
+        SET metadata = metadata || jsonb_build_object(
+                'mount_type', #{mountType},
+                'mount_id', #{mountId}::text,
+                'item_id', #{itemId}::text,
+                'lot_id', #{lotId}::text
+            ),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE household_id = #{householdId}
+          AND attachment_id = #{fileId}::text
+    </update>
+
+</mapper>

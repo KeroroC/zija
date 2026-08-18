@@ -1,7 +1,8 @@
-package com.zija.ai;
+package com.zija.ai.internal;
 
 import com.zija.SharedPostgres;
 import com.zija.TestDb;
+import com.zija.ai.AiApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -18,9 +19,7 @@ import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.embedding.EmbeddingResultMetadata;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
-import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -76,9 +75,16 @@ class SpringAiBaselineIntegrationTest {
     @Autowired
     private VectorStore vectorStore;
 
+    @Autowired
+    private AiKnowledgeVectorStore knowledgeVectorStore;
+
     @BeforeEach
     void cleanDatabase() {
         TestDb.cleanAll(jdbc);
+        jdbc.update("""
+                INSERT INTO ai_provider_setting(singleton_key, enabled, provider_id)
+                VALUES (1, TRUE, 'ollama')
+                """);
     }
 
     @Test
@@ -123,9 +129,12 @@ class SpringAiBaselineIntegrationTest {
 
         Document householdDocument = document("pine instructions", HOUSEHOLD_A, MOUNT_A, ITEM_A, LOT_A,
                 "attachment-a", "AVAILABLE");
+        Document sameHouseholdDifferentScopeDocument = document("pine instructions", HOUSEHOLD_A, MOUNT_B, ITEM_B,
+                LOT_B, "attachment-b", "AVAILABLE");
         Document otherHouseholdDocument = document("pine instructions", HOUSEHOLD_B, MOUNT_B, ITEM_B, LOT_B,
                 "attachment-b", "DISABLED");
-        vectorStore.add(List.of(householdDocument, otherHouseholdDocument));
+        knowledgeVectorStore.add(List.of(householdDocument, sameHouseholdDifferentScopeDocument,
+                otherHouseholdDocument));
 
         Map<String, Object> generatedMetadata = jdbc.queryForMap(
                 "SELECT household_id, mount_type, mount_id, item_id, lot_id, attachment_id, readiness_status, "
@@ -144,35 +153,17 @@ class SpringAiBaselineIntegrationTest {
                 .containsEntry("char_start", 10)
                 .containsEntry("char_end", 26);
 
-        Filter.Expression householdFilter = new Filter.Expression(
-                Filter.ExpressionType.AND,
-                new Filter.Expression(
-                        Filter.ExpressionType.EQ,
-                        new Filter.Key("household_id"),
-                        new Filter.Value(HOUSEHOLD_A.toString())),
-                new Filter.Expression(
-                        Filter.ExpressionType.AND,
-                        new Filter.Expression(
-                                Filter.ExpressionType.EQ,
-                                new Filter.Key("mount_type"),
-                                new Filter.Value("ITEM")),
-                        new Filter.Expression(
-                                Filter.ExpressionType.EQ,
-                                new Filter.Key("readiness_status"),
-                                new Filter.Value("AVAILABLE"))));
-        List<Document> results = vectorStore.similaritySearch(SearchRequest.builder()
-                .query("pine instructions")
-                .topK(10)
-                .similarityThresholdAll()
-                .filterExpression(householdFilter)
-                .build());
+        List<Document> results = knowledgeVectorStore.search(
+                new AiKnowledgeVectorStore.SearchScope(
+                        HOUSEHOLD_A, "ITEM", MOUNT_A, "attachment-a"),
+                "pine instructions", 10);
 
         assertThat(results).extracting(Document::getId).containsExactly(householdDocument.getId());
         assertThat(results.getFirst().getMetadata())
                 .containsEntry("attachment_id", "attachment-a")
                 .containsEntry("page_number", 4);
 
-        vectorStore.delete(List.of(householdDocument.getId()));
+        knowledgeVectorStore.delete(List.of(householdDocument.getId()));
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM ai_knowledge_chunk WHERE id = ?", Integer.class,
                 UUID.fromString(householdDocument.getId())))
