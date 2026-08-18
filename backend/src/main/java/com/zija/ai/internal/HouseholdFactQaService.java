@@ -38,25 +38,31 @@ class HouseholdFactQaService {
     private final HouseholdFactQueries queries;
     private final ChatClient.Builder chatClientBuilder;
     private final SystemApi systemApi;
+    private final KnowledgeQaService knowledgeQaService;
 
     HouseholdFactQaService(
             HouseholdApi householdApi,
             AiApi aiApi,
             HouseholdFactQueries queries,
             ChatClient.Builder chatClientBuilder,
-            SystemApi systemApi
+            SystemApi systemApi,
+            KnowledgeQaService knowledgeQaService
     ) {
         this.householdApi = householdApi;
         this.aiApi = aiApi;
         this.queries = queries;
         this.chatClientBuilder = chatClientBuilder;
         this.systemApi = systemApi;
+        this.knowledgeQaService = knowledgeQaService;
     }
 
     HouseholdFactQaModels.Answer ask(UUID accountId, HouseholdFactQaModels.QaRequest request) {
         var member = householdApi.requireActiveMember(accountId);
         UUID householdId = member.householdId();
         String question = request.question().trim();
+        if (request.scope() != null) {
+            return knowledgeQaService.ask(householdId, accountId, question, request.scope());
+        }
 
         AiApi.AiStatus status = aiApi.status();
         if (!status.available()) {

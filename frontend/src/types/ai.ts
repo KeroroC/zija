@@ -73,6 +73,12 @@ export const KNOWLEDGE_SOURCE_MEDIA_TYPES: readonly string[] = [
 /** 家庭事实问题请求。 */
 export interface HouseholdFactQuestion {
   question: string;
+  scope?: QaQuestionScope;
+}
+
+export interface QaQuestionScope {
+  type: "ITEM" | "LOT";
+  id: string;
 }
 
 /** 一组确定性结构化结果（行为列名 → 展示值）。 */
@@ -89,15 +95,27 @@ export interface QaAnswerSource {
   dataTime: string;
   available: boolean;
   note?: string;
+  attachmentId?: string;
+  attachmentName?: string;
+  attachmentUrl?: string;
+  mountType?: "HOUSEHOLD" | "ITEM" | "LOT";
+  mountId?: string;
+  mountLabel?: string;
+  pageNumber?: number;
+  sectionPath?: string;
+  excerpt?: string;
+  charStart?: number;
+  charEnd?: number;
 }
 
-/** 权威页面跳转。type ∈ ITEM / LOT / LOCATION / MOVEMENT / REMINDER。 */
+/** 权威页面跳转。type ∈ ITEM / LOT / LOCATION / MOVEMENT / REMINDER / ATTACHMENT。 */
 export interface QaJump {
   type: string;
   label: string;
   itemId?: string;
   lotId?: string;
   locationId?: string;
+  attachmentId?: string;
 }
 
 /** 家庭事实问答答案。 */
