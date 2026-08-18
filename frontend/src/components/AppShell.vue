@@ -39,6 +39,10 @@
           <el-icon><Bell /></el-icon>
           <span>提醒中心</span>
         </el-menu-item>
+        <el-menu-item index="/qa">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>家庭问答</span>
+        </el-menu-item>
         <el-menu-item index="/reports">
           <el-icon><TrendCharts /></el-icon>
           <span>报表与导出</span>
@@ -140,6 +144,7 @@ import {
   Paperclip,
   Location,
   Bell,
+  ChatDotRound,
   TrendCharts,
   User,
   Document,

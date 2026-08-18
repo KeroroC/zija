@@ -5,6 +5,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", name: "home", component: () => import("../views/HomeView.vue"), meta: { title: "首页" } },
+    { path: "/qa", name: "qa", component: () => import("../views/QaView.vue"), meta: { title: "家庭问答" } },
     { path: "/system", name: "system-status", component: () => import("../views/SystemStatusView.vue"), meta: { title: "系统状态" } },
     { path: "/reminders", name: "reminders", component: () => import("../views/RemindersView.vue"), meta: { title: "提醒中心" } },
     { path: "/notifications", name: "notifications", component: () => import("../views/NotificationsView.vue"), meta: { title: "通知" } },
