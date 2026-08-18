@@ -1,0 +1,482 @@
+package com.zija.ai.internal;
+
+import com.zija.AbstractMockMvcIntegrationTest;
+import com.zija.TestDb;
+import com.zija.ZijaPrincipal;
+import com.zija.ZijaSessionInvalidator;
+import com.zija.ai.AiApi;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * 家庭事实问答 HTTP 集成测试。
+ *
+ * <p>用确定性假 {@code ChatModel} 驱动真实 Spring AI 工具调用：假模型先发出一次工具调用，
+ * Spring AI 执行真实 {@link HouseholdFactTools}（只读查询契约访问测试库），再把工具结果回喂
+ * 给假模型产出最终摘要——证明「家族事实查询 + 最小假模型调用」全链路可运行，且结构化结果与
+ * 跳转来自服务端工具而非模型叙述。</p>
+ */
+@AutoConfigureMockMvc
+@Import(HouseholdFactQaEndpointIntegrationTest.FakeModelSeam.class)
+class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest {
+
+    private static final UUID HOUSEHOLD_ID = UUID.fromString("10000000-0000-0000-0000-000000000001");
+    private static final UUID OWNER_ACCOUNT_ID = UUID.fromString("20000000-0000-0000-0000-000000000001");
+    private static final UUID UNIT_ID = UUID.fromString("30000000-0000-0000-0000-000000000001");
+    private static final UUID ITEM_ID = UUID.fromString("40000000-0000-0000-0000-000000000001");
+    private static final UUID LOT_ID = UUID.fromString("50000000-0000-0000-0000-000000000001");
+    private static final UUID KITCHEN_ID = UUID.fromString("60000000-0000-0000-0000-000000000001");
+    private static final UUID STOCK_POSITION_ID = UUID.fromString("70000000-0000-0000-0000-000000000001");
+    private static final UUID MOVEMENT_ID = UUID.fromString("80000000-0000-0000-0000-000000000001");
+
+    @Autowired
+    private MockMvc mvc;
+
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    @Autowired
+    private ScriptedChatModel chatModel;
+
+    @Autowired
+    private AiApi aiApi;
+
+    @MockitoBean
+    private ZijaSessionInvalidator sessionInvalidator;
+
+    @BeforeEach
+    void setUp() {
+        TestDb.cleanAll(jdbc);
+        jdbc.update("""
+                INSERT INTO ai_provider_setting(singleton_key, enabled, provider_id)
+                VALUES (1, TRUE, 'deterministic')
+                """);
+        seedHouseholdMember();
+        seedCatalog();
+        seedInventory();
+        chatModel.reset();
+    }
+
+    // ==================== 成功 ====================
+
+    @Test
+    void memberAsksAboutHouseholdStockAndGetsStructuredAnswerWithSourcesAndJumps() throws Exception {
+        assertThat(aiApi.status().available()).isTrue();
+        // 假模型：第一次调用发出 search_items 工具调用；第二次调用读取工具结果后产出摘要。
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}",
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认：家庭事实来源暂不可用。"
+                        : "牛奶当前库存 5 瓶，放在厨房。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶还有多少？放在哪里？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.question").value("牛奶还有多少？放在哪里？"))
+                .andExpect(jsonPath("$.modelAvailable").value(true))
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").isNotEmpty())
+                .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("物品搜索结果"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].当前总库存").value("5"))
+                .andExpect(jsonPath("$.sources[0].category").value("HOUSEHOLD_FACT"))
+                .andExpect(jsonPath("$.sources[0].dataTime").isNotEmpty())
+                .andExpect(jsonPath("$.jumps[0].type").value("ITEM"))
+                .andExpect(jsonPath("$.jumps[0].itemId").value(ITEM_ID.toString()));
+
+        assertThat(chatModel.toolDispatchCount()).isEqualTo(1);
+        assertThat(chatModel.modelCallCount()).isGreaterThanOrEqualTo(2);
+    }
+
+    @Test
+    void structuredResultsComeFromServerToolsNotFromModelNarration() throws Exception {
+        chatModel.script(
+                "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
+                response -> "（模型任意）");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶放在哪里？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「牛奶」库存分布"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].位置").value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.jumps[*].type").isNotEmpty());
+    }
+
+    // ==================== 权限失败 ====================
+
+    @Test
+    void nonMemberCannotAskHouseholdFacts() throws Exception {
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(authentication(new UsernamePasswordAuthenticationToken(
+                                new ZijaPrincipal(
+                                        UUID.randomUUID(), "stranger", "外来者", "hash", true),
+                                "hash")))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶还有多少？\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anonymousCannotAskHouseholdFacts() throws Exception {
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶还有多少？\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ==================== 模型不可用 ====================
+
+    @Test
+    void modelUnavailableReturnsClearReasonWithoutModelCall() throws Exception {
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶还有多少？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("AI_DISABLED"))
+                .andExpect(jsonPath("$.summary").isNotEmpty());
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    // ==================== 事实来源失败（工具捕获异常 → 不补答） ====================
+
+    @Test
+    void factSourceFailureAnswersCannotConfirmWithoutInventing() throws Exception {
+        // seed 一个在仓库中不存在的物品 —— itemStock 查询契约会抛错，工具应返回 unavailable
+        String unknownItem = UUID.randomUUID().toString();
+        chatModel.script(
+                "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(unknownItem),
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认：该物品的库存信息暂不可用。"
+                        : "找到了库存！");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"某件不在的物品库存如何？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(true))
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")));
+    }
+
+    @Test
+    void movementsUseImmutableMovementAsFactBasis() throws Exception {
+        chatModel.script(
+                "itemMovements", "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
+                response -> "最近有一笔入库流水。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶最近为什么数量变化？谁操作的？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].类型").value("INBOUND"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("购入"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].操作人").value("户主"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].时间").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"))
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("MOVEMENT")));
+    }
+
+    @Test
+    void expiringLotsToolReturnsBoundStructuredFacts() throws Exception {
+        chatModel.script(
+                "expiringLots", "{\"withinDays\":30,\"limit\":10}",
+                response -> "有临期批次。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"哪些批次快到期了？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRING_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].剩余天数").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("REMINDER")));
+    }
+
+    @Test
+    void lowStockToolReturnsStructuredFactsAndReminderJump() throws Exception {
+        chatModel.script(
+                "lowStock", "{\"limit\":10}",
+                response -> "有低库存物品。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些物品缺货了？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOW_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].当前库存").value("5"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].阈值").value("10"))
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("REMINDER")));
+    }
+
+    /** 最小假模型调用（只要一次工具调用即可完成回答） */
+
+    @Test
+    void minimalFakeModelInvocationCompletesAnswerWithOneToolCall() throws Exception {
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}",
+                response -> "牛奶有库存，请查看表格。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有没有牛奶？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(true))
+                .andExpect(jsonPath("$.summary").value("牛奶有库存，请查看表格。"));
+
+        assertThat(chatModel.toolDispatchCount()).isEqualTo(1);
+    }
+
+    // ==================== helpers ====================
+
+    private RequestPostProcessor auth() {
+        var principal = new ZijaPrincipal(OWNER_ACCOUNT_ID, "owner", "户主", "hash", true);
+        return authentication(new UsernamePasswordAuthenticationToken(
+                principal, principal.getPassword(), principal.getAuthorities()));
+    }
+
+    private void seedHouseholdMember() {
+        jdbc.update("""
+                INSERT INTO household(singleton_key, id, name, timezone)
+                VALUES (1, ?, '测试家庭', 'Asia/Shanghai')
+                """, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO account(id, username, username_normalized, password_hash, display_name, status)
+                VALUES (?, 'owner', 'OWNER', '{bcrypt}test', '户主', 'ACTIVE')
+                """, OWNER_ACCOUNT_ID);
+        jdbc.update("""
+                INSERT INTO member(id, household_id, account_id, role, status)
+                VALUES (?, ?, ?, 'OWNER', 'ACTIVE')
+                """, UUID.randomUUID(), HOUSEHOLD_ID, OWNER_ACCOUNT_ID);
+    }
+
+    private void seedCatalog() {
+        jdbc.update("""
+                INSERT INTO catalog_unit(id, household_id, name, name_normalized, decimal_scale, status)
+                VALUES (?, ?, '瓶', '瓶', 0, 'ACTIVE')
+                """, UNIT_ID, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, low_stock_mode,
+                     low_stock_threshold, status, version)
+                VALUES (?, ?, '牛奶', 'CONSUMABLE', ?, 'CUSTOM', '10', 'ACTIVE', 1)
+                """, ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
+    }
+
+    private void seedInventory() {
+        jdbc.update("""
+                INSERT INTO location(id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '厨房', '厨房', 0, false, 0)
+                """, KITCHEN_ID, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, expiry_date, lot_number, version)
+                VALUES (?, ?, ?, ?, 'LOT-001', 1)
+                """, LOT_ID, HOUSEHOLD_ID, ITEM_ID, LocalDate.now().plusDays(30));
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '5', 0)
+                """, STOCK_POSITION_ID, HOUSEHOLD_ID, LOT_ID, KITCHEN_ID);
+        jdbc.update("""
+                INSERT INTO inventory_movement
+                    (id, household_id, lot_id, item_id, type, quantity, from_location_id,
+                     to_location_id, reason, operator_account_id, business_time,
+                     created_at, idempotency_key)
+                VALUES (?, ?, ?, ?, 'INBOUND', '5', NULL, ?, '购入', ?,
+                        ?, ?, ?)
+                """, MOVEMENT_ID, HOUSEHOLD_ID, LOT_ID, ITEM_ID, KITCHEN_ID,
+                OWNER_ACCOUNT_ID, Timestamp.from(OffsetDateTime.now().toInstant()),
+                Timestamp.from(OffsetDateTime.now().toInstant()),
+                UUID.randomUUID().toString());
+    }
+
+    // ==================== Spring AI 假模型 seam ====================
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class FakeModelSeam {
+
+        @Bean
+        @org.springframework.context.annotation.Primary
+        ScriptedChatModel scriptedChatModel() {
+            return new ScriptedChatModel();
+        }
+
+        /** 让 {@code AiService.status()} 在该测试上下文返回可用，驱动真正的模型调用路径。 */
+        @Bean
+        AiModelProvider deterministicAiModelProvider() {
+            return new AiModelProvider() {
+                @Override
+                public String id() {
+                    return "deterministic";
+                }
+
+                @Override
+                public boolean requiresOutboundAccess() {
+                    return false;
+                }
+
+                @Override
+                public boolean requiresCredential() {
+                    return false;
+                }
+
+                @Override
+                public ProbeResult probe(AiProviderConfiguration configuration) {
+                    return ProbeResult.available("fake-chat", "fake-embedding");
+                }
+
+                @Override
+                public AiApi.ChatReply complete(AiApi.ChatRequest request, AiProviderConfiguration configuration) {
+                    throw new UnsupportedOperationException("Q&A 走 Spring AI ChatClient，不经 provider seam");
+                }
+
+                @Override
+                public AiApi.EmbeddingReply embed(AiApi.EmbeddingRequest request, AiProviderConfiguration configuration) {
+                    throw new UnsupportedOperationException("不在本测试范围");
+                }
+            };
+        }
+    }
+
+    /**
+     * 确定性假 {@link ChatModel}：第一次调用读取已注册工具并发出一次 {@code toolCall}，
+     * 后续调用（收到 {@link ToolResponseMessage} 后）根据工具结果产出最终摘要。
+     * 也是「最小假模型调用」的验证 seam。
+     */
+    static final class ScriptedChatModel implements ChatModel {
+
+        private final AtomicInteger modelCalls = new AtomicInteger();
+        private final AtomicInteger toolDispatchCount = new AtomicInteger();
+
+        private String toolName = "searchItems";
+        private String toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
+        private ToolConsumer finalText = response -> "完成。";
+
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            int call = modelCalls.incrementAndGet();
+            if (call == 1) {
+                if (prompt.getOptions() instanceof ToolCallingChatOptions options
+                        && options.getToolCallbacks() != null) {
+                    boolean registered = options.getToolCallbacks().stream()
+                            .anyMatch(callback -> callback.getToolDefinition().name().equals(toolName));
+                    toolDispatchCount.addAndGet(registered ? 1 : 0);
+                }
+                return new ChatResponse(List.of(new Generation(
+                        AssistantMessage.builder()
+                                .toolCalls(List.of(new AssistantMessage.ToolCall(
+                                        "tool-call-" + call,
+                                        "function",
+                                        toolName,
+                                        toolArguments)))
+                                .build())));
+            }
+            ToolResponseMessage toolResponse = prompt.getInstructions().stream()
+                    .filter(ToolResponseMessage.class::isInstance)
+                    .map(ToolResponseMessage.class::cast)
+                    .findFirst()
+                    .orElse(null);
+            String content = toolResponse != null
+                    ? toolResponse.getResponses().stream()
+                            .map(ToolResponseMessage.ToolResponse::responseData)
+                            .reduce("", (a, b) -> a + b)
+                    : "";
+            return new ChatResponse(List.of(new Generation(
+                    new AssistantMessage(finalText.apply(content)))));
+        }
+
+        @Override
+        public ToolCallingChatOptions getOptions() {
+            return ToolCallingChatOptions.builder().build();
+        }
+
+        void script(String toolName, String toolArguments, ToolConsumer finalText) {
+            this.toolName = toolName;
+            this.toolArguments = toolArguments;
+            this.finalText = finalText;
+        }
+
+        void reset() {
+            modelCalls.set(0);
+            toolDispatchCount.set(0);
+            toolName = "searchItems";
+            toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
+            finalText = response -> "完成。";
+        }
+
+        int modelCallCount() {
+            return modelCalls.get();
+        }
+
+        int toolDispatchCount() {
+            return toolDispatchCount.get();
+        }
+
+        interface ToolConsumer {
+            String apply(String toolResponse);
+        }
+    }
+}

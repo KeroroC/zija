@@ -17,7 +17,7 @@ import java.util.function.Supplier;
 @Service
 class AiService implements AiApi {
 
-    static final int EMBEDDING_DIMENSIONS = 768;
+    static final int EMBEDDING_DIMENSIONS = 1024;
 
     private final AiSettingsService settingsService;
     private final List<AiModelProvider> providers;

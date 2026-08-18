@@ -23,7 +23,7 @@ final class KnowledgeSourceStates {
 
     /** 失败原因码：格式本身不支持作为知识来源（图片/HEIC/旧版 Office）。 */
     static final String FAILURE_FORMAT_UNSUPPORTED = "FORMAT_UNSUPPORTED";
-    /** 失败原因码：可处理格式但抽取不到文字（扫描版 PDF 等）。 */
+    /** 失败原因码：可处理格式但抽取不到可可靠使用的文字（扫描版 PDF、损坏字体映射等）。 */
     static final String FAILURE_TEXT_NOT_EXTRACTABLE = "TEXT_NOT_EXTRACTABLE";
     /** 失败原因码：附件内容读取失败。 */
     static final String FAILURE_CONTENT_UNREADABLE = "CONTENT_UNREADABLE";

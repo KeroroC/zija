@@ -71,7 +71,7 @@ class SpringAiProvider implements AiModelProvider {
             }
             if (embeddingModel.dimensions() != AiService.EMBEDDING_DIMENSIONS) {
                 return ProbeResult.unavailable("EMBEDDING_DIMENSION_MISMATCH",
-                        "embedding model must produce 768 dimensions",
+                        "embedding model must produce 1024 dimensions",
                         modelNames.chatModel(), modelNames.embeddingModel());
             }
             return ProbeResult.available(modelNames.chatModel(), modelNames.embeddingModel());

@@ -13,7 +13,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice(assignableTypes = {
         AiConfigurationController.class,
-        KnowledgeSourceController.class
+        KnowledgeSourceController.class,
+        HouseholdFactQaController.class
 })
 class AiExceptionHandler {
 

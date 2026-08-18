@@ -1,7 +1,21 @@
 import { deleteJson, getJson, postJson, putJson } from "./http";
-import type { AiSettings, AiSettingsUpdate, AiStatus, KnowledgeSourceInfo } from "../types/ai";
+import type {
+  AiSettings,
+  AiSettingsUpdate,
+  AiStatus,
+  HouseholdFactAnswer,
+  HouseholdFactQuestion,
+  KnowledgeSourceInfo
+} from "../types/ai";
 
-export type { AiSettings, AiSettingsUpdate, AiStatus, KnowledgeSourceInfo } from "../types/ai";
+export type {
+  AiSettings,
+  AiSettingsUpdate,
+  AiStatus,
+  HouseholdFactAnswer,
+  HouseholdFactQuestion,
+  KnowledgeSourceInfo
+} from "../types/ai";
 
 export function fetchAiSettings(): Promise<AiSettings> {
   return getJson<AiSettings>("/api/v1/ai/settings");
@@ -13,6 +27,12 @@ export function fetchAiStatus(): Promise<AiStatus> {
 
 export function updateAiSettings(body: AiSettingsUpdate): Promise<AiSettings> {
   return putJson<AiSettings>("/api/v1/ai/settings", body);
+}
+
+/** 家庭事实问答：服务端从当前认证成员推导家庭与权限，客户端不传家庭 ID。 */
+export function askHouseholdQuestion(question: string): Promise<HouseholdFactAnswer> {
+  const body: HouseholdFactQuestion = { question };
+  return postJson<HouseholdFactAnswer>("/api/v1/ai/qa", body);
 }
 
 /** 列出当前家庭全部知识来源（含处理状态与失败原因）。 */

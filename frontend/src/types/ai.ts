@@ -67,3 +67,47 @@ export const KNOWLEDGE_SOURCE_MEDIA_TYPES: readonly string[] = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 ];
+
+// ==================== 家庭事实问答 ====================
+
+/** 家庭事实问题请求。 */
+export interface HouseholdFactQuestion {
+  question: string;
+}
+
+/** 一组确定性结构化结果（行为列名 → 展示值）。 */
+export interface QaStructuredResult {
+  kind: string;
+  title: string;
+  rows: Array<Record<string, string>>;
+}
+
+/** 回答来源与数据时间。 */
+export interface QaAnswerSource {
+  category: string;
+  label: string;
+  dataTime: string;
+  available: boolean;
+  note?: string;
+}
+
+/** 权威页面跳转。type ∈ ITEM / LOT / LOCATION / MOVEMENT / REMINDER。 */
+export interface QaJump {
+  type: string;
+  label: string;
+  itemId?: string;
+  lotId?: string;
+  locationId?: string;
+}
+
+/** 家庭事实问答答案。 */
+export interface HouseholdFactAnswer {
+  question: string;
+  modelAvailable: boolean;
+  reasonCode: string;
+  summary: string;
+  structuredResults: QaStructuredResult[];
+  sources: QaAnswerSource[];
+  jumps: QaJump[];
+  dataTime: string;
+}
