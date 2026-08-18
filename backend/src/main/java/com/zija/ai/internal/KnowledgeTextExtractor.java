@@ -22,7 +22,8 @@ import java.util.List;
  *
  * <p>定位信息：PDF 逐页抽取带页码；XLSX 按工作表、PPTX 按幻灯片、Markdown 按标题分节；
  * DOCX/TXT 为单单元。扫描版 PDF（无文字层）与空文档返回空列表，由调用方映射为
- * {@code TEXT_NOT_EXTRACTABLE}。图片/HEIC/旧版 Office 由媒体类型路由直接拒绝。</p>
+ * {@code TEXT_NOT_EXTRACTABLE}。提取结果还会经过质量门禁，以拦截 PDF 字体编码映射损坏导致的乱码；
+ * 图片/HEIC/旧版 Office 由媒体类型路由直接拒绝。</p>
  */
 @Component
 class KnowledgeTextExtractor {

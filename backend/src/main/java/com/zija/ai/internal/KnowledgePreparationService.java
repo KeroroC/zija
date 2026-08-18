@@ -38,6 +38,7 @@ class KnowledgePreparationService {
     private final KnowledgeSourceStateStore stateStore;
     private final FileApi fileApi;
     private final KnowledgeTextExtractor extractor;
+    private final KnowledgeTextQualityGate textQualityGate;
     private final KnowledgeChunker chunker;
     private final KnowledgeChunkDocumentFactory documentFactory;
     private final AiKnowledgeVectorStore vectorStore;
@@ -49,6 +50,7 @@ class KnowledgePreparationService {
             KnowledgeSourceStateStore stateStore,
             FileApi fileApi,
             KnowledgeTextExtractor extractor,
+            KnowledgeTextQualityGate textQualityGate,
             KnowledgeChunker chunker,
             KnowledgeChunkDocumentFactory documentFactory,
             AiKnowledgeVectorStore vectorStore,
@@ -59,6 +61,7 @@ class KnowledgePreparationService {
         this.stateStore = stateStore;
         this.fileApi = fileApi;
         this.extractor = extractor;
+        this.textQualityGate = textQualityGate;
         this.chunker = chunker;
         this.documentFactory = documentFactory;
         this.vectorStore = vectorStore;
@@ -137,6 +140,13 @@ class KnowledgePreparationService {
                 stateStore.markFailed(knowledgeSourceId, claimedVersion, now,
                         KnowledgeSourceStates.FAILURE_TEXT_NOT_EXTRACTABLE,
                         "未在文档中提取到文字，可能是扫描件或空文档");
+                return;
+            }
+            var quality = textQualityGate.validate(attachment.mediaType(), units);
+            if (!quality.accepted()) {
+                stateStore.markFailed(knowledgeSourceId, claimedVersion, now,
+                        KnowledgeSourceStates.FAILURE_TEXT_NOT_EXTRACTABLE,
+                        quality.failureMessage());
                 return;
             }
             List<Chunk> chunks = chunker.chunk(units);

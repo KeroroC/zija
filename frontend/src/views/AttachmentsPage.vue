@@ -134,13 +134,20 @@
                 <span class="zj-dot" :class="ksMeta(knowledgeOf(row.id)!).dot"></span>
                 {{ ksMeta(knowledgeOf(row.id)!).label }}
               </span>
-              <span
+              <el-tooltip
                 v-if="knowledgeOf(row.id)!.status === 'FAILED'"
-                class="ks-hint ks-hint-danger"
-                :title="knowledgeOf(row.id)!.failureMessage ?? '处理失败'"
+                :content="knowledgeOf(row.id)!.failureMessage ?? '处理失败'"
+                placement="top"
+                :show-after="150"
               >
-                失败原因
-              </span>
+                <span
+                  class="ks-hint ks-hint-danger"
+                  data-testid="knowledge-failure-reason"
+                  tabindex="0"
+                >
+                  失败原因
+                </span>
+              </el-tooltip>
               <span
                 v-else-if="knowledgeOf(row.id)!.status === 'DISABLED'"
                 class="ks-hint"

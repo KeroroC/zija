@@ -525,6 +525,16 @@ describe("AttachmentsPage", () => {
     expect(wrapper.get('[data-testid="knowledge-status"]').text()).toContain("失败");
     expect(wrapper.find('[data-testid="knowledge-retry"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="knowledge-cancel"]').exists()).toBe(true);
+    const failureTooltip = wrapper
+      .findAllComponents({ name: "ElTooltip" })
+      .find((tooltip) => tooltip.props("content") === "未在文档中提取到文字，可能是扫描件或空文档");
+    expect(failureTooltip).toBeDefined();
+    const failureReason = wrapper.get('[data-testid="knowledge-failure-reason"]');
+    expect(failureReason.text()).toBe("失败原因");
+    await failureReason.trigger("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await flushPromises();
+    expect(document.body.textContent).toContain("未在文档中提取到文字，可能是扫描件或空文档");
   });
 
   it("disables knowledge-source selection for unsupported formats", async () => {
