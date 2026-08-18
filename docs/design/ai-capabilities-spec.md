@@ -123,7 +123,7 @@ AI 是核心业务的可选增强能力。未配置可用模型或 AI 暂时不�
 - 家庭事实通过 Spring AI 工具调用连接到受控的公共查询契约；附件知识通过 Spring AI 的文档检索能力连接到 `PgVectorStore`。
 - 检索必须使用 `householdId`、挂载点类型、挂载 ID、附件 ID 和知识准备状态等元数据过滤，过滤条件由服务端生成，不能由模型自行放宽。
 - 具体 LLM、embedding 模型和外部提供方仍保持可替换；当前开发基线默认使用 Ollama
-  `qwen2.5:7b`（聊天）和 `nomic-embed-text`（embedding），地址为
+  `qwen2.5:7b`（聊天）和 `nomic-embed-text:latest`（embedding），地址为
   `http://localhost:11434`，由 `ZIJA_AI_OLLAMA_BASE_URL`、`ZIJA_AI_CHAT_MODEL` 和
   `ZIJA_AI_EMBEDDING_MODEL` 环境变量覆盖；可替换 embedding 模型必须保持 768 维。
 - Spring AI 版本线固定为 2.0.0，使用 `spring-ai-bom`、`spring-ai-starter-model-ollama` 和

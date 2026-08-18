@@ -109,7 +109,7 @@ docker manifest inspect ccr.ccs.tencentyun.com/<命名空间>/zija:<版本号>
 | `ZIJA_FILE_STORAGE_PATH` | `/var/lib/zija/files` | 上传文件目录 |
 | `ZIJA_AI_OLLAMA_BASE_URL` | `http://localhost:11434` | 可选 Ollama 地址；容器内未运行 Ollama 时 AI 保持不可用但不影响核心业务 |
 | `ZIJA_AI_CHAT_MODEL` | `qwen2.5:7b` | 可选聊天模型 |
-| `ZIJA_AI_EMBEDDING_MODEL` | `nomic-embed-text` | 可选 embedding 模型，必须输出 768 维 |
+| `ZIJA_AI_EMBEDDING_MODEL` | `nomic-embed-text:latest` | 可选 embedding 模型，必须输出 768 维 |
 | `MANAGEMENT_HEALTH_MAIL_ENABLED` | `false` | **必须设置**。未配 SMTP 时邮件健康检查会让 readiness 探针 DOWN |
 
 因为数据库跑在容器内部，**不需要配置 `VpcConf`**；部署工具提示「未配置 VPC」可忽略。

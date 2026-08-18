@@ -72,7 +72,7 @@ spring:
       chat:
         model: ${ZIJA_AI_CHAT_MODEL:qwen2.5:7b}
       embedding:
-        model: ${ZIJA_AI_EMBEDDING_MODEL:nomic-embed-text}
+        model: ${ZIJA_AI_EMBEDDING_MODEL:nomic-embed-text:latest}
     vectorstore:
       pgvector:
         schema-name: public

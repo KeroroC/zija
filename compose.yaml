@@ -32,7 +32,7 @@ services:
       ZIJA_FILE_STORAGE_PATH: /var/lib/zija/files
       ZIJA_AI_OLLAMA_BASE_URL: ${ZIJA_AI_OLLAMA_BASE_URL:-http://localhost:11434}
       ZIJA_AI_CHAT_MODEL: ${ZIJA_AI_CHAT_MODEL:-qwen2.5:7b}
-      ZIJA_AI_EMBEDDING_MODEL: ${ZIJA_AI_EMBEDDING_MODEL:-nomic-embed-text}
+      ZIJA_AI_EMBEDDING_MODEL: ${ZIJA_AI_EMBEDDING_MODEL:-nomic-embed-text:latest}
     volumes:
       - zija-files:/var/lib/zija/files
     depends_on:

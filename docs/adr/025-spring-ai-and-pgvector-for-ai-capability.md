@@ -31,7 +31,7 @@
   Spring AI 类型只在 AI 模块内部使用，不进入其他模块的公共 API。
 
 默认模型和连接使用环境变量配置，默认值为 Ollama `qwen2.5:7b`（聊天）与
-`nomic-embed-text`（embedding），地址为 `http://localhost:11434`。更换为 OpenAI、Anthropic
+`nomic-embed-text:latest`（embedding），地址为 `http://localhost:11434`。更换为 OpenAI、Anthropic
 或其他提供方只替换 Spring AI provider starter 和对应配置，不改变 AI 自有接口或向量表。
 可替换的 embedding 模型必须输出 768 维；需要其他维度时另行设计索引重建和数据库迁移，不能通过
 运行时环境变量悄然改变当前表结构。
