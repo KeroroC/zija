@@ -116,6 +116,10 @@ springdoc:
     enabled: ${ZIJA_SWAGGER_ENABLED:false}
 
 zija:
+  setup:
+    # 家庭初始化口令；非空时 POST /api/v1/household/bootstrap 须携带 X-Zija-Setup-Token。
+    # prod profile 下必须配置（见 HouseholdSetupTokenStartupValidator）。
+    token: ${ZIJA_SETUP_TOKEN:}
   file:
     storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}
     # 附件回收站保留期（天）：保留期满后由清除任务物理删除

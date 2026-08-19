@@ -169,9 +169,10 @@ export async function postJson<T>(path: string, body?: unknown): Promise<T> {
 
 export async function postJsonAndRefreshCsrf<T>(
   path: string,
-  body?: unknown
+  body?: unknown,
+  extraHeaders?: Record<string, string>
 ): Promise<T> {
-  const result = await coreRequest<T>("POST", path, body);
+  const result = await coreRequest<T>("POST", path, body, extraHeaders);
   clearCsrf();
   try {
     await ensureCsrf();

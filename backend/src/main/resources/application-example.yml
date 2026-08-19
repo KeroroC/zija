@@ -154,6 +154,8 @@ springdoc:
 
 # ---------- 业务配置 ----------
 zija:
+  setup:
+    token: ${ZIJA_SETUP_TOKEN:}
   # 文件存储根目录（容器内挂载卷路径）
   file:
     storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}

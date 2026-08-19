@@ -175,10 +175,10 @@ CloudBase 节点是 amd64。在 Apple Silicon Mac 上直接 `docker build` 会�
 
 第一次访问任意部署方式启动的实例，浏览器会自动跳转到 `/bootstrap`：
 
-1. 填写家庭名称、所有者用户名、密码、显示名
+1. 填写家庭名称、所有者用户名、密码、显示名；若配置了 `ZIJA_SETUP_TOKEN`，还需填写「初始化口令」
 2. 提交后自动登录并进入首页
 
-**安全提示**：`POST /api/v1/household/bootstrap` 仅在系统未初始化时开放，初始化后自动关闭。建议部署完成后立即完成引导。
+**安全提示**：`prod` profile 下必须配置 `ZIJA_SETUP_TOKEN`。引导接口在系统未初始化时开放，初始化后由业务层拒绝重复创建。
 
 ---
 

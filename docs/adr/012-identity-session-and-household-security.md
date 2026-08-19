@@ -37,6 +37,7 @@
 ### 5. 家庭单例与所有权
 
 - `singleton_key = 1` 在数据库层保证一套部署最多只有一个家庭；初始化事务先尝试插入单例记录，并发请求由主键/检查约束串行化。
+- 首次引导除 CSRF 外，还须携带部署时配置的初始化口令（`ZIJA_SETUP_TOKEN` / 请求头 `X-Zija-Setup-Token`）；`prod` profile 下口令未配置则应用拒绝启动。
 - `uq_member_single_owner` 部分唯一索引保证一个家庭最多一个 `OWNER`。
 - 所有者不允许被停用或直接降级，必须通过所有权转移在同一事务中完成新旧 Owner 角色切换，提交后删除两者全部会话。
 - 所有者恢复使用容器内非 Web 命令模式（`zija.command=recover-owner`），不启动第二个 Web 服务；恢复令牌只显示一次且只存 SHA-256 摘要。

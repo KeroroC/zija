@@ -8,6 +8,15 @@
       </div>
       <h2 class="auth-title">初始化你的家庭</h2>
       <el-form :model="form" label-position="top" @submit.prevent="submit">
+        <el-form-item v-if="setupTokenRequired" label="初始化口令">
+          <el-input
+            v-model="setupToken"
+            type="password"
+            required
+            show-password
+            autocomplete="off"
+          />
+        </el-form-item>
         <el-form-item label="家庭名称">
           <el-input v-model="form.householdName" required />
         </el-form-item>
@@ -33,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { householdApi } from "../api/household";
@@ -45,6 +54,8 @@ import type { BootstrapRequest } from "../types/identity";
 const router = useRouter();
 const session = useSessionStore();
 const loading = ref(false);
+const setupTokenRequired = ref(false);
+const setupToken = ref("");
 const form = reactive<BootstrapRequest>({
   householdName: "",
   username: "",
@@ -53,11 +64,23 @@ const form = reactive<BootstrapRequest>({
   email: ""
 });
 
+onMounted(async () => {
+  try {
+    const status = await householdApi.getStatus();
+    setupTokenRequired.value = status.setupTokenRequired;
+  } catch {
+    setupTokenRequired.value = false;
+  }
+});
+
 async function submit() {
   loading.value = true;
   try {
     await authApi.initializeCsrf();
-    const sessionInfo = await householdApi.bootstrap(form);
+    const sessionInfo = await householdApi.bootstrap(
+      form,
+      setupTokenRequired.value ? setupToken.value : undefined
+    );
     session.householdInitialized = true;
     await session.applySession(sessionInfo);
     router.push({ name: "home" });

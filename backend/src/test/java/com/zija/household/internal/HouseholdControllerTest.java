@@ -4,6 +4,7 @@ import com.zija.AbstractWebMvcSliceTest;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionAuthenticationSupport;
 import com.zija.household.HouseholdApi;
+import com.zija.household.internal.exception.InvalidSetupTokenException;
 import com.zija.household.internal.exception.MemberConcurrentUpdateException;
 import com.zija.identity.IdentityApi;
 import org.junit.jupiter.api.Test;
@@ -37,13 +38,16 @@ class HouseholdControllerTest extends AbstractWebMvcSliceTest {
     @MockitoBean MemberService memberService;
     @MockitoBean ZijaSessionAuthenticationSupport sessionAuth;
     @MockitoBean IdentityApi identityApi;
+    @MockitoBean HouseholdSetupTokenGuard setupTokenGuard;
 
     @Test
     void statusIsPublic() throws Exception {
         when(householdService.isInitialized()).thenReturn(false);
+        when(setupTokenGuard.isRequired()).thenReturn(true);
         mockMvc.perform(get("/api/v1/household/status"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.initialized").value(false));
+                .andExpect(jsonPath("$.initialized").value(false))
+                .andExpect(jsonPath("$.setupTokenRequired").value(true));
     }
 
     @Test
@@ -141,6 +145,26 @@ class HouseholdControllerTest extends AbstractWebMvcSliceTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.fieldErrors.password").exists());
+    }
+
+    @Test
+    void bootstrapRejectsInvalidSetupToken() throws Exception {
+        doThrow(new InvalidSetupTokenException()).when(setupTokenGuard).requireValid("wrong-token");
+
+        mockMvc.perform(post("/api/v1/household/bootstrap")
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .header(HouseholdSetupTokenGuard.HEADER_NAME, "wrong-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "householdName": "知家",
+                                  "username": "owner",
+                                  "password": "Passw0rd!",
+                                  "displayName": "所有者"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("HOUSEHOLD_TOKEN_INVALID"));
     }
 
     @Test

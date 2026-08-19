@@ -61,7 +61,8 @@ describe("CSRF-rotating API wiring", () => {
 
     expect(postJsonAndRefreshCsrfMock).toHaveBeenCalledWith(
       "/api/v1/household/bootstrap",
-      request
+      request,
+      undefined
     );
   });
 

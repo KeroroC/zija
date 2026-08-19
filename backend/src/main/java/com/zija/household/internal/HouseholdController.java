@@ -37,15 +37,18 @@ class HouseholdController {
     private final HouseholdService householdService;
     private final MemberService memberService;
     private final ZijaSessionAuthenticationSupport sessionAuth;
+    private final HouseholdSetupTokenGuard setupTokenGuard;
 
     HouseholdController(
             HouseholdService householdService,
             MemberService memberService,
-            ZijaSessionAuthenticationSupport sessionAuth
+            ZijaSessionAuthenticationSupport sessionAuth,
+            HouseholdSetupTokenGuard setupTokenGuard
     ) {
         this.householdService = householdService;
         this.memberService = memberService;
         this.sessionAuth = sessionAuth;
+        this.setupTokenGuard = setupTokenGuard;
     }
 
     public record BootstrapRequest(
@@ -57,7 +60,7 @@ class HouseholdController {
     ) {
     }
 
-    public record HouseholdStatusResponse(boolean initialized) {
+    public record HouseholdStatusResponse(boolean initialized, boolean setupTokenRequired) {
     }
 
     public record CurrentMemberResponse(
@@ -77,7 +80,9 @@ class HouseholdController {
      */
     @GetMapping("/status")
     HouseholdStatusResponse status() {
-        return new HouseholdStatusResponse(householdService.isInitialized());
+        return new HouseholdStatusResponse(
+                householdService.isInitialized(),
+                setupTokenGuard.isRequired());
     }
 
     /**
@@ -91,10 +96,12 @@ class HouseholdController {
     @PostMapping("/bootstrap")
     @ResponseStatus(HttpStatus.CREATED)
     SessionInfo bootstrap(
+            @RequestHeader(value = HouseholdSetupTokenGuard.HEADER_NAME, required = false) String setupToken,
             @Valid @RequestBody BootstrapRequest request,
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse
     ) {
+        setupTokenGuard.requireValid(setupToken);
         householdService.bootstrap(new HouseholdService.BootstrapCommand(
                 request.householdName(), request.username(), request.password(),
                 request.displayName(), request.email()));

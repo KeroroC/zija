@@ -47,7 +47,7 @@ let resetSequence = 0;
 
 async function resetRouterAndPinia(): Promise<void> {
   setActivePinia(createPinia());
-  getStatusMock.mockReset().mockResolvedValue({ initialized: false });
+  getStatusMock.mockReset().mockResolvedValue({ initialized: false, setupTokenRequired: false });
   getSessionMock.mockReset();
   getCurrentMemberMock.mockReset();
   await router.replace({ name: "login", query: { reset: String(++resetSequence) } });
@@ -76,7 +76,7 @@ describe("router session recovery", () => {
     getCurrentMemberMock
       .mockRejectedValueOnce(new Error("member unavailable"))
       .mockResolvedValueOnce(currentMember);
-    getStatusMock.mockResolvedValue({ initialized: true });
+    getStatusMock.mockResolvedValue({ initialized: true, setupTokenRequired: false });
     getSessionMock.mockResolvedValue(authenticatedSession);
 
     await expect(session.applySession(authenticatedSession)).resolves.toBe(false);

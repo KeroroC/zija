@@ -149,7 +149,7 @@ describe("session store", () => {
 
   it("lets ensureInitialized retry after a failed member synchronization", async () => {
     const store = useSessionStore();
-    getStatusMock.mockResolvedValue({ initialized: true });
+    getStatusMock.mockResolvedValue({ initialized: true, setupTokenRequired: false });
     getSessionMock.mockResolvedValue(authenticatedSession);
     getCurrentMemberMock
       .mockRejectedValueOnce(new Error("member unavailable"))

@@ -47,6 +47,7 @@ cp .env.example .env
 | `ZIJA_POSTGRES_PASSWORD` | **是** | `change-this-password` | PostgreSQL 密码，**必须修改** |
 | `ZIJA_DB_PASSWORD` | **是** | `change-this-password` | 应用连接数据库的密码，与上一条保持一致 |
 | `ZIJA_PROFILES_ACTIVE` | **是** | *(空)* | 生产环境设为 `prod` |
+| `ZIJA_SETUP_TOKEN` | **是**（`prod` 时） | *(空)* | 家庭初始化口令；`prod` 下必填，引导页须填写同一值 |
 | `ZIJA_VERSION` | 否 | `dev` | 显示在系统信息页的版本号 |
 | `ZIJA_HTTP_PORT` | 否 | `8088` | 宿主机暴露的 HTTP 端口（供反代转发目标） |
 | `ZIJA_POSTGRES_PORT` | 否 | `5432` | 宿主机暴露的 PostgreSQL 端口 |
@@ -77,6 +78,7 @@ ZIJA_DB_USERNAME=zija
 ZIJA_DB_PASSWORD=<替换为强随机密码>
 ZIJA_VERSION=1.0.0
 ZIJA_PROFILES_ACTIVE=prod
+ZIJA_SETUP_TOKEN=<替换为强随机口令>
 ZIJA_HTTP_PORT=8088
 ```
 
@@ -244,10 +246,10 @@ curl -s http://localhost:8088/actuator/health/readiness
 
 1. 访问 `https://zija.example.com`（或 `http://localhost:8088`）
 2. 系统检测到尚未初始化，显示创建家庭页面
-3. 填写家庭名称、所有者姓名、邮箱、密码
+3. 填写家庭名称、所有者姓名、邮箱、密码；若配置了 `ZIJA_SETUP_TOKEN`，还需填写「初始化口令」
 4. 提交后系统创建家庭、所有者账户，并自动登录
 
-> **安全提示**：引导接口 `POST /api/v1/household/bootstrap` 仅在系统未初始化时开放，初始化后自动关闭。建议在首次部署后立即完成引导，避免暴露在公网。
+> **安全提示**：`prod` profile 下必须配置 `ZIJA_SETUP_TOKEN`，否则应用无法启动。引导接口 `POST /api/v1/household/bootstrap` 在系统未初始化时开放，初始化后由业务层拒绝重复创建；公网部署应同时完成口令配置，不要仅依赖网络隔离。
 
 ---
 
