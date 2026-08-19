@@ -39,6 +39,7 @@ echo "输出目录: ${OUT_DIR}"
 # ── 1. 数据库 dump ────────────────────────────────────
 echo "[1/4] 导出 PostgreSQL ..."
 docker compose exec -T postgres pg_dump --format=custom --file=/tmp/db.dump \
+  --exclude-table-data=public.ai_knowledge_chunk \
   -U "${ZIJA_POSTGRES_USER:-zija}" "${ZIJA_POSTGRES_DB:-zija}"
 docker compose cp postgres:/tmp/db.dump "${TMP_DIR}/db.dump"
 echo "  -> db.dump 完成"
@@ -120,6 +121,36 @@ cat > "${TMP_DIR}/manifest.json" <<EOF
     "checkedCount": ${CHECKED_COUNT},
     "entries": ${FILE_ENTRIES},
     "orphanCount": 0
+  },
+  "ai": {
+    "sourceData": {
+      "attachments": {
+        "databaseTable": "stored_file",
+        "fileVolume": "files",
+        "included": true
+      },
+      "knowledgeSourceSelections": {
+        "databaseTable": "ai_knowledge_source",
+        "included": true,
+        "statusAndScopeIncluded": true
+      },
+      "configuration": {
+        "databaseTable": "ai_provider_setting",
+        "included": true,
+        "runtimeEnvironmentIncluded": false
+      }
+    },
+    "derivedKnowledge": {
+      "databaseTables": ["ai_knowledge_chunk"],
+      "included": false,
+      "rebuildRequired": true,
+      "processingBaseline": {
+        "embeddingModel": "${ZIJA_AI_EMBEDDING_MODEL:-qwen3-embedding:0.6b}",
+        "embeddingDimensions": 1024,
+        "chunkerVersion": "1",
+        "index": "HNSW/vector_cosine_ops"
+      }
+    }
   }
 }
 EOF

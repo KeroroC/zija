@@ -169,6 +169,65 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
     }
 
     @Test
+    void rebuiltKnowledgeIsUnavailableUntilPreparationCompletesThenCanBeQueriedAgain() throws Exception {
+        UUID rebuiltFileId = fileApi.store(
+                HOUSEHOLD_ID,
+                "重建后仍可检索的滤网清洁步骤。".getBytes(StandardCharsets.UTF_8),
+                "重建后说明.txt",
+                "text/plain",
+                FileApi.MOUNT_ITEM,
+                ITEM_ID).id();
+        mvc.perform(put("/api/v1/ai/knowledge-sources/{fileId}", rebuiltFileId)
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PROCESSING"));
+        assertThat(preparationService.prepareDue(OffsetDateTime.now())).isOne();
+        jdbc.update("""
+                UPDATE ai_knowledge_source
+                SET status = 'DISABLED', disabled_reason = 'CANCELLED', next_attempt_at = NULL
+                WHERE id = ?
+                """, SOURCE_ID);
+
+        mvc.perform(post("/api/v1/ai/knowledge-sources/rebuild")
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.requeuedCount").value(1))
+                .andExpect(jsonPath("$.disabledCount").value(1));
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机滤网怎么清洁？",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("NO_AVAILABLE_KNOWLEDGE_SOURCE"))
+                .andExpect(jsonPath("$.sources").isEmpty());
+
+        chatModel.reset("重建后先取下滤网，用温水冲洗并晾干。");
+        assertThat(preparationService.prepareDue(OffsetDateTime.now().plusSeconds(1))).isOne();
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机滤网怎么清洁？",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value("重建后先取下滤网，用温水冲洗并晾干。"))
+                .andExpect(jsonPath("$.sources[0].attachmentId").value(rebuiltFileId.toString()));
+    }
+
+    @Test
     void mixedAnswerKeepsFactAndKnowledgePartsSeparateAndMarksTheirConflict() throws Exception {
         vectorStore.add(List.of(document(
                 "说明书记录当前库存 3 台。",

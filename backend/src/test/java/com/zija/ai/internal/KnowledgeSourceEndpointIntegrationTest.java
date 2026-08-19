@@ -194,6 +194,62 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.errorCode").value("AI_KNOWLEDGE_SOURCE_NOT_FOUND"));
     }
 
+    @Test
+    void ownerCanRebuildDerivedKnowledgeWhilePreservingSourceSelections() throws Exception {
+        UUID selectedFileId = storePdfAttachment(FileApi.MOUNT_ITEM, ITEM_ID, "恢复后重建.pdf");
+        select(selectedFileId);
+        preparationService.prepareDue(OffsetDateTime.now());
+        assertThat(sourceOf(selectedFileId).getStatus()).isEqualTo("AVAILABLE");
+        assertThat(sourceOf(selectedFileId).getProcessingVersion()).isOne();
+        assertThat(countChunks(selectedFileId)).isEqualTo(2);
+
+        UUID disabledFileId = storePdfAttachment(FileApi.MOUNT_ITEM, ITEM_ID, "已停用来源.pdf");
+        select(disabledFileId);
+        mvc.perform(delete("/api/v1/ai/knowledge-sources/{fileId}", disabledFileId)
+                        .with(auth(member())).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DISABLED"));
+        jdbc.update("""
+                INSERT INTO ai_provider_setting
+                    (singleton_key, enabled, provider_id, provider_credential, outbound_enabled)
+                VALUES (1, TRUE, 'ollama', 'backup-secret', FALSE)
+                """);
+
+        mvc.perform(post("/api/v1/ai/knowledge-sources/rebuild")
+                        .with(auth(owner())).with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.requeuedCount").value(1))
+                .andExpect(jsonPath("$.disabledCount").value(1))
+                .andExpect(jsonPath("$.deletedChunkCount").value(2));
+
+        KnowledgeSourceEntity requeued = sourceOf(selectedFileId);
+        assertThat(requeued.getStatus()).isEqualTo("PROCESSING");
+        assertThat(requeued.getProcessingVersion()).isEqualTo(2);
+        assertThat(requeued.getProcessedAt()).isNull();
+        assertThat(requeued.getNextAttemptAt()).isNotNull();
+        assertThat(countChunks(selectedFileId)).isZero();
+        assertThat(sourceOf(disabledFileId).getStatus()).isEqualTo("DISABLED");
+        assertThat(fileApi.readContent(HOUSEHOLD_ID, selectedFileId)).isPresent();
+        assertThat(jdbc.queryForObject(
+                "SELECT provider_credential FROM ai_provider_setting WHERE singleton_key = 1",
+                String.class)).isEqualTo("backup-secret");
+
+        preparationService.prepareDue(OffsetDateTime.now().plusSeconds(1));
+
+        assertThat(sourceOf(selectedFileId).getStatus()).isEqualTo("AVAILABLE");
+        assertThat(countChunks(selectedFileId)).isEqualTo(2);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'AI_KNOWLEDGE_REBUILD_STARTED'",
+                Integer.class)).isOne();
+    }
+
+    @Test
+    void memberCannotRebuildDerivedKnowledge() throws Exception {
+        mvc.perform(post("/api/v1/ai/knowledge-sources/rebuild")
+                        .with(auth(member())).with(csrf()))
+                .andExpect(status().isForbidden());
+    }
+
     // ---------- 异步准备 / 状态机 ----------
 
     @Test
@@ -738,6 +794,10 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
     private ZijaPrincipal member() {
         return new ZijaPrincipal(MEMBER_ACCOUNT_ID, "member", "成员", "{bcrypt}test", true);
+    }
+
+    private ZijaPrincipal owner() {
+        return new ZijaPrincipal(OWNER_ACCOUNT_ID, "owner", "所有者", "{bcrypt}test", true);
     }
 
     private RequestPostProcessor auth(ZijaPrincipal principal) {

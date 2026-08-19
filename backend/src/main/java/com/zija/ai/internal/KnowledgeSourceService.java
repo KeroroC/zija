@@ -144,6 +144,39 @@ class KnowledgeSourceService {
                 .toList();
     }
 
+    /**
+     * 清理当前家庭的派生知识数据并重新排队全部有效选择。已停用来源保持停用；
+     * 原始附件、知识来源选择、挂载范围与 AI 配置均不修改。
+     */
+    @Transactional
+    public KnowledgeRebuildResult rebuildDerivedKnowledge(
+            UUID householdId,
+            UUID actorAccountId
+    ) {
+        int disabledCount = Math.toIntExact(mapper.selectCount(
+                new LambdaQueryWrapper<KnowledgeSourceEntity>()
+                        .eq(KnowledgeSourceEntity::getHouseholdId, householdId)
+                        .eq(KnowledgeSourceEntity::getStatus, KnowledgeSourceStates.STATUS_DISABLED)));
+        int requeuedCount = mapper.requeueForRebuild(householdId, OffsetDateTime.now());
+        // 先递增来源栅栏版本，再删除旧分块，避免并发中的旧工作者把旧批次重新发布为可用。
+        int deletedChunkCount = chunkMapper.deleteByHousehold(householdId);
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                SystemApi.AuditAction.AI_KNOWLEDGE_REBUILD_STARTED,
+                ZijaAuditOutcome.SUCCESS,
+                householdId,
+                actorAccountId,
+                null,
+                null,
+                null,
+                Map.of(
+                        "requeuedCount", requeuedCount,
+                        "disabledCount", disabledCount,
+                        "deletedChunkCount", deletedChunkCount)));
+        log.info("知识派生数据重建已排队: householdId={} requeued={} disabled={} deletedChunks={}",
+                householdId, requeuedCount, disabledCount, deletedChunkCount);
+        return new KnowledgeRebuildResult(requeuedCount, disabledCount, deletedChunkCount);
+    }
+
     // ---------- 附件生命周期同步（在发布方事务内同步执行） ----------
 
     @EventListener
@@ -249,5 +282,8 @@ class KnowledgeSourceService {
             OffsetDateTime processedAt,
             OffsetDateTime updatedAt
     ) {
+    }
+
+    record KnowledgeRebuildResult(int requeuedCount, int disabledCount, int deletedChunkCount) {
     }
 }

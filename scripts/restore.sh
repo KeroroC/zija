@@ -21,8 +21,26 @@ if [ ! -f "$MANIFEST" ]; then
   exit 1
 fi
 
-EXPECTED_VERSION=$(python3 -c "import json; print(json.load(open('${MANIFEST}'))['appVersion'])")
-EXPECTED_CHECKED=$(python3 -c "import json; print(json.load(open('${MANIFEST}'))['files']['checkedCount'])")
+read_manifest() {
+  python3 - "$MANIFEST" "$1" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as manifest_file:
+    value = json.load(manifest_file)
+for key in sys.argv[2].split("."):
+    value = value[key]
+print(str(value).lower() if isinstance(value, bool) else value)
+PY
+}
+
+EXPECTED_VERSION=$(read_manifest "appVersion")
+EXPECTED_CHECKED=$(read_manifest "files.checkedCount")
+DERIVED_INCLUDED=$(read_manifest "ai.derivedKnowledge.included")
+if [ "$DERIVED_INCLUDED" != "false" ]; then
+  echo "ERROR: manifest 未声明 AI 派生知识数据可重建且不随备份恢复"
+  exit 1
+fi
 
 echo "=== 知家恢复验证 ==="
 echo "备份源: ${LATEST_BACKUP}"
@@ -92,6 +110,39 @@ docker compose -p "$PROJECT_NAME" exec -T postgres \
   -U "${ZIJA_POSTGRES_USER:-zija}" -d "${ZIJA_POSTGRES_DB:-zija}" /tmp/db.dump
 echo "  → pg_restore 完成"
 
+# 派生知识不随备份恢复；在应用和调度器启动前验证这一边界并重新排队来源。
+RESTORED_DERIVED_CHUNKS=$(docker compose -p "$PROJECT_NAME" exec -T postgres psql -tAc \
+  "SELECT count(*) FROM ai_knowledge_chunk" \
+  -U "${ZIJA_POSTGRES_USER:-zija}" "${ZIJA_POSTGRES_DB:-zija}")
+if [ "$RESTORED_DERIVED_CHUNKS" != "0" ]; then
+  echo "ERROR: 备份意外包含 ${RESTORED_DERIVED_CHUNKS} 条 AI 派生知识数据"
+  exit 1
+fi
+
+RESTORED_KNOWLEDGE_SOURCES=$(docker compose -p "$PROJECT_NAME" exec -T postgres psql -tAc \
+  "SELECT count(*) FROM ai_knowledge_source" \
+  -U "${ZIJA_POSTGRES_USER:-zija}" "${ZIJA_POSTGRES_DB:-zija}")
+RESTORED_DISABLED_SOURCES=$(docker compose -p "$PROJECT_NAME" exec -T postgres psql -tAc \
+  "SELECT count(*) FROM ai_knowledge_source WHERE status = 'DISABLED'" \
+  -U "${ZIJA_POSTGRES_USER:-zija}" "${ZIJA_POSTGRES_DB:-zija}")
+EXPECTED_REQUEUED_SOURCES=$((RESTORED_KNOWLEDGE_SOURCES - RESTORED_DISABLED_SOURCES))
+RESTORED_REQUEUED_SOURCES=$(docker compose -p "$PROJECT_NAME" exec -T postgres psql -tAc \
+  "WITH requeued AS (
+     UPDATE ai_knowledge_source
+     SET status = 'PROCESSING', failure_code = NULL, failure_message = NULL,
+         attempt_count = 0, next_attempt_at = CURRENT_TIMESTAMP, disabled_reason = NULL,
+         processed_at = NULL, processing_version = processing_version + 1,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE status <> 'DISABLED'
+     RETURNING 1
+   ) SELECT count(*) FROM requeued" \
+  -U "${ZIJA_POSTGRES_USER:-zija}" "${ZIJA_POSTGRES_DB:-zija}")
+if [ "$RESTORED_REQUEUED_SOURCES" != "$EXPECTED_REQUEUED_SOURCES" ]; then
+  echo "ERROR: AI 知识来源重新排队数量异常（${RESTORED_REQUEUED_SOURCES}/${EXPECTED_REQUEUED_SOURCES}）"
+  exit 1
+fi
+echo "  → AI 派生数据为空；${RESTORED_REQUEUED_SOURCES} 个来源已重新排队，${RESTORED_DISABLED_SOURCES} 个保持停用"
+
 # ── 4. 恢复文件卷 ────────────────────────────────────
 echo "[4/5] 恢复文件卷 ..."
 if [ -d "${LATEST_BACKUP}/files" ] && [ "$(ls -A "${LATEST_BACKUP}/files" 2>/dev/null)" ]; then
@@ -152,13 +203,13 @@ else
   echo "  → 家庭已初始化"
 fi
 
-# ── 验证三连 ─────────────────────────────────────────
+# ── 恢复后验证 ───────────────────────────────────────
 echo ""
 echo "=== 恢复验证 ==="
 FAIL=0
 
 # 验证 1: system/info 版本匹配
-echo -n "[1/3] GET /api/v1/system/info ... "
+echo -n "[1/4] GET /api/v1/system/info ... "
 SYS_INFO=$(curl -sf "http://127.0.0.1:${HTTP_PORT}/api/v1/system/info" || echo "{}")
 ACTUAL_VERSION=$(echo "$SYS_INFO" \
   | python3 -c "import sys,json; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || echo "")
@@ -189,44 +240,53 @@ if [ "$LOGIN_CODE" = "200" ]; then
   fi
 fi
 
+if [ "$AUTH_OK" != "true" ]; then
+  echo "ERROR: 所有者登录失败，无法验证文件、库存和 AI 知识恢复"
+  exit 1
+fi
+
 # 验证 2: files/integrity-report
-echo -n "[2/3] GET /api/v1/files/integrity-report ... "
-if [ "$AUTH_OK" = "true" ]; then
-  INTEGRITY=$(curl -sf -b "$COOKIES" \
-    -H "X-XSRF-TOKEN: ${CSRF_TOKEN}" \
-    "http://127.0.0.1:${HTTP_PORT}/api/v1/files/integrity-report" || echo "{}")
-  INT_MISSING=$(echo "$INTEGRITY" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('missingCount',-1))" 2>/dev/null || echo "-1")
-  INT_HASH=$(echo "$INTEGRITY" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('hashMismatchCount',-1))" 2>/dev/null || echo "-1")
-  INT_CHECKED=$(echo "$INTEGRITY" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('checkedCount',0))" 2>/dev/null || echo "0")
-  if [ "$INT_MISSING" = "0" ] && [ "$INT_HASH" = "0" ] && [ "$INT_CHECKED" = "$EXPECTED_CHECKED" ]; then
-    echo "OK (checked=${INT_CHECKED}, missing=0, hashMismatch=0)"
-  else
-    echo "FAIL (checked=${INT_CHECKED}/${EXPECTED_CHECKED}, missing=${INT_MISSING}, hashMismatch=${INT_HASH})"
-    FAIL=1
-  fi
+echo -n "[2/4] GET /api/v1/files/integrity-report ... "
+INTEGRITY=$(curl -sf -b "$COOKIES" \
+  -H "X-XSRF-TOKEN: ${CSRF_TOKEN}" \
+  "http://127.0.0.1:${HTTP_PORT}/api/v1/files/integrity-report" || echo "{}")
+INT_MISSING=$(echo "$INTEGRITY" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin).get('missingCount',-1))" 2>/dev/null || echo "-1")
+INT_HASH=$(echo "$INTEGRITY" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin).get('hashMismatchCount',-1))" 2>/dev/null || echo "-1")
+INT_CHECKED=$(echo "$INTEGRITY" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin).get('checkedCount',0))" 2>/dev/null || echo "0")
+if [ "$INT_MISSING" = "0" ] && [ "$INT_HASH" = "0" ] && [ "$INT_CHECKED" = "$EXPECTED_CHECKED" ]; then
+  echo "OK (checked=${INT_CHECKED}, missing=0, hashMismatch=0)"
 else
-  echo "SKIP (login failed, owner credentials may differ)"
+  echo "FAIL (checked=${INT_CHECKED}/${EXPECTED_CHECKED}, missing=${INT_MISSING}, hashMismatch=${INT_HASH})"
+  FAIL=1
 fi
 
 # 验证 3: inventory/consistency-report
-echo -n "[3/3] GET /api/v1/inventory/consistency-report ... "
-if [ "$AUTH_OK" = "true" ]; then
-  CONSISTENCY=$(curl -sf -b "$COOKIES" \
-    -H "X-XSRF-TOKEN: ${CSRF_TOKEN}" \
-    "http://127.0.0.1:${HTTP_PORT}/api/v1/inventory/consistency-report" || echo "{}")
-  DISCREPANCIES=$(echo "$CONSISTENCY" \
-    | python3 -c "import sys,json; d=json.load(sys.stdin).get('discrepancies',[]); print(len(d))" 2>/dev/null || echo "-1")
-  if [ "$DISCREPANCIES" = "0" ]; then
-    echo "OK (discrepancies=0)"
-  else
-    echo "FAIL (discrepancies=${DISCREPANCIES})"
-    FAIL=1
-  fi
+echo -n "[3/4] GET /api/v1/inventory/consistency-report ... "
+CONSISTENCY=$(curl -sf -b "$COOKIES" \
+  -H "X-XSRF-TOKEN: ${CSRF_TOKEN}" \
+  "http://127.0.0.1:${HTTP_PORT}/api/v1/inventory/consistency-report" || echo "{}")
+DISCREPANCIES=$(echo "$CONSISTENCY" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin).get('discrepancies',[]); print(len(d))" 2>/dev/null || echo "-1")
+if [ "$DISCREPANCIES" = "0" ]; then
+  echo "OK (discrepancies=0)"
 else
-  echo "SKIP (login failed, owner credentials may differ)"
+  echo "FAIL (discrepancies=${DISCREPANCIES})"
+  FAIL=1
+fi
+
+# 验证 4: 知识来源选择保留，恢复前已自动进入重新准备流程
+echo -n "[4/4] GET /api/v1/ai/knowledge-sources ... "
+VISIBLE_KNOWLEDGE_SOURCES=$(curl -sf -b "$COOKIES" \
+  "http://127.0.0.1:${HTTP_PORT}/api/v1/ai/knowledge-sources" \
+  | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('items',[])))" 2>/dev/null || echo "-1")
+if [ "$VISIBLE_KNOWLEDGE_SOURCES" = "$RESTORED_KNOWLEDGE_SOURCES" ]; then
+  echo "OK (selected=${VISIBLE_KNOWLEDGE_SOURCES}, requeued=${RESTORED_REQUEUED_SOURCES}, disabled=${RESTORED_DISABLED_SOURCES}, restoredChunks=0)"
+else
+  echo "FAIL (selected=${VISIBLE_KNOWLEDGE_SOURCES}/${RESTORED_KNOWLEDGE_SOURCES})"
+  FAIL=1
 fi
 
 # ── 结果 ─────────────────────────────────────────────

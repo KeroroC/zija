@@ -40,6 +40,26 @@ public interface KnowledgeSourceMapper extends BaseMapper<KnowledgeSourceEntity>
     );
 
     /**
+     * 恢复或处理基线变化后重新准备全部非停用来源。保留选择与挂载范围，清空旧准备结果，
+     * 并递增栅栏版本以阻止重建前认领的工作者发布旧派生数据。
+     */
+    @Update("""
+            UPDATE ai_knowledge_source
+            SET status = 'PROCESSING',
+                failure_code = NULL,
+                failure_message = NULL,
+                attempt_count = 0,
+                next_attempt_at = #{now},
+                disabled_reason = NULL,
+                processed_at = NULL,
+                processing_version = processing_version + 1,
+                updated_at = #{now}
+            WHERE household_id = #{householdId}
+              AND status <> 'DISABLED'
+            """)
+    int requeueForRebuild(@Param("householdId") UUID householdId, @Param("now") OffsetDateTime now);
+
+    /**
      * 标记失败：记录失败原因/次数，并安排（或停止）自动重试。
      * 仅当仍处于 PROCESSING 且栅栏版本等于认领版本时生效，过期工作者的失败标记被丢弃。
      */

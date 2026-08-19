@@ -101,6 +101,7 @@ export const ACTION_LABELS: Record<string, string> = {
   AI_KNOWLEDGE_SOURCE_SELECTED: "选择知识来源",
   AI_KNOWLEDGE_SOURCE_CANCELLED: "取消知识来源",
   AI_KNOWLEDGE_SOURCE_RETRIED: "重试知识来源",
+  AI_KNOWLEDGE_REBUILD_STARTED: "重建 AI 知识",
   // 提醒
   REMINDER_RULE_UPDATE: "更新提醒规则",
   REMINDER_TASK_SNOOZED: "稍后提醒",

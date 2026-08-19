@@ -21,6 +21,9 @@ import java.util.UUID;
 @Mapper
 public interface KnowledgeChunkMapper {
 
+    /** 删除某家庭的全部可重建分块与向量。 */
+    int deleteByHousehold(@Param("householdId") UUID householdId);
+
     /** 删除某家庭某附件的全部分块（回收/取消/永久删除等生命周期清理，无条件生效）。 */
     int deleteByAttachment(@Param("householdId") UUID householdId, @Param("fileId") UUID fileId);
 
