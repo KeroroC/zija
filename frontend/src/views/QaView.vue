@@ -392,8 +392,8 @@ async function loadAllScopeOptions<T>(
 }
 
 async function submit() {
+  if (!canSubmit.value) return;
   const text = question.value.trim();
-  if (!text || submitting.value) return;
   submitting.value = true;
   try {
     const options = questionOptions();

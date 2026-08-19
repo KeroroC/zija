@@ -291,6 +291,34 @@ describe("QaView", () => {
     expect(wrapper.findAll(".qa-question-text")).toHaveLength(0);
   });
 
+  it("does not post an empty scope id when Enter is pressed without a selected target", async () => {
+    mockAsk.mockResolvedValue(knowledgeFixture);
+    const wrapper = mountV();
+
+    wrapper.get('[data-testid="qa-answer-scope"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "KNOWLEDGE_SOURCE");
+    wrapper.get('[data-testid="qa-target-type"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "ITEM");
+    await flushPromises();
+    await wrapper.find("textarea").setValue("滤网怎么清洁？");
+    const textarea = wrapper.find("textarea").element as HTMLTextAreaElement;
+    textarea.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter",
+      code: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }));
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenCalled();
+    expect(mockAsk).toHaveBeenCalledWith("滤网怎么清洁？", {
+      answerScope: "KNOWLEDGE_SOURCE",
+    });
+    for (const [, options] of mockAsk.mock.calls) {
+      expect(options?.scope?.id ?? "missing").not.toBe("");
+    }
+  });
+
   it("asks knowledge questions with an explicit item scope", async () => {
     mockFetchItems.mockResolvedValue({
       items: [{ id: "item-1", name: "咖啡机" } as never],
