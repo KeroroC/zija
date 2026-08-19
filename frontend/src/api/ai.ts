@@ -5,7 +5,7 @@ import type {
   AiStatus,
   HouseholdFactAnswer,
   HouseholdFactQuestion,
-  QaQuestionScope,
+  QaQuestionOptions,
   KnowledgeSourceInfo
 } from "../types/ai";
 
@@ -33,9 +33,9 @@ export function updateAiSettings(body: AiSettingsUpdate): Promise<AiSettings> {
 /** 统一问答：家庭由服务端推导；知识问答只传物品或批次范围，不传家庭 ID。 */
 export function askHouseholdQuestion(
   question: string,
-  scope?: QaQuestionScope
+  options: QaQuestionOptions = {}
 ): Promise<HouseholdFactAnswer> {
-  const body: HouseholdFactQuestion = scope ? { question, scope } : { question };
+  const body: HouseholdFactQuestion = { question, ...options };
   return postJson<HouseholdFactAnswer>("/api/v1/ai/qa", body);
 }
 

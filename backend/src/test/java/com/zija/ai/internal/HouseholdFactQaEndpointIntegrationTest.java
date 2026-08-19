@@ -63,6 +63,9 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     private static final UUID KITCHEN_ID = UUID.fromString("60000000-0000-0000-0000-000000000001");
     private static final UUID STOCK_POSITION_ID = UUID.fromString("70000000-0000-0000-0000-000000000001");
     private static final UUID MOVEMENT_ID = UUID.fromString("80000000-0000-0000-0000-000000000001");
+    private static final UUID SECOND_ITEM_ID = UUID.fromString("40000000-0000-0000-0000-000000000002");
+    private static final UUID SECOND_LOT_ID = UUID.fromString("50000000-0000-0000-0000-000000000002");
+    private static final UUID THIRD_LOT_ID = UUID.fromString("50000000-0000-0000-0000-000000000003");
 
     @Autowired
     private MockMvc mvc;
@@ -143,7 +146,344 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.structuredResults[0].title").value("「牛奶」库存分布"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].位置").value("厨房"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[1].kind").value("ITEM_STOCK_TOTAL"))
+                .andExpect(jsonPath("$.structuredResults[1].rows[0].当前总库存").value("5"))
                 .andExpect(jsonPath("$.jumps[*].type").isNotEmpty());
+    }
+
+    @Test
+    void autoScopeUsesQuestionAndAuthorizedPageContextWithoutRequiringManualSelection() throws Exception {
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个物品怎么清洁？",
+                                  "answerScope": "AUTO",
+                                  "pageContext": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendedAnswerScope").value("KNOWLEDGE_SOURCE"))
+                .andExpect(jsonPath("$.usedAnswerScope").value("KNOWLEDGE_SOURCE"))
+                .andExpect(jsonPath("$.targetScope.type").value("ITEM"))
+                .andExpect(jsonPath("$.targetScope.id").value(ITEM_ID.toString()))
+                .andExpect(jsonPath("$.targetScope.label").value("牛奶"))
+                .andExpect(jsonPath("$.scopeReason").value(org.hamcrest.Matchers.containsString("当前页面")));
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
+    void neutralQuestionOnAnItemPageRecommendsBothSourcesFromThePageContext() throws Exception {
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个呢？",
+                                  "answerScope": "AUTO",
+                                  "pageContext": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendedAnswerScope").value("BOTH"))
+                .andExpect(jsonPath("$.usedAnswerScope").value("BOTH"))
+                .andExpect(jsonPath("$.targetScope.id").value(ITEM_ID.toString()));
+    }
+
+    @Test
+    void knowledgeQuestionWithAnItemAndLocationUsesTheItemWithoutFalseAmbiguity() throws Exception {
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶在厨房怎么保存？",
+                                  "answerScope": "AUTO"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendedAnswerScope").value("KNOWLEDGE_SOURCE"))
+                .andExpect(jsonPath("$.targetScope.type").value("ITEM"))
+                .andExpect(jsonPath("$.targetScope.id").value(ITEM_ID.toString()))
+                .andExpect(jsonPath("$.candidates").isEmpty());
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
+    void factQuestionWithAnItemAndLocationKeepsTheirIntersection() throws Exception {
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '咖啡机', 'DURABLE', ?, 'ACTIVE', 1)
+                """, SECOND_ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'COFFEE-001', 1)
+                """, SECOND_LOT_ID, HOUSEHOLD_ID, SECOND_ITEM_ID);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '2', 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, SECOND_LOT_ID, KITCHEN_ID);
+        chatModel.script(
+                "locationStock", "{\"itemKeyword\":\"牛奶\",\"limit\":10}",
+                response -> "厨房内的牛奶库存见表格。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶在厨房还有多少？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetScope.type").value("LOCATION"))
+                .andExpect(jsonPath("$.targetScope.id").value(KITCHEN_ID.toString()))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOCATION_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"));
+    }
+
+    @Test
+    void explicitAnswerScopeOverridesRecommendationAndReportsTheActualRange() throws Exception {
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}",
+                response -> "家庭事实中记录了牛奶库存。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶怎么清洁？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendedAnswerScope").value("KNOWLEDGE_SOURCE"))
+                .andExpect(jsonPath("$.usedAnswerScope").value("HOUSEHOLD_FACT"))
+                .andExpect(jsonPath("$.targetScope.id").value(ITEM_ID.toString()))
+                .andExpect(jsonPath("$.sources[0].category").value("HOUSEHOLD_FACT"));
+    }
+
+    @Test
+    void ambiguousItemNameReturnsCandidatesWithoutExecutingTheQueryUntilConfirmed() throws Exception {
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '牛奶', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, SECOND_ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶还有多少？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.candidates[*].type",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("ITEM"))))
+                .andExpect(jsonPath("$.candidates[*].detail",
+                        org.hamcrest.Matchers.hasItems(
+                                org.hamcrest.Matchers.containsString("编号 00000001"),
+                                org.hamcrest.Matchers.containsString("编号 00000002"))))
+                .andExpect(jsonPath("$.structuredResults").isEmpty())
+                .andExpect(jsonPath("$.sources").isEmpty());
+
+        assertThat(chatModel.modelCallCount()).isZero();
+
+        chatModel.script(
+                "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
+                response -> "已按确认的物品查询。 ");
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶还有多少？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.targetScope.id").value(ITEM_ID.toString()));
+
+        assertThat(chatModel.modelCallCount()).isGreaterThanOrEqualTo(2);
+    }
+
+    @Test
+    void explicitFactScopeOutsideTheCurrentHouseholdIsRejectedBeforeModelAccess() throws Exception {
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个物品还有多少？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(UUID.randomUUID())))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.errorCode").value("AI_INVALID_CONFIGURATION"));
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
+    void duplicatedLotSerialReturnsLotCandidatesBeforeQueryExecution() throws Exception {
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, serial_number, version)
+                VALUES (?, ?, ?, 'LOT-002', 'SN-SAME', 1),
+                       (?, ?, ?, 'LOT-003', 'SN-SAME', 1)
+                """, SECOND_LOT_ID, HOUSEHOLD_ID, ITEM_ID,
+                THIRD_LOT_ID, HOUSEHOLD_ID, ITEM_ID);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "序列号 SN-SAME 的批次放在哪里？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.candidates[*].type",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("LOT"))));
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
+    void duplicatedLocationLeafNameReturnsPathQualifiedCandidatesBeforeQueryExecution() throws Exception {
+        UUID pantryId = UUID.randomUUID();
+        UUID garageId = UUID.randomUUID();
+        UUID pantryDrawerId = UUID.randomUUID();
+        UUID garageDrawerId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '储藏室', '储藏室', 0, false, 0),
+                       (?, ?, NULL, '车库', '车库', 0, false, 0)
+                """, pantryId, HOUSEHOLD_ID, garageId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '抽屉', '抽屉', 0, false, 0),
+                       (?, ?, ?, '抽屉', '抽屉', 0, false, 0)
+                """, pantryDrawerId, HOUSEHOLD_ID, pantryId,
+                garageDrawerId, HOUSEHOLD_ID, garageId);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "抽屉里有什么？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.candidates[*].type",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("LOCATION"))))
+                .andExpect(jsonPath("$.candidates[*].detail",
+                        org.hamcrest.Matchers.hasItems(
+                                org.hamcrest.Matchers.containsString("储藏室 / 抽屉"),
+                                org.hamcrest.Matchers.containsString("车库 / 抽屉"))));
+
+        assertThat(chatModel.modelCallCount()).isZero();
+
+        jdbc.update("UPDATE inventory_stock_position SET location_id = ? WHERE id = ?",
+                pantryDrawerId, STOCK_POSITION_ID);
+        chatModel.script(
+                "locationStock", "{\"itemKeyword\":\"\",\"limit\":10}",
+                response -> response.contains("储藏室 / 抽屉") && response.contains("牛奶")
+                        ? "已按确认的位置查询。" : "暂时无法确认。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "抽屉里有什么？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(pantryDrawerId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value("已按确认的位置查询。"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOCATION_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value(
+                        org.hamcrest.Matchers.containsString("储藏室 / 抽屉")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.jumps[*].type",
+                        org.hamcrest.Matchers.hasItems("ITEM", "LOT", "LOCATION")));
+    }
+
+    @Test
+    void confirmedLotScopeRejectsModelRequestsForAnotherItem() throws Exception {
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '咖啡机', 'DURABLE', ?, 'ACTIVE', 1)
+                """, SECOND_ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'COFFEE-001', 1)
+                """, SECOND_LOT_ID, HOUSEHOLD_ID, SECOND_ITEM_ID);
+
+        chatModel.script(
+                "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(SECOND_ITEM_ID),
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认：已确认的批次范围不支持查询其他物品。"
+                        : "错误地返回了其他物品库存。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个批次放在哪里？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOT", "id": "%s"}
+                                }
+                                """.formatted(LOT_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(
+                        org.hamcrest.Matchers.containsString("暂时无法确认")))
+                .andExpect(jsonPath("$.structuredResults").isEmpty());
+
+        assertThat(chatModel.firstPrompt()).contains(
+                "LOT", LOT_ID.toString(), "LOT-001", ITEM_ID.toString());
     }
 
     // ==================== 权限失败 ====================
@@ -414,11 +754,13 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         private String toolName = "searchItems";
         private String toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
         private ToolConsumer finalText = response -> "完成。";
+        private String firstPrompt = "";
 
         @Override
         public ChatResponse call(Prompt prompt) {
             int call = modelCalls.incrementAndGet();
             if (call == 1) {
+                firstPrompt = prompt.getContents();
                 if (prompt.getOptions() instanceof ToolCallingChatOptions options
                         && options.getToolCallbacks() != null) {
                     boolean registered = options.getToolCallbacks().stream()
@@ -465,6 +807,7 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
             toolName = "searchItems";
             toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
             finalText = response -> "完成。";
+            firstPrompt = "";
         }
 
         int modelCallCount() {
@@ -473,6 +816,10 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         int toolDispatchCount() {
             return toolDispatchCount.get();
+        }
+
+        String firstPrompt() {
+            return firstPrompt;
         }
 
         interface ToolConsumer {

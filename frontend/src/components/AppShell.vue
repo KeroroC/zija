@@ -39,7 +39,7 @@
           <el-icon><Bell /></el-icon>
           <span>提醒中心</span>
         </el-menu-item>
-        <el-menu-item index="/qa">
+        <el-menu-item index="/qa" :route="qaMenuRoute">
           <el-icon><ChatDotRound /></el-icon>
           <span>家庭问答</span>
         </el-menu-item>
@@ -168,6 +168,26 @@ const activeMenuPath = computed(() => {
   if (route.path.startsWith("/settings/")) return "/settings";
   return route.path;
 });
+
+const qaMenuRoute = computed(() => {
+  const existingType = routeQueryString(route.query.contextType);
+  const existingId = routeQueryString(route.query.contextId);
+  if (existingType && existingId) {
+    return { path: "/qa", query: { contextType: existingType, contextId: existingId } };
+  }
+  if (route.path === "/items") {
+    return qaRoute("ITEM", route.query.highlight);
+  }
+  if (route.path === "/locations") {
+    return qaRoute("LOCATION", route.query.highlight);
+  }
+  if (route.path === "/inventory") {
+    if (routeQueryString(route.query.lotId)) return qaRoute("LOT", route.query.lotId);
+    if (routeQueryString(route.query.itemId)) return qaRoute("ITEM", route.query.itemId);
+    if (routeQueryString(route.query.locationId)) return qaRoute("LOCATION", route.query.locationId);
+  }
+  return { path: "/qa", query: {} };
+});
 // The store already resolves the current member on login and on session
 // restore, so the name is reactive and correct without a separate fetch.
 const householdName = computed(() => session.currentMember?.householdName || "我的家");
@@ -241,6 +261,17 @@ function onUserCommand(command: string) {
   } else if (command === "logout") {
     onLogout();
   }
+}
+
+function qaRoute(type: "ITEM" | "LOT" | "LOCATION", id: unknown) {
+  const contextId = routeQueryString(id);
+  return contextId
+    ? { path: "/qa", query: { contextType: type, contextId } }
+    : { path: "/qa", query: {} };
+}
+
+function routeQueryString(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
 </script>
 

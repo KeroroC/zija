@@ -5,7 +5,7 @@ import com.zija.ai.AiApi;
 import com.zija.ai.internal.HouseholdFactQaModels.Answer;
 import com.zija.ai.internal.HouseholdFactQaModels.AnswerSource;
 import com.zija.ai.internal.HouseholdFactQaModels.Jump;
-import com.zija.ai.internal.HouseholdFactQaModels.KnowledgeScope;
+import com.zija.ai.internal.HouseholdFactQaModels.QaTarget;
 import com.zija.ai.internal.persistence.KnowledgeSourceEntity;
 import com.zija.ai.internal.persistence.KnowledgeSourceMapper;
 import com.zija.catalog.CatalogApi;
@@ -77,7 +77,7 @@ class KnowledgeQaService {
         this.systemApi = systemApi;
     }
 
-    Answer ask(UUID householdId, UUID accountId, String question, KnowledgeScope scope) {
+    Answer ask(UUID householdId, UUID accountId, String question, QaTarget scope) {
         Target target = resolveTarget(householdId, scope);
         KnowledgeAvailability availability = knowledgeAvailability(householdId, target);
         List<AvailableAttachment> attachments = availability.available();
@@ -160,7 +160,7 @@ class KnowledgeQaService {
         return answer;
     }
 
-    private Target resolveTarget(UUID householdId, KnowledgeScope scope) {
+    private Target resolveTarget(UUID householdId, QaTarget scope) {
         if ("ITEM".equals(scope.type())) {
             String itemName = catalogApi.itemNames(householdId, List.of(scope.id())).get(scope.id());
             if (itemName == null) {

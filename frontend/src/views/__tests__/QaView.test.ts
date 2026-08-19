@@ -15,8 +15,10 @@ vi.mock("../../api/inventory", () => ({
 }));
 
 const pushMock = vi.fn();
+const routeQuery: Record<string, string> = {};
 vi.mock("vue-router", () => ({
   useRouter: () => ({ push: pushMock }),
+  useRoute: () => ({ query: routeQuery }),
 }));
 
 import QaView from "../QaView.vue";
@@ -34,6 +36,12 @@ const answerFixture = {
   reasonCode: "ANSWERED",
   summary: "牛奶当前库存 5 瓶，放在厨房。",
   dataTime: "2025-01-01T10:00:00Z",
+  recommendedAnswerScope: "HOUSEHOLD_FACT" as const,
+  usedAnswerScope: "HOUSEHOLD_FACT" as const,
+  scopeReason: "根据问题内容推荐回答范围",
+  candidates: [],
+  answerParts: [],
+  conflicts: [],
   sources: [{ category: "HOUSEHOLD_FACT", label: "家庭事实", dataTime: "2025-01-01T10:00:00Z", available: true }],
   structuredResults: [
     {
@@ -57,6 +65,12 @@ const unavailableFixture = {
   reasonCode: "AI_DISABLED",
   summary: "AI 模型当前不可用（AI_DISABLED），暂时无法确认家庭事实。",
   dataTime: "2025-01-01T10:00:00Z",
+  recommendedAnswerScope: "HOUSEHOLD_FACT" as const,
+  usedAnswerScope: "HOUSEHOLD_FACT" as const,
+  scopeReason: "根据问题内容推荐回答范围",
+  candidates: [],
+  answerParts: [],
+  conflicts: [],
   sources: [],
   structuredResults: [],
   jumps: [],
@@ -68,6 +82,13 @@ const knowledgeFixture = {
   reasonCode: "ANSWERED",
   summary: "先取下滤网，用温水冲洗，晾干后装回。",
   dataTime: "2025-01-01T10:00:00Z",
+  recommendedAnswerScope: "KNOWLEDGE_SOURCE" as const,
+  usedAnswerScope: "KNOWLEDGE_SOURCE" as const,
+  scopeReason: "已使用你确认的回答目标和来源范围",
+  targetScope: { type: "ITEM" as const, id: "item-1", label: "咖啡机" },
+  candidates: [],
+  answerParts: [],
+  conflicts: [],
   sources: [
     {
       category: "KNOWLEDGE_SOURCE",
@@ -130,6 +151,7 @@ describe("QaView", () => {
     mockAsk.mockReset();
     mockFetchItems.mockReset();
     mockFetchLots.mockReset();
+    for (const key of Object.keys(routeQuery)) delete routeQuery[key];
     mockFetchItems.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
     mockFetchLots.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
   });
@@ -162,7 +184,9 @@ describe("QaView", () => {
     expect(wrapper.text()).toContain("LOT-001");
     // 跳转
     expect(wrapper.findAll(".qa-jump").length).toBe(3);
-    expect(mockAsk).toHaveBeenCalledWith("牛奶还有多少、放在哪里？");
+    expect(mockAsk).toHaveBeenCalledWith("牛奶还有多少、放在哪里？", {
+      answerScope: "AUTO",
+    });
   });
 
   it("jump buttons navigate to authoritative pages", async () => {
@@ -233,7 +257,10 @@ describe("QaView", () => {
     mockAsk.mockResolvedValue(knowledgeFixture);
     const wrapper = mountV();
 
-    wrapper.findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "ITEM");
+    wrapper.get('[data-testid="qa-answer-scope"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "KNOWLEDGE_SOURCE");
+    wrapper.get('[data-testid="qa-target-type"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "ITEM");
     await flushPromises();
     wrapper.findComponent({ name: "ElSelect" }).vm.$emit("update:modelValue", "item-1");
     await wrapper.find("textarea").setValue("咖啡机滤网怎么清洁？");
@@ -241,8 +268,8 @@ describe("QaView", () => {
     await flushPromises();
 
     expect(mockAsk).toHaveBeenCalledWith("咖啡机滤网怎么清洁？", {
-      type: "ITEM",
-      id: "item-1",
+      answerScope: "KNOWLEDGE_SOURCE",
+      scope: { type: "ITEM", id: "item-1" },
     });
   });
 
@@ -265,7 +292,8 @@ describe("QaView", () => {
       });
     const wrapper = mountV();
 
-    wrapper.findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "ITEM");
+    wrapper.get('[data-testid="qa-target-type"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "ITEM");
     await flushPromises();
 
     expect(mockFetchItems).toHaveBeenNthCalledWith(1, { page: 1, pageSize: 100 });
@@ -299,7 +327,8 @@ describe("QaView", () => {
       });
     const wrapper = mountV();
 
-    wrapper.findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "LOT");
+    wrapper.get('[data-testid="qa-target-type"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "LOT");
     await flushPromises();
 
     expect(mockFetchLots).toHaveBeenNthCalledWith(1, { page: 1, pageSize: 100 });
@@ -340,5 +369,218 @@ describe("QaView", () => {
     expect(wrapper.text()).toContain(reason);
     expect(wrapper.find("[data-testid='qa-attachment-entry']").exists()).toBe(true);
     expect(wrapper.find(".qa-grounding").exists()).toBe(false);
+  });
+
+  it("recommends a mixed range and lets the user override the actual answer scope", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      question: "咖啡机当前库存和说明书记录一致吗？",
+      recommendedAnswerScope: "BOTH",
+      usedAnswerScope: "HOUSEHOLD_FACT",
+      scopeReason: "已使用你调整后的来源范围",
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("咖啡机当前库存和说明书记录一致吗？");
+    expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("两者");
+
+    wrapper.get('[data-testid="qa-answer-scope"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "HOUSEHOLD_FACT");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenCalledWith("咖啡机当前库存和说明书记录一致吗？", {
+      answerScope: "HOUSEHOLD_FACT",
+    });
+    expect(wrapper.get('[data-testid="qa-used-scope"]').text()).toContain("家庭事实");
+    expect(wrapper.get('[data-testid="qa-used-scope"]').text()).toContain("推荐 两者");
+  });
+
+  it("uses the current business page context when auto scope is selected", async () => {
+    routeQuery.contextType = "ITEM";
+    routeQuery.contextId = "item-1";
+    routeQuery.contextLabel = "咖啡机";
+    mockAsk.mockResolvedValue(knowledgeFixture);
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("这个物品怎么清洁？");
+    expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("知识来源");
+    expect(wrapper.text()).toContain("咖啡机");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenCalledWith("这个物品怎么清洁？", {
+      answerScope: "AUTO",
+      pageContext: { type: "ITEM", id: "item-1", label: "咖啡机" },
+    });
+  });
+
+  it("uses item page context to recommend both sources for a neutral question", async () => {
+    routeQuery.contextType = "ITEM";
+    routeQuery.contextId = "item-1";
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      recommendedAnswerScope: "BOTH",
+      usedAnswerScope: "BOTH",
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("这个呢？");
+    expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("两者");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenCalledWith("这个呢？", {
+      answerScope: "AUTO",
+      pageContext: { type: "ITEM", id: "item-1" },
+    });
+  });
+
+  it("shows ambiguous candidates and retries only after the user confirms one", async () => {
+    const ambiguous = {
+      ...answerFixture,
+      reasonCode: "AMBIGUOUS_TARGET",
+      summary: "找到多个可能的对象，请先确认。",
+      structuredResults: [],
+      sources: [],
+      jumps: [],
+      recommendedAnswerScope: "HOUSEHOLD_FACT" as const,
+      usedAnswerScope: "HOUSEHOLD_FACT" as const,
+      candidates: [
+        { type: "ITEM" as const, id: "item-1", label: "牛奶", detail: "物品 · 消耗品" },
+        { type: "ITEM" as const, id: "item-2", label: "牛奶", detail: "物品 · 耐用品" },
+      ],
+    };
+    mockAsk.mockResolvedValueOnce(ambiguous).mockResolvedValueOnce(answerFixture);
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("牛奶还有多少？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-testid="qa-candidate"]')).toHaveLength(2);
+    expect(mockAsk).toHaveBeenCalledTimes(1);
+
+    await wrapper.findAll('[data-testid="qa-candidate"]')[0].trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenNthCalledWith(2, "牛奶还有多少？", {
+      answerScope: "HOUSEHOLD_FACT",
+      scope: { type: "ITEM", id: "item-1", label: "牛奶" },
+    });
+    expect(wrapper.find('[data-testid="qa-candidate"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("牛奶当前库存 5 瓶");
+  });
+
+  it("keeps prior confirmations while resolving multiple ambiguous groups", async () => {
+    const itemAmbiguity = {
+      ...answerFixture,
+      reasonCode: "AMBIGUOUS_TARGET",
+      usedAnswerScope: "BOTH" as const,
+      candidates: [
+        { type: "ITEM" as const, id: "item-1", label: "咖啡机", detail: "物品 · 耐用品" },
+        { type: "ITEM" as const, id: "item-2", label: "咖啡机", detail: "物品 · 耐用品" },
+      ],
+    };
+    const locationAmbiguity = {
+      ...itemAmbiguity,
+      candidates: [
+        { type: "LOCATION" as const, id: "loc-1", label: "柜子", detail: "位置 · 厨房 / 柜子" },
+        { type: "LOCATION" as const, id: "loc-2", label: "柜子", detail: "位置 · 客厅 / 柜子" },
+      ],
+    };
+    mockAsk
+      .mockResolvedValueOnce(itemAmbiguity)
+      .mockResolvedValueOnce(locationAmbiguity)
+      .mockResolvedValueOnce({ ...answerFixture, usedAnswerScope: "BOTH" });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("咖啡机在柜子里的库存和说明书要求是什么？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+    await wrapper.findAll('[data-testid="qa-candidate"]')[0].trigger("click");
+    await flushPromises();
+    await wrapper.findAll('[data-testid="qa-candidate"]')[0].trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenNthCalledWith(3, "咖啡机在柜子里的库存和说明书要求是什么？", {
+      answerScope: "BOTH",
+      scope: { type: "LOCATION", id: "loc-1", label: "柜子" },
+      confirmedScopes: [{ type: "ITEM", id: "item-1", label: "咖啡机" }],
+    });
+  });
+
+  it("keeps item page context while confirming an ambiguous location", async () => {
+    routeQuery.contextType = "ITEM";
+    routeQuery.contextId = "item-1";
+    routeQuery.contextLabel = "咖啡机";
+    const locationAmbiguity = {
+      ...answerFixture,
+      reasonCode: "AMBIGUOUS_TARGET",
+      usedAnswerScope: "BOTH" as const,
+      candidates: [
+        { type: "LOCATION" as const, id: "loc-1", label: "柜子", detail: "位置 · 厨房 / 柜子" },
+        { type: "LOCATION" as const, id: "loc-2", label: "柜子", detail: "位置 · 客厅 / 柜子" },
+      ],
+    };
+    mockAsk
+      .mockResolvedValueOnce(locationAmbiguity)
+      .mockResolvedValueOnce({ ...answerFixture, usedAnswerScope: "BOTH" });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("柜子里的库存和说明书要求是什么？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+    await wrapper.findAll('[data-testid="qa-candidate"]')[0].trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenNthCalledWith(2, "柜子里的库存和说明书要求是什么？", {
+      answerScope: "BOTH",
+      scope: { type: "LOCATION", id: "loc-1", label: "柜子" },
+      confirmedScopes: [{ type: "ITEM", id: "item-1", label: "咖啡机" }],
+    });
+  });
+
+  it("renders mixed source parts, an explicit conflict, and both authoritative jumps", async () => {
+    mockAsk.mockResolvedValue({
+      ...knowledgeFixture,
+      summary: "家庭事实与知识来源分别如下。",
+      recommendedAnswerScope: "BOTH",
+      usedAnswerScope: "BOTH",
+      answerParts: [
+        { category: "HOUSEHOLD_FACT", label: "家庭事实", reasonCode: "ANSWERED",
+          summary: "当前库存 0 台。", available: true },
+        { category: "KNOWLEDGE_SOURCE", label: "知识来源", reasonCode: "ANSWERED",
+          summary: "说明书记录库存 3 台。", available: true },
+      ],
+      sources: [
+        { category: "HOUSEHOLD_FACT", label: "家庭事实", dataTime: "2025-01-01T10:00:00Z", available: true },
+        { ...knowledgeFixture.sources[0], dataTime: "2025-01-02T10:00:00Z" },
+      ],
+      conflicts: [{ kind: "QUANTITY", factValue: "0", knowledgeValue: "3",
+        note: "家庭事实与知识来源记录不一致" }],
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("咖啡机库存和说明书一致吗？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-testid="qa-answer-part"]')).toHaveLength(2);
+    expect(wrapper.text()).toContain("当前库存 0 台");
+    expect(wrapper.text()).toContain("说明书记录库存 3 台");
+    expect(wrapper.get('[data-testid="qa-conflict"]').text()).toContain("不一致");
+    expect(wrapper.get('[data-testid="qa-conflict"]').text()).toContain("0");
+    expect(wrapper.get('[data-testid="qa-conflict"]').text()).toContain("3");
+    expect(wrapper.text()).toContain(new Date("2025-01-01T10:00:00Z")
+      .toLocaleString("zh-CN", { hour12: false }));
+    expect(wrapper.text()).toContain(new Date("2025-01-02T10:00:00Z")
+      .toLocaleString("zh-CN", { hour12: false }));
+
+    const jumps = wrapper.findAll(".qa-jump");
+    await jumps[0].trigger("click");
+    await jumps[1].trigger("click");
+    expect(pushMock).toHaveBeenCalledWith({ path: "/items", query: { highlight: "item-1" } });
+    expect(pushMock).toHaveBeenCalledWith({ path: "/files", query: { highlight: "file-1" } });
   });
 });

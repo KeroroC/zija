@@ -51,11 +51,14 @@ class HouseholdFactQueries {
     }
 
     /** 按名称关键字搜索活跃物品，返回限量命中；不存在的物品不会出现在结果中。 */
-    List<ItemHit> searchItems(UUID householdId, String keyword, int limit) {
+    List<ItemHit> searchItems(UUID householdId, String keyword, int limit, UUID targetItemId) {
         String needle = keyword == null ? "" : keyword.trim().toLowerCase();
         var unitNames = unitNameMap(householdId);
         List<ItemHit> hits = new ArrayList<>();
         for (var item : catalogApi.listActiveItems(householdId)) {
+            if (targetItemId != null && !targetItemId.equals(item.id())) {
+                continue;
+            }
             if (!needle.isEmpty() && !item.name().toLowerCase().contains(needle)) {
                 continue;
             }
@@ -102,14 +105,58 @@ class HouseholdFactQueries {
                 positions);
     }
 
+    /** 指定位置及其子位置中的当前库存，按物品与批次返回有界快照。 */
+    LocationStock locationStock(UUID householdId, UUID locationId, String itemKeyword, int limit) {
+        locationApi.requireLocation(householdId, locationId);
+        String itemNeedle = itemKeyword == null ? "" : itemKeyword.trim().toLowerCase();
+        var locationPaths = locationPathMap(householdId);
+        var locationScope = new LinkedHashSet<UUID>();
+        collectLocationScope(locationApi.tree(householdId).roots(), locationId, false, locationScope);
+        var unitNames = unitNameMap(householdId);
+        List<LocationPosition> positions = new ArrayList<>();
+        for (var item : catalogApi.listActiveItems(householdId)) {
+            if (!itemNeedle.isEmpty() && !item.name().toLowerCase().contains(itemNeedle)) {
+                continue;
+            }
+            for (var position : inventoryApi.stockPositionsOfItem(householdId, item.id())) {
+                if (!locationScope.contains(position.locationId())
+                        || position.quantity().compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                var lot = inventoryApi.findLot(householdId, position.lotId()).orElse(null);
+                positions.add(new LocationPosition(
+                        item.id(), item.name(), unitNames.getOrDefault(item.unitId(), ""),
+                        position.lotId(), lot != null ? lot.lotNumber() : "",
+                        position.locationId(), locationPaths.getOrDefault(position.locationId(), ""),
+                        position.quantity(), lot != null ? lot.expiryDate() : null));
+                if (positions.size() >= limit) {
+                    return new LocationStock(locationId, locationPaths.getOrDefault(locationId, ""), positions);
+                }
+            }
+        }
+        return new LocationStock(locationId, locationPaths.getOrDefault(locationId, ""), positions);
+    }
+
     /** 不限物品的临期批次快照（数量 > 0，到期日在窗口内）。 */
-    List<ExpiringLot> expiringLots(UUID householdId, int withinDays, int limit) {
+    List<ExpiringLot> expiringLots(
+            UUID householdId,
+            int withinDays,
+            int limit,
+            UUID targetItemId,
+            UUID targetLotId
+    ) {
         var unitNames = unitNameMap(householdId);
         LocalDate today = LocalDate.now(clock);
         LocalDate horizon = today.plusDays(Math.max(0, withinDays));
         List<ExpiringLot> results = new ArrayList<>();
         for (var item : catalogApi.listActiveItems(householdId)) {
+            if (targetItemId != null && !targetItemId.equals(item.id())) {
+                continue;
+            }
             for (var lot : inventoryApi.lotsOfItem(householdId, item.id())) {
+                if (targetLotId != null && !targetLotId.equals(lot.lotId())) {
+                    continue;
+                }
                 if (lot.expiryDate() == null
                         || lot.expiryDate().isBefore(today)
                         || lot.expiryDate().isAfter(horizon)
@@ -133,10 +180,13 @@ class HouseholdFactQueries {
     }
 
     /** 低库存物品快照（阈值模式启用且当前总量低于阈值）。 */
-    List<LowStockItem> lowStock(UUID householdId, int limit) {
+    List<LowStockItem> lowStock(UUID householdId, int limit, UUID targetItemId) {
         var unitNames = unitNameMap(householdId);
         List<LowStockItem> results = new ArrayList<>();
         for (var item : catalogApi.listActiveItems(householdId)) {
+            if (targetItemId != null && !targetItemId.equals(item.id())) {
+                continue;
+            }
             if (!"CUSTOM".equals(item.lowStockMode()) || item.lowStockThreshold() == null) {
                 continue;
             }
@@ -154,19 +204,34 @@ class HouseholdFactQueries {
     }
 
     /** 指定物品最近若干条不可变流水（原因、操作人、时间）。 */
-    List<MovementFact> itemMovements(UUID householdId, UUID itemId, int limit) {
+    List<MovementFact> itemMovements(
+            UUID householdId,
+            UUID itemId,
+            int limit,
+            UUID targetLotId,
+            UUID targetLocationId
+    ) {
         var item = catalogApi.requireItem(householdId, itemId);
         var locationPaths = locationPathMap(householdId);
         var operatorNames = collectOperatorNames(householdId, itemId);
         List<MovementFact> all = new ArrayList<>();
         for (var lot : inventoryApi.lotsOfItem(householdId, itemId)) {
+            if (targetLotId != null && !targetLotId.equals(lot.lotId())) {
+                continue;
+            }
             for (var movement : inventoryApi.movementsOfLot(householdId, lot.lotId())) {
+                if (targetLocationId != null
+                        && !targetLocationId.equals(movement.fromLocationId())
+                        && !targetLocationId.equals(movement.toLocationId())) {
+                    continue;
+                }
                 all.add(new MovementFact(
                         movement.id(), movement.lotId(), item.id(), item.name(),
                         movement.type(), movement.quantity(),
                         movement.reason(),
                         operatorNames.getOrDefault(movement.operatorAccountId(), ""),
                         movement.businessTime(),
+                        movement.fromLocationId(), movement.toLocationId(),
                         locationPaths.getOrDefault(movement.fromLocationId(), ""),
                         locationPaths.getOrDefault(movement.toLocationId(), "")));
             }
@@ -203,6 +268,19 @@ class HouseholdFactQueries {
             String path = prefix.isEmpty() ? node.name() : prefix + " / " + node.name();
             out.put(node.id(), path);
             collectLocationPaths(node.children(), path, out);
+        }
+    }
+
+    private void collectLocationScope(
+            List<LocationApi.LocationNode> nodes,
+            UUID targetId,
+            boolean withinTarget,
+            LinkedHashSet<UUID> out
+    ) {
+        for (var node : nodes) {
+            boolean include = withinTarget || targetId.equals(node.id());
+            if (include) out.add(node.id());
+            collectLocationScope(node.children(), targetId, include, out);
         }
     }
 
@@ -243,6 +321,22 @@ class HouseholdFactQueries {
             String unitName,
             BigDecimal totalStock,
             List<Position> positions
+    ) {
+    }
+
+    record LocationStock(UUID locationId, String locationPath, List<LocationPosition> positions) {
+    }
+
+    record LocationPosition(
+            UUID itemId,
+            String itemName,
+            String unitName,
+            UUID lotId,
+            String lotNumber,
+            UUID locationId,
+            String locationPath,
+            BigDecimal quantity,
+            LocalDate expiryDate
     ) {
     }
 
@@ -287,6 +381,8 @@ class HouseholdFactQueries {
             String reason,
             String operatorDisplayName,
             OffsetDateTime businessTime,
+            UUID fromLocationId,
+            UUID toLocationId,
             String fromLocationPath,
             String toLocationPath
     ) {

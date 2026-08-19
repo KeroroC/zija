@@ -3,6 +3,7 @@ package com.zija.ai.internal;
 import com.zija.ai.internal.HouseholdFactQaModels.Collector;
 import com.zija.ai.internal.HouseholdFactQaModels.Jump;
 import com.zija.ai.internal.HouseholdFactQaModels.StructuredResult;
+import com.zija.inventory.InventoryApi;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -35,11 +36,21 @@ final class HouseholdFactTools {
     private final UUID householdId;
     private final HouseholdFactQueries queries;
     private final Collector collector;
+    private final HouseholdFactQaModels.QaTarget target;
+    private final InventoryApi inventoryApi;
 
-    HouseholdFactTools(UUID householdId, HouseholdFactQueries queries, Collector collector) {
+    HouseholdFactTools(
+            UUID householdId,
+            HouseholdFactQueries queries,
+            Collector collector,
+            HouseholdFactQaModels.QaTarget target,
+            InventoryApi inventoryApi
+    ) {
         this.householdId = householdId;
         this.queries = queries;
         this.collector = collector;
+        this.target = target;
+        this.inventoryApi = inventoryApi;
     }
 
     @Tool(description = "在当前家庭中按名称关键字搜索物品，返回命中物品的 id、名称、单位与当前总库存")
@@ -49,7 +60,13 @@ final class HouseholdFactTools {
     ) {
         int n = boundedLimit(limit);
         try {
-            var hits = queries.searchItems(householdId, keyword == null ? "" : keyword, n);
+            if (target != null && !isItemTarget()) {
+                return unavailable("search_items");
+            }
+            var hits = queries.searchItems(householdId, keyword == null ? "" : keyword, n, targetItemId());
+            if (hits.isEmpty() && isItemTarget()) {
+                hits = queries.searchItems(householdId, "", n, targetItemId());
+            }
             List<Map<String, String>> rows = hits.stream()
                     .map(hit -> cellMap(
                             "itemId", String.valueOf(hit.itemId()),
@@ -81,7 +98,7 @@ final class HouseholdFactTools {
     ) {
         int n = boundedLimit(limit);
         try {
-            var stock = queries.itemStock(householdId, UUID.fromString(itemId));
+            var stock = scopeStock(queries.itemStock(householdId, authorizedItemId(itemId)));
             List<Map<String, String>> rows = stock.positions().stream()
                     .limit(n)
                     .map(p -> cellMap("位置", p.locationPath(),
@@ -91,6 +108,13 @@ final class HouseholdFactTools {
                     .toList();
             collector.addResult(new StructuredResult("ITEM_STOCK",
                     "「" + stock.itemName() + "」库存分布", rows));
+            collector.addResult(new StructuredResult(
+                    "ITEM_STOCK_TOTAL",
+                    "「" + stock.itemName() + "」库存总量",
+                    List.of(cellMap(
+                            "物品", stock.itemName(),
+                            "当前总库存", str(stock.totalStock()),
+                            "单位", stock.unitName()))));
             collector.addJump(new Jump("ITEM", stock.itemName(),
                     String.valueOf(stock.itemId()), null, null));
             stock.positions().stream().limit(n).forEach(p -> {
@@ -117,6 +141,54 @@ final class HouseholdFactTools {
         }
     }
 
+    @Tool(description = "查询服务端已确认位置及其子位置中的当前库存，返回物品、批次、位置、数量与到期日")
+    Map<String, Object> locationStock(
+            @ToolParam(description = "物品名称关键字，未指定则返回该位置内全部物品，选填") String itemKeyword,
+            @ToolParam(description = "最多返回多少条库存位，1-50，选填") Integer limit
+    ) {
+        int n = boundedLimit(limit);
+        try {
+            if (!isLocationTarget()) {
+                return unavailable("location_stock");
+            }
+            var stock = queries.locationStock(householdId, target.id(), itemKeyword, n);
+            List<Map<String, String>> rows = stock.positions().stream()
+                    .map(position -> cellMap(
+                            "物品", position.itemName(),
+                            "批次号", orDash(position.lotNumber()),
+                            "位置", position.locationPath(),
+                            "数量", str(position.quantity()),
+                            "单位", position.unitName(),
+                            "到期日", position.expiryDate() != null
+                                    ? ISO_DATE.format(position.expiryDate()) : "-"))
+                    .toList();
+            collector.addResult(new StructuredResult(
+                    "LOCATION_STOCK", "「" + stock.locationPath() + "」当前库存", rows));
+            stock.positions().forEach(position -> {
+                collector.addJump(new Jump(
+                        "ITEM", position.itemName(), position.itemId().toString(), null, null));
+                collector.addJump(new Jump(
+                        "LOT", orDash(position.lotNumber()), position.itemId().toString(),
+                        position.lotId().toString(), null));
+            });
+            collector.addJump(new Jump(
+                    "LOCATION", stock.locationPath(), null, null, stock.locationId().toString()));
+            return Map.of(
+                    "locationPath", stock.locationPath(),
+                    "positions", stock.positions().stream().map(position -> Map.of(
+                            "itemName", position.itemName(),
+                            "lotNumber", orDash(position.lotNumber()),
+                            "locationPath", position.locationPath(),
+                            "quantity", str(position.quantity()),
+                            "unitName", position.unitName(),
+                            "expiryDate", position.expiryDate() != null
+                                    ? ISO_DATE.format(position.expiryDate()) : ""
+                    )).toList());
+        } catch (RuntimeException ex) {
+            return unavailable("location_stock");
+        }
+    }
+
     @Tool(description = "查询当前家庭在指定天数内到期的临期批次（含物品、批次号、到期日、剩余数量）")
     Map<String, Object> expiringLots(
             @ToolParam(description = "未来多少天内到期，例如 30，选填") Integer withinDays,
@@ -125,7 +197,11 @@ final class HouseholdFactTools {
         int days = withinDays == null ? 30 : Math.max(1, withinDays);
         int n = boundedLimit(limit);
         try {
-            var lots = queries.expiringLots(householdId, days, n);
+            if (isLocationTarget() || isLotTarget() && targetItemId() == null) {
+                return unavailable("expiring_lots");
+            }
+            var lots = queries.expiringLots(
+                    householdId, days, n, targetItemId(), isLotTarget() ? target.id() : null);
             List<Map<String, String>> rows = lots.stream()
                     .map(lot -> cellMap("物品", lot.itemName(),
                             "批次号", lot.lotNumber(),
@@ -161,7 +237,10 @@ final class HouseholdFactTools {
     ) {
         int n = boundedLimit(limit);
         try {
-            var items = queries.lowStock(householdId, n);
+            if (target != null && !isItemTarget()) {
+                return unavailable("low_stock");
+            }
+            var items = queries.lowStock(householdId, n, targetItemId());
             List<Map<String, String>> rows = items.stream()
                     .map(item -> cellMap("物品", item.itemName(),
                             "单位", item.unitName(),
@@ -190,7 +269,13 @@ final class HouseholdFactTools {
     ) {
         int n = boundedLimit(limit);
         try {
-            var movements = queries.itemMovements(householdId, UUID.fromString(itemId), n);
+            UUID authorizedItemId = authorizedItemId(itemId);
+            var movements = queries.itemMovements(
+                    householdId,
+                    authorizedItemId,
+                    n,
+                    isLotTarget() ? target.id() : null,
+                    isLocationTarget() ? target.id() : null);
             List<Map<String, String>> rows = movements.stream()
                     .map(m -> cellMap("类型", m.type(),
                             "数量", str(m.quantity()),
@@ -200,9 +285,10 @@ final class HouseholdFactTools {
                             "从", orDash(m.fromLocationPath()),
                             "到", orDash(m.toLocationPath())))
                     .toList();
-            String itemName = movements.isEmpty() ? itemId : movements.getFirst().itemName();
+            String itemName = movements.isEmpty() && isItemTarget() ? target.label()
+                    : movements.isEmpty() ? itemId : movements.getFirst().itemName();
             collector.addResult(new StructuredResult("MOVEMENTS", "「" + itemName + "」最近流水", rows));
-            collector.addJump(new Jump("ITEM", itemName, itemId, null, null));
+            collector.addJump(new Jump("ITEM", itemName, authorizedItemId.toString(), null, null));
             if (!rows.isEmpty()) {
                 collector.addJump(new Jump("MOVEMENT", "查看流水", itemId, null, null));
             }
@@ -224,6 +310,52 @@ final class HouseholdFactTools {
             return DEFAULT_LIMIT;
         }
         return Math.min(limit, MAX_LIMIT);
+    }
+
+    private boolean isItemTarget() {
+        return target != null && "ITEM".equals(target.type());
+    }
+
+    private boolean isLotTarget() {
+        return target != null && "LOT".equals(target.type());
+    }
+
+    private boolean isLocationTarget() {
+        return target != null && "LOCATION".equals(target.type());
+    }
+
+    private UUID targetItemId() {
+        if (isItemTarget()) {
+            return target.id();
+        }
+        if (isLotTarget() && inventoryApi != null) {
+            return inventoryApi.findLot(householdId, target.id())
+                    .map(InventoryApi.LotFlat::itemId)
+                    .orElse(null);
+        }
+        return null;
+    }
+
+    private HouseholdFactQueries.ItemStock scopeStock(HouseholdFactQueries.ItemStock stock) {
+        if (target == null || isItemTarget()) return stock;
+        var positions = stock.positions().stream()
+                .filter(position -> !isLotTarget() || target.id().equals(position.lotId()))
+                .filter(position -> !isLocationTarget() || target.id().equals(position.locationId()))
+                .toList();
+        BigDecimal total = positions.stream()
+                .map(HouseholdFactQueries.Position::quantity)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new HouseholdFactQueries.ItemStock(
+                stock.itemId(), stock.itemName(), stock.unitName(), total, positions);
+    }
+
+    private UUID authorizedItemId(String requested) {
+        UUID requestedId = UUID.fromString(requested);
+        UUID scopedItemId = targetItemId();
+        if (scopedItemId != null && !scopedItemId.equals(requestedId)) {
+            throw new IllegalArgumentException("模型请求超出已确认的问答范围");
+        }
+        return scopedItemId != null ? scopedItemId : requestedId;
     }
 
     private Map<String, Object> unavailable(String tool) {

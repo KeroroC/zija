@@ -169,6 +169,328 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
     }
 
     @Test
+    void mixedAnswerKeepsFactAndKnowledgePartsSeparateAndMarksTheirConflict() throws Exception {
+        vectorStore.add(List.of(document(
+                "说明书记录当前库存 3 台。",
+                HOUSEHOLD_ID, "ITEM", ITEM_ID, ITEM_ID, null, FILE_ID,
+                20, "旧库存记录", 200, 214)));
+        chatModel.reset(
+                "家庭事实显示当前库存 0 台。",
+                "知识来源记录当前库存 3 台。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机当前库存和说明书记录一致吗？",
+                                  "answerScope": "BOTH",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.usedAnswerScope").value("BOTH"))
+                .andExpect(jsonPath("$.answerParts.length()").value(2))
+                .andExpect(jsonPath("$.answerParts[*].category",
+                        org.hamcrest.Matchers.containsInAnyOrder("HOUSEHOLD_FACT", "KNOWLEDGE_SOURCE")))
+                .andExpect(jsonPath("$.sources[*].category",
+                        org.hamcrest.Matchers.hasItems("HOUSEHOLD_FACT", "KNOWLEDGE_SOURCE")))
+                .andExpect(jsonPath("$.conflicts[0].kind").value("QUANTITY"))
+                .andExpect(jsonPath("$.conflicts[0].factValue").value("0"))
+                .andExpect(jsonPath("$.conflicts[0].knowledgeValue").value("3"))
+                .andExpect(jsonPath("$.conflicts[0].note").value(
+                        org.hamcrest.Matchers.containsString("不一致")));
+    }
+
+    @Test
+    void mixedAnswerMarksLocationConflictWhenBothSourcesNameOneLocation() throws Exception {
+        vectorStore.add(List.of(document(
+                "设备的存放位置是厨房。",
+                HOUSEHOLD_ID, "ITEM", ITEM_ID, ITEM_ID, null, FILE_ID,
+                21, "存放要求", 215, 226)));
+        chatModel.reset(
+                "家庭事实显示存放位置是客厅。",
+                "知识来源记录存放位置是厨房。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机放在哪里，说明书怎么说？",
+                                  "answerScope": "BOTH",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conflicts[0].kind").value("LOCATION"))
+                .andExpect(jsonPath("$.conflicts[0].factValue").value("客厅"))
+                .andExpect(jsonPath("$.conflicts[0].knowledgeValue").value("厨房"));
+    }
+
+    @Test
+    void mixedAnswerDoesNotTreatUnrelatedDatesAsAConflict() throws Exception {
+        vectorStore.add(List.of(document(
+                "说明书发布日期是 2025-01-01，记录当前库存 3 台。",
+                HOUSEHOLD_ID, "ITEM", ITEM_ID, ITEM_ID, null, FILE_ID,
+                22, "文档信息", 227, 254)));
+        chatModel.reset(
+                "家庭事实显示当前库存 3 台，数据时间是 2026-08-19。",
+                "知识来源记录当前库存 3 台，说明书发布日期是 2025-01-01。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机当前库存和说明书记录一致吗？",
+                                  "answerScope": "BOTH",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conflicts").isEmpty());
+    }
+
+    @Test
+    void knowledgeQuestionIgnoresAmbiguousLocationNamesWhenTheItemIsUnambiguous() throws Exception {
+        UUID firstRoomId = UUID.randomUUID();
+        UUID secondRoomId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '厨房', '厨房', 0, false, 0),
+                       (?, ?, NULL, '客厅', '客厅', 1, false, 0)
+                """, firstRoomId, HOUSEHOLD_ID, secondRoomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '柜子', '柜子', 0, false, 0),
+                       (?, ?, ?, '柜子', '柜子', 0, false, 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, firstRoomId,
+                UUID.randomUUID(), HOUSEHOLD_ID, secondRoomId);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机放在柜子里时怎么维护？",
+                                  "answerScope": "KNOWLEDGE_SOURCE"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.targetScope.type").value("ITEM"))
+                .andExpect(jsonPath("$.targetScope.id").value(ITEM_ID.toString()))
+                .andExpect(jsonPath("$.candidates").isEmpty());
+    }
+
+    @Test
+    void mixedQuestionContinuesAfterConfirmingAnAmbiguousLocation() throws Exception {
+        UUID firstRoomId = UUID.randomUUID();
+        UUID secondRoomId = UUID.randomUUID();
+        UUID firstCabinetId = UUID.randomUUID();
+        UUID secondCabinetId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '厨房', '厨房', 0, false, 0),
+                       (?, ?, NULL, '客厅', '客厅', 1, false, 0)
+                """, firstRoomId, HOUSEHOLD_ID, secondRoomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '柜子', '柜子', 0, false, 0),
+                       (?, ?, ?, '柜子', '柜子', 0, false, 0)
+                """, firstCabinetId, HOUSEHOLD_ID, firstRoomId,
+                secondCabinetId, HOUSEHOLD_ID, secondRoomId);
+        chatModel.reset(
+                "家庭事实显示柜子中没有咖啡机库存。",
+                "知识来源说明咖啡机应定期清洁滤网。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机在柜子里的库存和说明书维护要求是什么？",
+                                  "answerScope": "BOTH"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.candidates[*].type",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("LOCATION"))));
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机在柜子里的库存和说明书维护要求是什么？",
+                                  "answerScope": "BOTH",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(firstCabinetId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.targetScope.type").value("LOCATION"))
+                .andExpect(jsonPath("$.targetScope.id").value(firstCabinetId.toString()))
+                .andExpect(jsonPath("$.answerParts.length()").value(2));
+    }
+
+    @Test
+    void mixedQuestionConfirmsItemAndLocationAmbiguitiesInSequence() throws Exception {
+        UUID secondItemId = UUID.randomUUID();
+        UUID firstRoomId = UUID.randomUUID();
+        UUID secondRoomId = UUID.randomUUID();
+        UUID firstCabinetId = UUID.randomUUID();
+        UUID secondCabinetId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '咖啡机', 'DURABLE', ?, 'ACTIVE', 1)
+                """, secondItemId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '厨房', '厨房', 0, false, 0),
+                       (?, ?, NULL, '客厅', '客厅', 1, false, 0)
+                """, firstRoomId, HOUSEHOLD_ID, secondRoomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '柜子', '柜子', 0, false, 0),
+                       (?, ?, ?, '柜子', '柜子', 0, false, 0)
+                """, firstCabinetId, HOUSEHOLD_ID, firstRoomId,
+                secondCabinetId, HOUSEHOLD_ID, secondRoomId);
+        chatModel.reset(
+                "家庭事实显示柜子中没有咖啡机库存。",
+                "知识来源说明咖啡机应定期清洁滤网。");
+
+        String question = "咖啡机在柜子里的库存和说明书维护要求是什么？";
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "%s",
+                                  "answerScope": "BOTH"
+                                }
+                                """.formatted(question)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.candidates[*].type",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("ITEM"))));
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "%s",
+                                  "answerScope": "BOTH",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(question, ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.candidates[*].type",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("LOCATION"))));
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "%s",
+                                  "answerScope": "BOTH",
+                                  "scope": {"type": "LOCATION", "id": "%s"},
+                                  "confirmedScopes": [{"type": "ITEM", "id": "%s"}]
+                                }
+                                """.formatted(question, firstCabinetId, ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.targetScope.type").value("LOCATION"))
+                .andExpect(jsonPath("$.targetScope.id").value(firstCabinetId.toString()))
+                .andExpect(jsonPath("$.answerParts.length()").value(2));
+    }
+
+    @Test
+    void mixedQuestionKeepsItemPageContextAfterConfirmingAnAmbiguousLocation() throws Exception {
+        UUID firstRoomId = UUID.randomUUID();
+        UUID secondRoomId = UUID.randomUUID();
+        UUID firstCabinetId = UUID.randomUUID();
+        UUID secondCabinetId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '厨房', '厨房', 0, false, 0),
+                       (?, ?, NULL, '客厅', '客厅', 1, false, 0)
+                """, firstRoomId, HOUSEHOLD_ID, secondRoomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '柜子', '柜子', 0, false, 0),
+                       (?, ?, ?, '柜子', '柜子', 0, false, 0)
+                """, firstCabinetId, HOUSEHOLD_ID, firstRoomId,
+                secondCabinetId, HOUSEHOLD_ID, secondRoomId);
+        chatModel.reset(
+                "家庭事实显示柜子中没有咖啡机库存。",
+                "知识来源说明咖啡机应定期清洁滤网。");
+
+        String question = "这个物品在柜子里的库存和说明书维护要求是什么？";
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "%s",
+                                  "answerScope": "BOTH",
+                                  "pageContext": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(question, ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.candidates[*].type",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("LOCATION"))));
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "%s",
+                                  "answerScope": "BOTH",
+                                  "scope": {"type": "LOCATION", "id": "%s"},
+                                  "confirmedScopes": [{"type": "ITEM", "id": "%s"}]
+                                }
+                                """.formatted(question, firstCabinetId, ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.targetScope.type").value("LOCATION"))
+                .andExpect(jsonPath("$.targetScope.id").value(firstCabinetId.toString()))
+                .andExpect(jsonPath("$.answerParts.length()").value(2));
+    }
+
+    @Test
     void itemScopeUsesCurrentHouseholdAndAllowedMountsOnly() throws Exception {
         insertAvailableAttachment(HOUSEHOLD_FILE_ID, HOUSEHOLD_SOURCE_ID,
                 "家庭维护约定.txt", "HOUSEHOLD", HOUSEHOLD_ID);
@@ -569,7 +891,8 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
 
     static final class CapturingChatModel implements ChatModel {
 
-        private String answer = "";
+        private String factAnswer = "";
+        private String knowledgeAnswer = "";
         private String lastPrompt = "";
         private int callCount;
         private boolean failing;
@@ -581,6 +904,10 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
                 throw new IllegalStateException("model unavailable");
             }
             lastPrompt = prompt.getContents();
+            boolean factPrompt = prompt.getOptions() instanceof ToolCallingChatOptions options
+                    && options.getToolCallbacks() != null
+                    && !options.getToolCallbacks().isEmpty();
+            String answer = factPrompt ? factAnswer : knowledgeAnswer;
             return new ChatResponse(List.of(new Generation(new AssistantMessage(answer))));
         }
 
@@ -590,7 +917,12 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
         }
 
         void reset(String answer) {
-            this.answer = answer;
+            reset(answer, answer);
+        }
+
+        void reset(String factAnswer, String knowledgeAnswer) {
+            this.factAnswer = factAnswer;
+            this.knowledgeAnswer = knowledgeAnswer;
             this.lastPrompt = "";
             this.callCount = 0;
             this.failing = false;

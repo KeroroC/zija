@@ -17,22 +17,35 @@ final class HouseholdFactQaModels {
     private HouseholdFactQaModels() {
     }
 
-    record QaRequest(String question, KnowledgeScope scope) {
+    record QaRequest(
+            String question,
+            QaTarget scope,
+            String answerScope,
+            QaTarget pageContext,
+            List<QaTarget> confirmedScopes
+    ) {
 
-        QaRequest(String question) {
-            this(question, null);
+        QaRequest {
+            confirmedScopes = confirmedScopes == null ? List.of() : List.copyOf(confirmedScopes);
         }
+
     }
 
-    record KnowledgeScope(String type, UUID id) {
-        KnowledgeScope {
+    record QaTarget(String type, UUID id, String label) {
+
+        QaTarget(String type, UUID id) {
+            this(type, id, null);
+        }
+
+        QaTarget {
             if (type == null || type.isBlank() || id == null) {
                 throw new IllegalArgumentException("知识问答范围类型和对象不能为空");
             }
             type = type.trim().toUpperCase(java.util.Locale.ROOT);
-            if (!"ITEM".equals(type) && !"LOT".equals(type)) {
-                throw new IllegalArgumentException("知识问答范围仅支持 ITEM 或 LOT");
+            if (!"ITEM".equals(type) && !"LOT".equals(type) && !"LOCATION".equals(type)) {
+                throw new IllegalArgumentException("问答范围仅支持 ITEM、LOT 或 LOCATION");
             }
+            label = label == null || label.isBlank() ? null : label.trim();
         }
     }
 
@@ -44,7 +57,58 @@ final class HouseholdFactQaModels {
             List<StructuredResult> structuredResults,
             List<AnswerSource> sources,
             List<Jump> jumps,
-            OffsetDateTime dataTime
+            OffsetDateTime dataTime,
+            String recommendedAnswerScope,
+            String usedAnswerScope,
+            String scopeReason,
+            QaTarget targetScope,
+            List<ScopeCandidate> candidates,
+            List<AnswerPart> answerParts,
+            List<SourceConflict> conflicts
+    ) {
+
+        Answer(
+                String question,
+                boolean modelAvailable,
+                String reasonCode,
+                String summary,
+                List<StructuredResult> structuredResults,
+                List<AnswerSource> sources,
+                List<Jump> jumps,
+                OffsetDateTime dataTime
+        ) {
+            this(question, modelAvailable, reasonCode, summary, structuredResults, sources, jumps, dataTime,
+                    null, null, null, null, List.of(), List.of(), List.of());
+        }
+
+        Answer withPlan(ScopePlan plan) {
+            return new Answer(question, modelAvailable, reasonCode, summary, structuredResults, sources, jumps,
+                    dataTime, plan.recommendedAnswerScope(), plan.usedAnswerScope(), plan.scopeReason(),
+                    plan.target(), plan.candidates(), answerParts, conflicts);
+        }
+
+    }
+
+    /** 服务端解析出的候选对象，用户确认前不得执行问答。 */
+    record ScopeCandidate(String type, UUID id, String label, String detail) {
+    }
+
+    /** 混合回答中的单一来源摘要。 */
+    record AnswerPart(String category, String label, String reasonCode, String summary, boolean available) {
+    }
+
+    /** 家庭事实与附件内容之间可解释的字段冲突。 */
+    record SourceConflict(String kind, String factValue, String knowledgeValue, String note) {
+    }
+
+    record ScopePlan(
+            String recommendedAnswerScope,
+            String usedAnswerScope,
+            String scopeReason,
+            QaTarget target,
+            QaTarget knowledgeTarget,
+            List<ScopeCandidate> candidates,
+            boolean needsConfirmation
     ) {
     }
 
