@@ -88,17 +88,21 @@ class HouseholdFactQaService {
             throw exception;
         }
         HouseholdFactQaModels.Answer answer;
-        try {
-            answer = executionGuard.invoke(accountId, session, question,
-                    () -> executePlan(householdId, question, plan, session));
-        } catch (AiRequestLimitException exception) {
-            auditFailure(householdId, accountId, requestId, session.providerId(), exception.reasonCode());
-            throw exception;
-        } catch (AiProviderUnavailableException exception) {
-            answer = executionFailureFallback(householdId, question, plan);
-        } catch (RuntimeException exception) {
-            auditFailure(householdId, accountId, requestId, session.providerId(), REASON_QA_FAILED);
-            throw exception;
+        if (plan.needsConfirmation()) {
+            answer = clarification(question, plan);
+        } else {
+            try {
+                answer = executionGuard.invoke(accountId, session, question,
+                        () -> executePlan(householdId, question, plan, session));
+            } catch (AiRequestLimitException exception) {
+                auditFailure(householdId, accountId, requestId, session.providerId(), exception.reasonCode());
+                throw exception;
+            } catch (AiProviderUnavailableException exception) {
+                answer = executionFailureFallback(householdId, question, plan);
+            } catch (RuntimeException exception) {
+                auditFailure(householdId, accountId, requestId, session.providerId(), REASON_QA_FAILED);
+                throw exception;
+            }
         }
         audit(householdId, accountId, requestId, session.providerId(), answer);
         return answer;
@@ -125,7 +129,7 @@ class HouseholdFactQaService {
             AiService.QaSession session
     ) {
         if (plan.needsConfirmation()) {
-            return clarification(question, plan, session);
+            return clarification(question, plan);
         }
         return switch (plan.usedAnswerScope()) {
             case QaScopePlanner.HOUSEHOLD_FACT -> askFacts(householdId, question, plan.target(), session)
@@ -186,6 +190,9 @@ class HouseholdFactQaService {
             String question,
             HouseholdFactQaModels.ScopePlan plan
     ) {
+        if (plan.needsConfirmation()) {
+            return clarification(question, plan);
+        }
         return switch (plan.usedAnswerScope()) {
             case QaScopePlanner.HOUSEHOLD_FACT -> structuredFactFallback(
                     householdId, question, plan.target(), "AI_QA_TIMEOUT").withPlan(plan);
@@ -339,14 +346,13 @@ class HouseholdFactQaService {
 
     private HouseholdFactQaModels.Answer clarification(
             String question,
-            HouseholdFactQaModels.ScopePlan plan,
-            AiService.QaSession session
+            HouseholdFactQaModels.ScopePlan plan
     ) {
         String summary = plan.candidates().isEmpty()
                 ? "请先选择要查询的物品或批次，再继续提问。"
                 : "找到多个可能的对象，请先确认你指的是哪一个。";
         return new HouseholdFactQaModels.Answer(
-                question, session.status().available(), "AMBIGUOUS_TARGET", summary,
+                question, false, "AMBIGUOUS_TARGET", summary,
                 List.of(), List.of(), List.of(), OffsetDateTime.now(),
                 plan.recommendedAnswerScope(), plan.usedAnswerScope(), plan.scopeReason(),
                 plan.target(), plan.candidates(), List.of(), List.of());

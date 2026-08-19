@@ -311,6 +311,15 @@ class KnowledgeQaService {
     }
 
     Answer executionUnavailable(UUID householdId, String question, QaTarget scope) {
+        if (scope == null) {
+            return unavailable(
+                    question,
+                    false,
+                    REASON_MODEL_UNAVAILABLE,
+                    "AI 问答处理超时，无法依据附件生成回答。",
+                    attachmentJumps(List.of()),
+                    OffsetDateTime.now());
+        }
         Target target = resolveTarget(householdId, scope);
         KnowledgeAvailability availability = knowledgeAvailability(householdId, target);
         return unavailable(
