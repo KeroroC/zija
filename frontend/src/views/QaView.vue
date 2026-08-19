@@ -204,6 +204,7 @@ const scopeOptions = [
   { label: "物品资料", value: "ITEM" },
   { label: "批次资料", value: "LOT" },
 ];
+let scopeLoadGeneration = 0;
 
 const scopeChoices = computed(() => {
   if (scopeMode.value === "ITEM") {
@@ -235,6 +236,7 @@ const questionPlaceholder = computed(() => scopeMode.value === "FACT"
 watch(scopeMode, async (mode) => {
   selectedScopeId.value = "";
   if (mode === "FACT") return;
+  const generation = ++scopeLoadGeneration;
   scopeLoading.value = true;
   try {
     if (mode === "ITEM" && items.value.length === 0) {
@@ -251,7 +253,9 @@ watch(scopeMode, async (mode) => {
   } catch {
     ElMessage.error(mode === "ITEM" ? "物品列表加载失败" : "批次列表加载失败");
   } finally {
-    scopeLoading.value = false;
+    if (generation === scopeLoadGeneration) {
+      scopeLoading.value = false;
+    }
   }
 });
 
