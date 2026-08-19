@@ -86,6 +86,8 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     @Autowired
     private KnowledgeChunkMapper knowledgeChunkMapper;
     @Autowired
+    private AiKnowledgeVectorStore vectorStore;
+    @Autowired
     private DeterministicEmbeddingModel embeddingModel;
     @Autowired
     private BlockingPurgeListener blockingPurgeListener;
@@ -508,6 +510,59 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void remountDoesNotPublishLateOldScopeChunksAsAvailable() throws Exception {
+        UUID fileId = storeAttachment(
+                "并发改挂迟到分块.txt",
+                "text/plain",
+                "物品范围旧清洁步骤。批次范围新清洁步骤。".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                FileApi.MOUNT_ITEM,
+                ITEM_ID);
+        select(fileId);
+        UUID sourceId = sourceOf(fileId).getId();
+
+        jdbc.update("""
+                UPDATE ai_knowledge_source
+                SET mount_type = 'LOT',
+                    mount_id = ?,
+                    status = 'PROCESSING',
+                    processing_version = 2,
+                    next_attempt_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, LOT_ID, sourceId);
+
+        vectorStore.add(List.of(
+                processingChunk("物品范围旧清洁步骤。", fileId, FileApi.MOUNT_ITEM, ITEM_ID, ITEM_ID, null, 1),
+                processingChunk("批次范围新清洁步骤。", fileId, FileApi.MOUNT_LOT, LOT_ID, ITEM_ID, LOT_ID, 2)));
+
+        knowledgeChunkMapper.markAllAvailableIfCurrent(HOUSEHOLD_ID, fileId, sourceId, 2);
+
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT mount_type,
+                       readiness_status,
+                       metadata ->> 'processing_version' AS processing_version
+                FROM ai_knowledge_chunk
+                WHERE household_id = ? AND attachment_id = ?
+                ORDER BY metadata ->> 'processing_version'
+                """, HOUSEHOLD_ID, fileId.toString());
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0))
+                .containsEntry("processing_version", "1")
+                .containsEntry("mount_type", FileApi.MOUNT_ITEM)
+                .containsEntry("readiness_status", "PROCESSING");
+        assertThat(rows.get(1))
+                .containsEntry("processing_version", "2")
+                .containsEntry("mount_type", FileApi.MOUNT_LOT)
+                .containsEntry("readiness_status", "AVAILABLE");
+
+        List<Document> oldScopeHits = vectorStore.search(
+                new AiKnowledgeVectorStore.SearchScope(
+                        HOUSEHOLD_ID, FileApi.MOUNT_ITEM, ITEM_ID, fileId.toString()),
+                "清洁步骤",
+                5);
+        assertThat(oldScopeHits).isEmpty();
+    }
+
+    @Test
     void renameUpdatesAttachmentReferenceWithoutReprocessingContent() throws Exception {
         UUID fileId = storePdfAttachment(FileApi.MOUNT_ITEM, ITEM_ID, "原始说明.pdf");
         select(fileId);
@@ -645,6 +700,36 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         return jdbc.queryForObject(
                 "SELECT COUNT(*) FROM ai_knowledge_chunk WHERE household_id = ? AND attachment_id = ?",
                 Integer.class, HOUSEHOLD_ID, fileId.toString());
+    }
+
+    private static Document processingChunk(
+            String text,
+            UUID fileId,
+            String mountType,
+            UUID mountId,
+            UUID itemId,
+            UUID lotId,
+            int processingVersion
+    ) {
+        Map<String, Object> metadata = new java.util.LinkedHashMap<>();
+        metadata.put("household_id", HOUSEHOLD_ID.toString());
+        metadata.put("mount_type", mountType);
+        metadata.put("mount_id", mountId.toString());
+        if (itemId != null) {
+            metadata.put("item_id", itemId.toString());
+        }
+        if (lotId != null) {
+            metadata.put("lot_id", lotId.toString());
+        }
+        metadata.put("attachment_id", fileId.toString());
+        metadata.put("readiness_status", KnowledgeChunkDocumentFactory.READINESS_PROCESSING);
+        metadata.put("char_start", 0);
+        metadata.put("char_end", text.length());
+        metadata.put("embedding_model", "test-embedding");
+        metadata.put("embedding_dimensions", 1024);
+        metadata.put("chunker_version", KnowledgeChunkDocumentFactory.CHUNKER_VERSION);
+        metadata.put("processing_version", processingVersion);
+        return new Document(UUID.randomUUID().toString(), text, metadata);
     }
 
     // ---------- 样本生成 ----------

@@ -40,7 +40,9 @@ public interface KnowledgeChunkMapper {
 
     /**
      * 准备路径的可用翻转（JSONB 元数据翻转，生成列自动跟随）：仅当来源仍处于
-     * PROCESSING 且栅栏版本等于认领版本时生效，过期批次不得变为可检索。
+     * PROCESSING、栅栏版本等于认领版本，且分块自身 {@code processing_version}
+     * 也等于认领版本时生效。过期工作者经未栅栏的 {@code vectorStore.add} 迟到写入的
+     * 旧范围 PROCESSING 分块不得变为可检索。
      */
     int markAllAvailableIfCurrent(
             @Param("householdId") UUID householdId,

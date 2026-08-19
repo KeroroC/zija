@@ -162,7 +162,8 @@ class KnowledgePreparationService {
             try {
                 chunkMapper.deleteByAttachmentIfCurrent(householdId, fileId, knowledgeSourceId, claimedVersion);
                 vectorStore.add(documents);
-                // 全部写入成功后整批翻转为 AVAILABLE（部分失败不残留可检索分块）
+                // 全部写入成功后，只把本认领版本的分块翻转为 AVAILABLE。
+                // add 本身无栅栏：改挂后过期工作者仍可能插入旧范围行，不能整附件翻转。
                 chunkMapper.markAllAvailableIfCurrent(householdId, fileId, knowledgeSourceId, claimedVersion);
             } catch (DataAccessException ex) {
                 chunkMapper.deleteByAttachmentIfCurrent(householdId, fileId, knowledgeSourceId, claimedVersion);
