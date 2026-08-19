@@ -27,6 +27,7 @@ const settings = {
   credentialConfigured: false,
   outboundEnabled: false,
   requestsPerMinute: 20,
+  memberRequestsPerMinute: 10,
   maxContextTokens: 8192,
   maxConcurrentRequests: 2,
   requestTimeoutSeconds: 30,
@@ -45,6 +46,7 @@ beforeEach(() => {
     embeddingModel: null,
     outboundEnabled: false,
     requestsPerMinute: 20,
+    memberRequestsPerMinute: 10,
     maxContextTokens: 8192,
     maxConcurrentRequests: 2,
     requestTimeoutSeconds: 30,
@@ -90,6 +92,7 @@ describe("AiSettingsTab", () => {
       enabled: true,
       credential: "provider-secret",
       clearCredential: false,
+      memberRequestsPerMinute: 10,
       version: 0,
     }));
     expect(vm.form.credential).toBe("");

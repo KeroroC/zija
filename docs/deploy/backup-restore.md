@@ -16,7 +16,8 @@ make backup-test
 
 该命令调用 `scripts/backup.sh`，执行以下步骤：
 
-1. 在 postgres 容器内运行 `pg_dump --format=custom`，导出到 `db.dump`
+1. 在 postgres 容器内运行 `pg_dump --format=custom`，导出到 `db.dump`；保留
+   `ai_knowledge_chunk` 表结构但排除其派生正文、分块和向量数据
 2. 从 `flyway_schema_history` 读取当前 schema 版本
 3. 通过 `/api/v1/system/info` 获取应用版本
 4. 遍历 `stored_file` 表，从 Docker 文件卷拷出所有文件
@@ -50,6 +51,23 @@ backups/
 | `files.checkedCount` | number | 备份的文件总数 |
 | `files.entries` | array | 每个文件的 `storageKey`、`sha256`、`byteSize` |
 | `files.orphanCount` | number | 孤儿文件计数（当前始终为 0） |
+| `ai.sourceData.attachments` | object | 原始附件的数据库表与文件卷，均包含在备份中 |
+| `ai.sourceData.knowledgeSourceSelections` | object | 知识来源选择表、状态和挂载范围，包含在数据库 dump 中 |
+| `ai.sourceData.configuration` | object | 数据库内 AI 提供方配置包含在 dump 中；部署环境变量不包含在备份中 |
+| `ai.derivedKnowledge` | object | 声明派生知识表不含数据、恢复后必须重建，以及备份时的处理基线 |
+
+### AI 数据边界
+
+备份将以下数据视为不可替代的来源数据：
+
+- `stored_file` 行与 `files/` 文件卷中的原始附件；
+- `ai_knowledge_source` 中成员显式选择的知识来源及其挂载范围；
+- `ai_provider_setting` 中数据库内的必要 AI 配置。
+
+`ai_knowledge_chunk` 中的抽取正文、分块、定位元数据和向量是可重建派生数据。
+`db.dump` 保留该表的结构、约束与索引定义，但不包含表数据。manifest 记录备份时的
+embedding 模型、1024 维契约、chunker 版本与 HNSW cosine 索引基线，供诊断使用；
+恢复始终按目标应用的当前基线重新准备，不恢复旧向量。
 
 ### 备份目录配置
 
@@ -72,16 +90,19 @@ make restore-smoke
 1. **定位最新备份** -- 从 `./backups/` 中选取最新的 `backup_*_*` 目录，读取 `manifest.json`
 2. **启动临时 PostgreSQL** -- 以独立 Compose 项目名（`zija-restore-<timestamp>`）启动空 postgres 实例
 3. **验证空库** -- 确认临时数据库无任何表（恢复要求空库起点）
-4. **恢复数据库** -- 将 `db.dump` 拷入容器并执行 `pg_restore --clean --if-exists`
+4. **恢复数据库并重排知识来源** -- 将 `db.dump` 拷入容器并执行 `pg_restore`；在应用启动前确认
+   `ai_knowledge_chunk` 为空，将全部非停用知识来源置为 `PROCESSING`
 5. **恢复文件卷** -- 将 `files/` 目录内容拷入临时 Docker 卷
-6. **启动应用** -- 拉起 web 服务，等待 `/actuator/health` 返回 200
-7. **三重验证**：
+6. **启动应用** -- 拉起 web 服务，等待 `/actuator/health` 返回 200；知识准备调度器按当前
+   embedding、pgvector 和 chunker 基线重新处理来源
+7. **四项验证**：
    - `GET /api/v1/system/info` -- 应用版本与 manifest 中的 `appVersion` 一致
    - `GET /api/v1/files/integrity-report` -- `missingCount` 和 `hashMismatchCount` 均为 0，`checkedCount` 与 manifest 的 `files.checkedCount` 一致
    - `GET /api/v1/inventory/consistency-report` -- `discrepancies` 数组长度为 0
+   - `GET /api/v1/ai/knowledge-sources` -- 知识来源选择数量与恢复数据库一致；非停用来源已自动重新进入准备队列，停用来源保持停用
 8. **清理** -- 自动销毁临时 Compose 项目（含数据卷）
 
-验证三连使用备份中的 owner 账户（默认 `owner@test.com`，密码通过 `ZIJA_OWNER_PASSWORD` 环境变量配置，默认 `TestPass123!`）登录。
+恢复验证使用备份中的 owner 账户（默认 `owner@test.com`，密码通过 `ZIJA_OWNER_PASSWORD` 环境变量配置，默认 `TestPass123!`）登录。
 
 ### 恢复目录配置
 
@@ -103,6 +124,8 @@ ZIJA_BACKUP_DIR=/path/to/backups make restore-smoke
 - `ZIJA_DB_PASSWORD`
 - `ZIJA_OWNER_PASSWORD`（恢复验证脚本需要此变量登录）
 - `ZIJA_HTTP_PORT`
+- `ZIJA_AI_OLLAMA_BASE_URL` / `ZIJA_AI_CHAT_MODEL` / `ZIJA_AI_EMBEDDING_MODEL`
+  （目标环境的当前 AI 处理基线；不会随备份携带）
 
 建议将 `.env` 与备份产物存放在同一安全位置，或使用独立的密钥管理方案。
 
@@ -146,11 +169,13 @@ docker compose -p zija-restore-<timestamp> logs --tail=30
 
 ### 验证失败
 
-三重验证中任一环节失败时脚本返回非零退出码并输出具体失败项。检查：
+四项验证中任一环节失败时脚本返回非零退出码并输出具体失败项。检查：
 
 - 版本不匹配 -- 备份的应用版本与当前运行的镜像版本不一致，确认使用同版本镜像
 - 文件完整性失败 -- `db.dump` 或文件卷在备份后被篡改，重新备份
 - 库存一致性失败 -- 备份时数据已存在不一致，排查业务逻辑
+- AI 知识恢复失败 -- manifest 缺少 AI 数据边界、知识来源选择数量不一致、备份中意外
+  携带了派生 chunk，或恢复后的来源未能自动重新排队
 
 ## 真实环境恢复
 
@@ -172,6 +197,19 @@ docker compose -p zija-restore-<timestamp> logs --tail=30
    docker compose exec -T postgres pg_restore --clean --if-exists \
      -U "${ZIJA_POSTGRES_USER:-zija}" -d "${ZIJA_POSTGRES_DB:-zija}" /tmp/db.dump
 
+   # 确认派生数据未随备份恢复，并在应用启动前按当前基线重新排队
+   docker compose exec -T postgres psql \
+     -U "${ZIJA_POSTGRES_USER:-zija}" -d "${ZIJA_POSTGRES_DB:-zija}" \
+     -c "SELECT count(*) AS restored_chunks FROM ai_knowledge_chunk"
+   docker compose exec -T postgres psql \
+     -U "${ZIJA_POSTGRES_USER:-zija}" -d "${ZIJA_POSTGRES_DB:-zija}" \
+     -c "UPDATE ai_knowledge_source
+         SET status = 'PROCESSING', failure_code = NULL, failure_message = NULL,
+             attempt_count = 0, next_attempt_at = CURRENT_TIMESTAMP, disabled_reason = NULL,
+             processed_at = NULL, processing_version = processing_version + 1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE status <> 'DISABLED'"
+
    # 恢复文件卷
    docker run --rm \
      -v "$(pwd)/backups/<backup-dir>/files:/src:ro" \
@@ -186,10 +224,15 @@ docker compose -p zija-restore-<timestamp> logs --tail=30
    ```bash
    curl -sf http://localhost:<port>/actuator/health
    ```
+7. 在附件界面观察自动重新准备过程；界面会依次展示「处理中 / 可用 / 失败 / 已停用」
+   状态。模型或内容处理暂不可用时，来源进入失败态，原始附件和选择仍保留，可在环境
+   恢复后重试。处理基线日后发生变化时，OWNER 也可调用
+   `POST /api/v1/ai/knowledge-sources/rebuild` 主动清理并重新排队。
 
 ## 注意事项
 
 - **恢复等价全员强制重新登录**：恢复后所有活跃会话失效，所有成员需要重新登录。这是因为 session 数据存储在数据库中，`pg_restore --clean` 会清空 session 表。
+- 恢复脚本必须成功登录 OWNER 才会通过；不会再跳过需要授权的文件、库存或 AI 验证。
 - 备份过程中数据库仍可正常读写，`pg_dump` 使用一致性快照不影响业务。
 - v1 仅支持「同版本备份到空环境恢复」，不支持跨版本升级恢复（参见 [ADR-007](../adr/007-v1-skips-upgrade-smoke-restore-only.md)）。
 - 备份架构设计参见 [ADR-009](../adr/009-backup-restore-architecture.md)。

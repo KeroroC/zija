@@ -17,6 +17,7 @@ public class AiSettingsEntity {
     private String providerCredential;
     private Boolean outboundEnabled;
     private Integer requestsPerMinute;
+    private Integer memberRequestsPerMinute;
     private Integer maxContextTokens;
     private Integer maxConcurrentRequests;
     private Integer requestTimeoutSeconds;
@@ -37,6 +38,10 @@ public class AiSettingsEntity {
     public void setOutboundEnabled(Boolean outboundEnabled) { this.outboundEnabled = outboundEnabled; }
     public Integer getRequestsPerMinute() { return requestsPerMinute; }
     public void setRequestsPerMinute(Integer requestsPerMinute) { this.requestsPerMinute = requestsPerMinute; }
+    public Integer getMemberRequestsPerMinute() { return memberRequestsPerMinute; }
+    public void setMemberRequestsPerMinute(Integer memberRequestsPerMinute) {
+        this.memberRequestsPerMinute = memberRequestsPerMinute;
+    }
     public Integer getMaxContextTokens() { return maxContextTokens; }
     public void setMaxContextTokens(Integer maxContextTokens) { this.maxContextTokens = maxContextTokens; }
     public Integer getMaxConcurrentRequests() { return maxConcurrentRequests; }

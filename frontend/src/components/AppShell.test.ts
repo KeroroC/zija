@@ -103,6 +103,39 @@ describe("AppShell", () => {
     expect(inventoryItem!.classes()).not.toContain("is-disabled");
   });
 
+  it("carries the selected business object into the household Q&A route", async () => {
+    const session = useSessionStore();
+    session.session = { authenticated: true, accountId: "a1", username: "admin", displayName: "Admin" };
+    session.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "Admin",
+      role: "ADMIN",
+      status: "ACTIVE",
+      householdName: "测试家庭"
+    };
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/items", component: { render: () => h("div", "物品资料") } },
+        { path: "/qa", component: { render: () => h("div", "家庭问答") } }
+      ]
+    });
+    await router.push({ path: "/items", query: { highlight: "item-1" } });
+    await router.isReady();
+    wrapper = mount(AppShell, { global: { plugins: [router, ElementPlus] } });
+
+    const qaItem = wrapper.findAllComponents({ name: "ElMenuItem" })
+      .find((item) => item.text().includes("家庭问答"));
+    expect(qaItem).toBeDefined();
+    expect(qaItem!.props("route")).toEqual({
+      path: "/qa",
+      query: { contextType: "ITEM", contextId: "item-1" }
+    });
+  });
+
   it("shows the initialized household name right after login, without requiring a page refresh", async () => {
     const session = useSessionStore();
     const router = createRouter({

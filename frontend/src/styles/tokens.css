@@ -57,6 +57,11 @@
   --zj-text-caption: 12px;
   --zj-text-body-sm: 13px;
   --zj-text-heading-sm: 16px;
+  --zj-font-weight-semibold: 600;
+
+  --zj-control-height-sm: 32px;
+  --zj-control-label-width: 56px;
+  --zj-candidate-label-min-width: 100px;
 
   --zj-width-ai-panel: 720px;
   --zj-width-ai-form: 560px;

@@ -31,6 +31,7 @@ class AiSettingsService {
             boolean clearCredential,
             boolean outboundEnabled,
             int requestsPerMinute,
+            int memberRequestsPerMinute,
             int maxContextTokens,
             int maxConcurrentRequests,
             int requestTimeoutSeconds,
@@ -44,6 +45,7 @@ class AiSettingsService {
             boolean credentialConfigured,
             boolean outboundEnabled,
             int requestsPerMinute,
+            int memberRequestsPerMinute,
             int maxContextTokens,
             int maxConcurrentRequests,
             int requestTimeoutSeconds,
@@ -57,6 +59,7 @@ class AiSettingsService {
             String credential,
             boolean outboundEnabled,
             int requestsPerMinute,
+            int memberRequestsPerMinute,
             int maxContextTokens,
             int maxConcurrentRequests,
             int requestTimeoutSeconds
@@ -74,7 +77,8 @@ class AiSettingsService {
         return new ProviderConfiguration(
                 Boolean.TRUE.equals(entity.getEnabled()), entity.getProviderId(), entity.getProviderCredential(),
                 Boolean.TRUE.equals(entity.getOutboundEnabled()), entity.getRequestsPerMinute(),
-                entity.getMaxContextTokens(), entity.getMaxConcurrentRequests(), entity.getRequestTimeoutSeconds());
+                entity.getMemberRequestsPerMinute(), entity.getMaxContextTokens(),
+                entity.getMaxConcurrentRequests(), entity.getRequestTimeoutSeconds());
     }
 
     @Transactional
@@ -93,6 +97,7 @@ class AiSettingsService {
         }
         current.setOutboundEnabled(command.outboundEnabled());
         current.setRequestsPerMinute(command.requestsPerMinute());
+        current.setMemberRequestsPerMinute(command.memberRequestsPerMinute());
         current.setMaxContextTokens(command.maxContextTokens());
         current.setMaxConcurrentRequests(command.maxConcurrentRequests());
         current.setRequestTimeoutSeconds(command.requestTimeoutSeconds());
@@ -124,7 +129,7 @@ class AiSettingsService {
                 Boolean.TRUE.equals(entity.getEnabled()), entity.getProviderId(),
                 entity.getProviderCredential() != null && !entity.getProviderCredential().isBlank(),
                 Boolean.TRUE.equals(entity.getOutboundEnabled()), entity.getRequestsPerMinute(),
-                entity.getMaxContextTokens(), entity.getMaxConcurrentRequests(),
+                entity.getMemberRequestsPerMinute(), entity.getMaxContextTokens(), entity.getMaxConcurrentRequests(),
                 entity.getRequestTimeoutSeconds(), entity.getVersion());
     }
 
@@ -140,6 +145,9 @@ class AiSettingsService {
         }
         if (command.requestsPerMinute() < 1 || command.requestsPerMinute() > 600) {
             throw new IllegalArgumentException("requestsPerMinute must be between 1 and 600");
+        }
+        if (command.memberRequestsPerMinute() < 1 || command.memberRequestsPerMinute() > 600) {
+            throw new IllegalArgumentException("memberRequestsPerMinute must be between 1 and 600");
         }
         if (command.maxContextTokens() < 256 || command.maxContextTokens() > 131072) {
             throw new IllegalArgumentException("maxContextTokens must be between 256 and 131072");

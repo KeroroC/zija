@@ -37,6 +37,7 @@ class AiConfigurationController {
             boolean credentialConfigured,
             boolean outboundEnabled,
             int requestsPerMinute,
+            int memberRequestsPerMinute,
             int maxContextTokens,
             int maxConcurrentRequests,
             int requestTimeoutSeconds,
@@ -44,7 +45,8 @@ class AiConfigurationController {
     ) {
         static SettingsResponse from(AiSettingsService.SettingsView view) {
             return new SettingsResponse(view.enabled(), view.providerId(), view.credentialConfigured(),
-                    view.outboundEnabled(), view.requestsPerMinute(), view.maxContextTokens(),
+                    view.outboundEnabled(), view.requestsPerMinute(), view.memberRequestsPerMinute(),
+                    view.maxContextTokens(),
                     view.maxConcurrentRequests(), view.requestTimeoutSeconds(), view.version());
         }
     }
@@ -56,6 +58,7 @@ class AiConfigurationController {
             boolean clearCredential,
             boolean outboundEnabled,
             @Min(1) @Max(600) int requestsPerMinute,
+            @Min(1) @Max(600) int memberRequestsPerMinute,
             @Min(256) @Max(131072) int maxContextTokens,
             @Min(1) @Max(32) int maxConcurrentRequests,
             @Min(1) @Max(300) int requestTimeoutSeconds,
@@ -77,8 +80,9 @@ class AiConfigurationController {
         var updated = settingsService.update(member.householdId(), principal.getAccountId(),
                 new AiSettingsService.UpdateCommand(
                         request.enabled(), request.providerId(), request.credential(), request.clearCredential(),
-                        request.outboundEnabled(), request.requestsPerMinute(), request.maxContextTokens(),
-                        request.maxConcurrentRequests(), request.requestTimeoutSeconds(), request.version()));
+                        request.outboundEnabled(), request.requestsPerMinute(), request.memberRequestsPerMinute(),
+                        request.maxContextTokens(), request.maxConcurrentRequests(),
+                        request.requestTimeoutSeconds(), request.version()));
         return SettingsResponse.from(updated);
     }
 

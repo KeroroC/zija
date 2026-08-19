@@ -2,6 +2,8 @@ package com.zija.ai.internal;
 
 import com.zija.ZijaPrincipal;
 import com.zija.household.HouseholdApi;
+import com.zija.household.RequireOwner;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -75,6 +78,16 @@ class KnowledgeSourceController {
     ) {
         var member = householdApi.requireActiveMember(principal.getAccountId());
         return toItem(knowledgeSourceService.retry(member.householdId(), principal.getAccountId(), fileId));
+    }
+
+    @PostMapping("/rebuild")
+    @RequireOwner
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    KnowledgeSourceService.KnowledgeRebuildResult rebuild(
+            @AuthenticationPrincipal ZijaPrincipal principal
+    ) {
+        var member = householdApi.requireActiveMember(principal.getAccountId());
+        return knowledgeSourceService.rebuildDerivedKnowledge(member.householdId(), principal.getAccountId());
     }
 
     private Map<String, Object> toItem(KnowledgeSourceService.KnowledgeSourceView view) {

@@ -52,6 +52,9 @@
       <el-form-item label="每分钟请求数">
         <el-input-number v-model="form.requestsPerMinute" :min="1" :max="600" />
       </el-form-item>
+      <el-form-item label="成员每分钟请求数">
+        <el-input-number v-model="form.memberRequestsPerMinute" :min="1" :max="600" />
+      </el-form-item>
       <el-form-item label="上下文上限">
         <el-input-number v-model="form.maxContextTokens" :min="256" :max="131072" :step="256" />
         <span class="unit-hint">tokens</span>
@@ -91,6 +94,7 @@ const form = reactive<AiSettings & { credential: string; clearCredential: boolea
   credentialConfigured: false,
   outboundEnabled: false,
   requestsPerMinute: 20,
+  memberRequestsPerMinute: 10,
   maxContextTokens: 8192,
   maxConcurrentRequests: 2,
   requestTimeoutSeconds: 30,
@@ -130,6 +134,7 @@ async function save() {
       clearCredential: form.clearCredential,
       outboundEnabled: form.outboundEnabled,
       requestsPerMinute: form.requestsPerMinute,
+      memberRequestsPerMinute: form.memberRequestsPerMinute,
       maxContextTokens: form.maxContextTokens,
       maxConcurrentRequests: form.maxConcurrentRequests,
       requestTimeoutSeconds: form.requestTimeoutSeconds,

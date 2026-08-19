@@ -5,13 +5,10 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 @Service
@@ -21,16 +18,24 @@ class AiService implements AiApi {
 
     private final AiSettingsService settingsService;
     private final List<AiModelProvider> providers;
-    private final AiRequestGuard requestGuard = new AiRequestGuard();
+    private final List<AiQaModelProvider> qaProviders;
+    private final AiRequestGuard requestGuard;
     private final ExecutorService providerExecutor = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "zija-ai-provider");
         thread.setDaemon(true);
         return thread;
     });
 
-    AiService(AiSettingsService settingsService, List<AiModelProvider> providers) {
+    AiService(
+            AiSettingsService settingsService,
+            List<AiModelProvider> providers,
+            List<AiQaModelProvider> qaProviders,
+            AiRequestGuard requestGuard
+    ) {
         this.settingsService = settingsService;
         this.providers = providers;
+        this.qaProviders = qaProviders;
+        this.requestGuard = requestGuard;
     }
 
     @PreDestroy
@@ -70,20 +75,18 @@ class AiService implements AiApi {
     @Override
     public AiStatus status() {
         var configuration = settingsService.currentConfiguration();
-        if (!configuration.enabled()) {
-            return status(configuration, false, "AI_DISABLED", "AI is disabled", null, null);
-        }
+        return status(configuration, selectProvider(configuration));
+    }
+
+    QaSession startQaSession() {
+        var configuration = settingsService.currentConfiguration();
+        var providerConfiguration = toProviderConfiguration(configuration);
         var selection = selectProvider(configuration);
-        if (selection.provider() == null) {
-            return status(configuration, false, selection.reasonCode(), selection.detail(), null, null);
-        }
-        try {
-            var probe = selection.provider().probe(toProviderConfiguration(configuration));
-            return status(configuration, probe.available(), probe.reasonCode(), probe.detail(),
-                    probe.chatModel(), probe.embeddingModel());
-        } catch (RuntimeException ex) {
-            return status(configuration, false, "PROVIDER_UNREACHABLE", "provider is unavailable", null, null);
-        }
+        AiQaModelProvider qaProvider = qaProviders.stream()
+                .filter(candidate -> candidate.id().equals(configuration.providerId()))
+                .findFirst()
+                .orElse(null);
+        return new QaSession(configuration, providerConfiguration, selection, qaProvider);
     }
 
     private AiModelProvider requireProvider(AiSettingsService.ProviderConfiguration configuration) {
@@ -96,22 +99,10 @@ class AiService implements AiApi {
 
     private <T> T invoke(Supplier<T> call, AiProviderConfiguration configuration, int estimatedTokens) {
         var permit = requestGuard.acquire(configuration, estimatedTokens);
-        var started = new AtomicBoolean();
-        CompletableFuture<T> task = CompletableFuture.supplyAsync(() -> {
-            started.set(true);
-            try {
-                return call.get();
-            } finally {
-                permit.close();
-            }
-        }, providerExecutor);
         try {
-            return task.get(configuration.requestTimeoutSeconds(), TimeUnit.SECONDS);
+            return AiTimedCall.execute(
+                    providerExecutor, call, permit, configuration.requestTimeoutSeconds());
         } catch (TimeoutException ex) {
-            task.cancel(true);
-            if (!started.get()) {
-                permit.close();
-            }
             throw new AiProviderUnavailableException("provider call timed out", ex);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
@@ -153,7 +144,8 @@ class AiService implements AiApi {
     private AiProviderConfiguration toProviderConfiguration(AiSettingsService.ProviderConfiguration configuration) {
         return new AiProviderConfiguration(
                 configuration.providerId(), configuration.credential(), configuration.outboundEnabled(),
-                configuration.requestsPerMinute(), configuration.maxContextTokens(),
+                configuration.requestsPerMinute(), configuration.memberRequestsPerMinute(),
+                configuration.maxContextTokens(),
                 configuration.maxConcurrentRequests(), configuration.requestTimeoutSeconds());
     }
 
@@ -167,7 +159,87 @@ class AiService implements AiApi {
     ) {
         return new AiStatus(available, reasonCode, detail, configuration.providerId(), chatModel,
                 embeddingModel, configuration.outboundEnabled(), configuration.requestsPerMinute(),
-                configuration.maxContextTokens(), configuration.maxConcurrentRequests(),
-                configuration.requestTimeoutSeconds());
+                configuration.maxContextTokens(),
+                configuration.maxConcurrentRequests(),
+                configuration.requestTimeoutSeconds(), configuration.memberRequestsPerMinute());
+    }
+
+    private AiStatus status(
+            AiSettingsService.ProviderConfiguration configuration,
+            ProviderSelection selection
+    ) {
+        if (selection.provider() == null) {
+            return status(configuration, false, selection.reasonCode(), selection.detail(), null, null);
+        }
+        try {
+            var probe = selection.provider().probe(toProviderConfiguration(configuration));
+            return status(configuration, probe.available(), probe.reasonCode(), probe.detail(),
+                    probe.chatModel(), probe.embeddingModel());
+        } catch (RuntimeException ex) {
+            return status(configuration, false, "PROVIDER_UNREACHABLE", "provider is unavailable", null, null);
+        }
+    }
+
+    final class QaSession {
+
+        private final AiSettingsService.ProviderConfiguration settings;
+        private final AiProviderConfiguration providerConfiguration;
+        private final ProviderSelection selection;
+        private final AiQaModelProvider qaProvider;
+        private AiStatus cachedStatus;
+
+        private QaSession(
+                AiSettingsService.ProviderConfiguration settings,
+                AiProviderConfiguration providerConfiguration,
+                ProviderSelection selection,
+                AiQaModelProvider qaProvider
+        ) {
+            this.settings = settings;
+            this.providerConfiguration = providerConfiguration;
+            this.selection = selection;
+            this.qaProvider = qaProvider;
+        }
+
+        String providerId() {
+            return providerConfiguration.providerId();
+        }
+
+        AiProviderConfiguration configuration() {
+            return providerConfiguration;
+        }
+
+        AiStatus status() {
+            if (cachedStatus == null) {
+                cachedStatus = AiService.this.status(settings, selection);
+            }
+            return cachedStatus;
+        }
+
+        String completeQa(String systemPrompt, String userPrompt, Object... tools) {
+            requireAvailableProvider();
+            if (qaProvider == null) {
+                throw new AiProviderUnavailableException(
+                        "configured provider does not support household Q&A");
+            }
+            return qaProvider.completeQa(systemPrompt, userPrompt, tools, providerConfiguration);
+        }
+
+        float[] embedQuery(String query) {
+            AiModelProvider provider = requireAvailableProvider();
+            var reply = provider.embed(new EmbeddingRequest(List.of(query)), providerConfiguration);
+            if (reply.vectors().size() != 1
+                    || reply.vectors().getFirst() == null
+                    || reply.vectors().getFirst().length != EMBEDDING_DIMENSIONS) {
+                throw new AiProviderUnavailableException("provider returned invalid embedding dimensions");
+            }
+            return reply.vectors().getFirst();
+        }
+
+        private AiModelProvider requireAvailableProvider() {
+            if (selection.provider() == null) {
+                throw new AiProviderUnavailableException(selection.detail());
+            }
+            return selection.provider();
+        }
     }
 }

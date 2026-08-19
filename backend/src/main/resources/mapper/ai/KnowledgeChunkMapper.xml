@@ -2,6 +2,12 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.zija.ai.internal.persistence.KnowledgeChunkMapper">
 
+    <!-- 恢复或处理基线变化时清理当前家庭的全部可重建分块与向量。 -->
+    <delete id="deleteByHousehold">
+        DELETE FROM ai_knowledge_chunk
+        WHERE household_id = #{householdId}
+    </delete>
+
     <!-- 生命周期清理（回收/取消/永久删除）：用户意图优先，无条件生效。 -->
     <delete id="deleteByAttachment">
         DELETE FROM ai_knowledge_chunk
@@ -27,8 +33,10 @@
     </delete>
 
     <!--
-        准备路径的可用翻转（JSONB 元数据翻转，生成列自动跟随）：栅栏条件同上，
-        过期批次写入的 readiness_status=PROCESSING 分块不得翻转为可检索。
+        准备路径的可用翻转（JSONB 元数据翻转，生成列自动跟随）：
+        来源栅栏（仍 PROCESSING 且认领版本匹配）加上分块自身 processing_version。
+        vectorStore.add 无栅栏，改挂后过期工作者仍可能插入旧范围 PROCESSING 行；
+        若不按分块版本过滤，现任认领者的整附件翻转会把这些迟到行变成可检索。
     -->
     <update id="markAllAvailableIfCurrent">
         UPDATE ai_knowledge_chunk
@@ -36,6 +44,7 @@
             updated_at = CURRENT_TIMESTAMP
         WHERE household_id = #{householdId}
           AND attachment_id = #{fileId}::text
+          AND NULLIF(metadata ->> 'processing_version', '')::integer = #{processingVersion}
           AND EXISTS (
               SELECT 1
               FROM ai_knowledge_source

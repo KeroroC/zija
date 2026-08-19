@@ -58,11 +58,15 @@ class AiEndpointIntegrationTest extends AbstractMockMvcIntegrationTest {
     private AiSettingsService aiSettingsService;
 
     @Autowired
+    private AiRequestGuard requestGuard;
+
+    @Autowired
     private BlockingAiModelProvider blockingProvider;
 
     @BeforeEach
     void setUp() {
         TestDb.cleanAll(jdbc);
+        requestGuard.reset();
         jdbc.update("""
                 INSERT INTO household(singleton_key, id, name, timezone)
                 VALUES (1, ?, '测试家庭', 'Asia/Shanghai')
@@ -101,6 +105,7 @@ class AiEndpointIntegrationTest extends AbstractMockMvcIntegrationTest {
                 .andExpect(jsonPath("$.providerId").value("deterministic"))
                 .andExpect(jsonPath("$.credentialConfigured").value(true))
                 .andExpect(jsonPath("$.requestsPerMinute").value(24))
+                .andExpect(jsonPath("$.memberRequestsPerMinute").value(12))
                 .andExpect(jsonPath("$.maxContextTokens").value(4096))
                 .andExpect(jsonPath("$.maxConcurrentRequests").value(2))
                 .andExpect(jsonPath("$.requestTimeoutSeconds").value(20))
@@ -157,7 +162,7 @@ class AiEndpointIntegrationTest extends AbstractMockMvcIntegrationTest {
     @Test
     void enabledButUnreachableProviderIsExplicitlyUnavailable() throws Exception {
         aiSettingsService.update(HOUSEHOLD_ID, OWNER_ACCOUNT_ID, new AiSettingsService.UpdateCommand(
-                true, "unavailable", null, false, false, 20, 8192, 2, 30, 0));
+                true, "unavailable", null, false, false, 20, 10, 8192, 2, 30, 0));
 
         mvc.perform(get("/api/v1/ai/status").with(auth(owner())))
                 .andExpect(status().isOk())
@@ -185,7 +190,7 @@ class AiEndpointIntegrationTest extends AbstractMockMvcIntegrationTest {
     void deterministicProviderCompletesAndEmbedsThroughProjectApi() {
         aiSettingsService.update(HOUSEHOLD_ID, OWNER_ACCOUNT_ID, new AiSettingsService.UpdateCommand(
                 true, "deterministic", CREDENTIAL, false, false,
-                24, 4096, 2, 20, 0));
+                24, 12, 4096, 2, 20, 0));
 
         assertThat(aiApi.complete(new AiApi.ChatRequest("where is it?")).content())
                 .isEqualTo("fixed:where is it?");
@@ -199,7 +204,7 @@ class AiEndpointIntegrationTest extends AbstractMockMvcIntegrationTest {
     void rejectsProviderEmbeddingsThatDoNotMatchTheVectorStoreDimension() {
         aiSettingsService.update(HOUSEHOLD_ID, OWNER_ACCOUNT_ID, new AiSettingsService.UpdateCommand(
                 true, "invalid-dimension", null, false, false,
-                24, 4096, 2, 20, 0));
+                24, 12, 4096, 2, 20, 0));
 
         assertThatThrownBy(() -> aiApi.embed(new AiApi.EmbeddingRequest(List.of("manual"))))
                 .isInstanceOf(AiProviderUnavailableException.class)
@@ -210,7 +215,7 @@ class AiEndpointIntegrationTest extends AbstractMockMvcIntegrationTest {
     void timeoutKeepsConcurrencyPermitUntilProviderTaskActuallyFinishes() {
         aiSettingsService.update(HOUSEHOLD_ID, OWNER_ACCOUNT_ID, new AiSettingsService.UpdateCommand(
                 true, "blocking", null, false, false,
-                24, 4096, 1, 1, 0));
+                24, 12, 4096, 1, 1, 0));
 
         assertThatThrownBy(() -> aiApi.complete(new AiApi.ChatRequest("first")))
                 .isInstanceOf(AiProviderUnavailableException.class)
@@ -231,6 +236,7 @@ class AiEndpointIntegrationTest extends AbstractMockMvcIntegrationTest {
                   "clearCredential": false,
                   "outboundEnabled": false,
                   "requestsPerMinute": 24,
+                  "memberRequestsPerMinute": 12,
                   "maxContextTokens": 4096,
                   "maxConcurrentRequests": 2,
                   "requestTimeoutSeconds": 20,

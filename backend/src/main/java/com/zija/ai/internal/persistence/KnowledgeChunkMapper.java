@@ -21,6 +21,9 @@ import java.util.UUID;
 @Mapper
 public interface KnowledgeChunkMapper {
 
+    /** 删除某家庭的全部可重建分块与向量。 */
+    int deleteByHousehold(@Param("householdId") UUID householdId);
+
     /** 删除某家庭某附件的全部分块（回收/取消/永久删除等生命周期清理，无条件生效）。 */
     int deleteByAttachment(@Param("householdId") UUID householdId, @Param("fileId") UUID fileId);
 
@@ -37,7 +40,9 @@ public interface KnowledgeChunkMapper {
 
     /**
      * 准备路径的可用翻转（JSONB 元数据翻转，生成列自动跟随）：仅当来源仍处于
-     * PROCESSING 且栅栏版本等于认领版本时生效，过期批次不得变为可检索。
+     * PROCESSING、栅栏版本等于认领版本，且分块自身 {@code processing_version}
+     * 也等于认领版本时生效。过期工作者经未栅栏的 {@code vectorStore.add} 迟到写入的
+     * 旧范围 PROCESSING 分块不得变为可检索。
      */
     int markAllAvailableIfCurrent(
             @Param("householdId") UUID householdId,

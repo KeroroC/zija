@@ -4,6 +4,7 @@ export interface AiSettings {
   credentialConfigured: boolean;
   outboundEnabled: boolean;
   requestsPerMinute: number;
+  memberRequestsPerMinute: number;
   maxContextTokens: number;
   maxConcurrentRequests: number;
   requestTimeoutSeconds: number;
@@ -19,6 +20,7 @@ export interface AiStatus {
   embeddingModel: string | null;
   outboundEnabled: boolean;
   requestsPerMinute: number;
+  memberRequestsPerMinute: number;
   maxContextTokens: number;
   maxConcurrentRequests: number;
   requestTimeoutSeconds: number;
@@ -31,6 +33,7 @@ export interface AiSettingsUpdate {
   clearCredential: boolean;
   outboundEnabled: boolean;
   requestsPerMinute: number;
+  memberRequestsPerMinute: number;
   maxContextTokens: number;
   maxConcurrentRequests: number;
   requestTimeoutSeconds: number;
@@ -73,6 +76,25 @@ export const KNOWLEDGE_SOURCE_MEDIA_TYPES: readonly string[] = [
 /** 家庭事实问题请求。 */
 export interface HouseholdFactQuestion {
   question: string;
+  scope?: QaQuestionScope;
+  answerScope?: QaAnswerScope;
+  pageContext?: QaQuestionScope;
+  confirmedScopes?: QaQuestionScope[];
+}
+
+export type QaAnswerScope = "AUTO" | "HOUSEHOLD_FACT" | "KNOWLEDGE_SOURCE" | "BOTH";
+
+export interface QaQuestionScope {
+  type: "ITEM" | "LOT" | "LOCATION";
+  id: string;
+  label?: string;
+}
+
+export interface QaQuestionOptions {
+  answerScope?: QaAnswerScope;
+  scope?: QaQuestionScope;
+  pageContext?: QaQuestionScope;
+  confirmedScopes?: QaQuestionScope[];
 }
 
 /** 一组确定性结构化结果（行为列名 → 展示值）。 */
@@ -89,15 +111,49 @@ export interface QaAnswerSource {
   dataTime: string;
   available: boolean;
   note?: string;
+  attachmentId?: string;
+  attachmentName?: string;
+  attachmentUrl?: string;
+  mountType?: "HOUSEHOLD" | "ITEM" | "LOT";
+  mountId?: string;
+  mountLabel?: string;
+  pageNumber?: number;
+  sectionPath?: string;
+  excerpt?: string;
+  charStart?: number;
+  charEnd?: number;
 }
 
-/** 权威页面跳转。type ∈ ITEM / LOT / LOCATION / MOVEMENT / REMINDER。 */
+/** 权威页面跳转。type ∈ ITEM / LOT / LOCATION / MOVEMENT / REMINDER / ATTACHMENT。 */
 export interface QaJump {
   type: string;
   label: string;
   itemId?: string;
   lotId?: string;
   locationId?: string;
+  attachmentId?: string;
+}
+
+export interface QaScopeCandidate {
+  type: "ITEM" | "LOT" | "LOCATION";
+  id: string;
+  label: string;
+  detail: string;
+}
+
+export interface QaAnswerPart {
+  category: "HOUSEHOLD_FACT" | "KNOWLEDGE_SOURCE";
+  label: string;
+  reasonCode: string;
+  summary: string;
+  available: boolean;
+}
+
+export interface QaSourceConflict {
+  kind: "QUANTITY" | "DATE" | "LOCATION" | "STATUS" | "UNIT";
+  factValue: string;
+  knowledgeValue: string;
+  note: string;
 }
 
 /** 家庭事实问答答案。 */
@@ -110,4 +166,11 @@ export interface HouseholdFactAnswer {
   sources: QaAnswerSource[];
   jumps: QaJump[];
   dataTime: string;
+  recommendedAnswerScope?: Exclude<QaAnswerScope, "AUTO">;
+  usedAnswerScope?: Exclude<QaAnswerScope, "AUTO">;
+  scopeReason?: string;
+  targetScope?: QaQuestionScope;
+  candidates?: QaScopeCandidate[];
+  answerParts?: QaAnswerPart[];
+  conflicts?: QaSourceConflict[];
 }

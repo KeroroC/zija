@@ -162,7 +162,8 @@ class KnowledgePreparationService {
             try {
                 chunkMapper.deleteByAttachmentIfCurrent(householdId, fileId, knowledgeSourceId, claimedVersion);
                 vectorStore.add(documents);
-                // 全部写入成功后整批翻转为 AVAILABLE（部分失败不残留可检索分块）
+                // 全部写入成功后，只把本认领版本的分块翻转为 AVAILABLE。
+                // add 本身无栅栏：改挂后过期工作者仍可能插入旧范围行，不能整附件翻转。
                 chunkMapper.markAllAvailableIfCurrent(householdId, fileId, knowledgeSourceId, claimedVersion);
             } catch (DataAccessException ex) {
                 chunkMapper.deleteByAttachmentIfCurrent(householdId, fileId, knowledgeSourceId, claimedVersion);
@@ -179,7 +180,12 @@ class KnowledgePreparationService {
             if (marked == 0) {
                 // 写入被栅栏拒绝：区分「被停用/取消」与「租约到期被接管」
                 var current = mapper.selectById(knowledgeSourceId);
-                if (current != null && KnowledgeSourceStates.STATUS_DISABLED.equals(current.getStatus())) {
+                if (current == null) {
+                    // 永久删除可能已清除来源行；本批次随后写入的 PROCESSING 分块也必须清掉，
+                    // 否则它们虽不可检索，却会成为永远无法重建的派生孤儿。
+                    chunkMapper.deleteByAttachment(householdId, fileId);
+                    log.info("知识来源已永久删除，已清理过期准备分块: fileId={}", fileId);
+                } else if (KnowledgeSourceStates.STATUS_DISABLED.equals(current.getStatus())) {
                     // 处理期间被取消/回收：撤掉刚写入的分块（用户意图优先，无条件清理）
                     chunkMapper.deleteByAttachment(householdId, fileId);
                     log.info("知识来源在处理期间被停用，已撤销分块: fileId={}", fileId);
