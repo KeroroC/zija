@@ -179,7 +179,12 @@ class KnowledgePreparationService {
             if (marked == 0) {
                 // 写入被栅栏拒绝：区分「被停用/取消」与「租约到期被接管」
                 var current = mapper.selectById(knowledgeSourceId);
-                if (current != null && KnowledgeSourceStates.STATUS_DISABLED.equals(current.getStatus())) {
+                if (current == null) {
+                    // 永久删除可能已清除来源行；本批次随后写入的 PROCESSING 分块也必须清掉，
+                    // 否则它们虽不可检索，却会成为永远无法重建的派生孤儿。
+                    chunkMapper.deleteByAttachment(householdId, fileId);
+                    log.info("知识来源已永久删除，已清理过期准备分块: fileId={}", fileId);
+                } else if (KnowledgeSourceStates.STATUS_DISABLED.equals(current.getStatus())) {
                     // 处理期间被取消/回收：撤掉刚写入的分块（用户意图优先，无条件清理）
                     chunkMapper.deleteByAttachment(householdId, fileId);
                     log.info("知识来源在处理期间被停用，已撤销分块: fileId={}", fileId);

@@ -177,7 +177,7 @@ class KnowledgeSourceService {
             return;
         }
         var scope = scopeResolver.resolve(event.householdId(), event.newMountType(), event.newMountId());
-        stateStore.updateMount(entity.getId(), event.newMountType(), event.newMountId(), OffsetDateTime.now());
+        stateStore.remount(entity.getId(), event.newMountType(), event.newMountId(), OffsetDateTime.now());
         // 改挂只改变检索范围，内容未变化：原地更新分块元数据，不重新抽取
         chunkMapper.updateScope(event.householdId(), event.fileId(),
                 event.newMountType(), event.newMountId(), scope.itemId(), scope.lotId());

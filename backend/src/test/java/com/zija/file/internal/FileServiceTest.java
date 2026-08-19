@@ -160,12 +160,13 @@ class FileServiceTest {
         entity.setNameNormalized("photo.jpg");
         when(storedFileMapper.selectById(fileId)).thenReturn(entity);
         when(storedFileMapper.selectCount(any())).thenReturn(0L);
+        when(storedFileMapper.restoreIfRecycled(householdId, fileId)).thenReturn(1);
 
         var result = service.restore(householdId, fileId);
 
         assertThat(result.deletedAt()).isNull();
         assertThat(result.mountType()).isEqualTo(FileApi.MOUNT_ITEM);
-        verify(storedFileMapper).updateById(entity);
+        verify(storedFileMapper).restoreIfRecycled(householdId, fileId);
         assertThat(systemApi.actions).contains(com.zija.system.SystemApi.AuditAction.FILE_RESTORED);
     }
 

@@ -127,4 +127,30 @@ public interface KnowledgeSourceMapper extends BaseMapper<KnowledgeSourceEntity>
             @Param("mountId") UUID mountId,
             @Param("now") OffsetDateTime now
     );
+
+    /**
+     * 改挂时更新范围；若正文正在准备，同时递增栅栏并立即重新排队，阻止旧工作者
+     * 在改挂事件之后把旧范围分块发布为可检索。已可用来源只更新范围，不重复准备。
+     */
+    @Update("""
+            UPDATE ai_knowledge_source
+            SET mount_type = #{mountType},
+                mount_id = #{mountId},
+                processing_version = CASE
+                    WHEN status = 'PROCESSING' THEN processing_version + 1
+                    ELSE processing_version
+                END,
+                next_attempt_at = CASE
+                    WHEN status = 'PROCESSING' THEN #{now}
+                    ELSE next_attempt_at
+                END,
+                updated_at = #{now}
+            WHERE id = #{id}
+            """)
+    int remount(
+            @Param("id") UUID id,
+            @Param("mountType") String mountType,
+            @Param("mountId") UUID mountId,
+            @Param("now") OffsetDateTime now
+    );
 }

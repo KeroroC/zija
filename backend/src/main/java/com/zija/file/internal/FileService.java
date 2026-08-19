@@ -275,8 +275,19 @@ class FileService implements FileApi {
                 entity.getNameNormalized(),
                 fileId
         );
+        int restored = storedFileMapper.restoreIfRecycled(householdId, fileId);
+        if (restored == 0) {
+            // 永久删除或另一场恢复已先取得行级竞争：重新读取，绝不返回旧实体。
+            var current = requireEntity(householdId, fileId);
+            if (current == null) {
+                return null;
+            }
+            if (current.getDeletedAt() == null) {
+                return toAttachment(current, householdId);
+            }
+            throw new FileNotAvailableException(fileId);
+        }
         entity.setDeletedAt(null);
-        storedFileMapper.updateById(entity);
         eventPublisher.publishRestored(
                 householdId, fileId, entity.getMountType(), entity.getMountId());
         audit(householdId, SystemApi.AuditAction.FILE_RESTORED, fileId);

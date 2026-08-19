@@ -75,6 +75,12 @@ class KnowledgeSourceStateStore {
         mapper.updateMount(id, mountType, mountId, now);
     }
 
+    /** 改挂时更新范围，并栅栏掉仍携带旧范围的处理中工作者。 */
+    @Transactional
+    void remount(UUID id, String mountType, UUID mountId, OffsetDateTime now) {
+        mapper.remount(id, mountType, mountId, now);
+    }
+
     /** 永久删除附件后清除知识来源选择行。 */
     @Transactional
     void deleteRow(UUID id) {

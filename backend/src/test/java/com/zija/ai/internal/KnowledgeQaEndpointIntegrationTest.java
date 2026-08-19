@@ -5,6 +5,7 @@ import com.zija.TestDb;
 import com.zija.ZijaPrincipal;
 import com.zija.ZijaSessionInvalidator;
 import com.zija.ai.AiApi;
+import com.zija.file.FileApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -32,15 +33,22 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -72,6 +80,15 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
 
     @Autowired
     private CapturingChatModel chatModel;
+
+    @Autowired
+    private DeterministicEmbeddingModel embeddingModel;
+
+    @Autowired
+    private FileApi fileApi;
+
+    @Autowired
+    private KnowledgePreparationService preparationService;
 
     @MockitoBean
     private ZijaSessionInvalidator sessionInvalidator;
@@ -115,6 +132,7 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
                 HOUSEHOLD_ID, "ITEM", ITEM_ID, ITEM_ID, null, FILE_ID,
                 12, "维护/滤网清洁", 120, 148)));
         chatModel.reset("先取下滤网，用温水冲洗，完全晾干后再装回。");
+        embeddingModel.reset();
     }
 
     @Test
@@ -186,6 +204,87 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
     }
 
     @Test
+    void recycledAttachmentIsExcludedFromGroundedAnswersWhileContentRemainsReadable() throws Exception {
+        byte[] originalContent = "回收站内仍可读取的说明正文".getBytes(StandardCharsets.UTF_8);
+        var readableAttachment = fileApi.store(
+                HOUSEHOLD_ID,
+                originalContent,
+                "可下载说明.txt",
+                "text/plain",
+                FileApi.MOUNT_ITEM,
+                ITEM_ID);
+        insertAvailableKnowledgeSource(
+                readableAttachment.id(), UUID.randomUUID(), FileApi.MOUNT_ITEM, ITEM_ID);
+        vectorStore.add(List.of(document(
+                "回收站内仍可读取的说明正文",
+                HOUSEHOLD_ID, "ITEM", ITEM_ID, ITEM_ID, null, readableAttachment.id(),
+                1, "回收测试", 0, originalContent.length)));
+
+        fileApi.recycle(HOUSEHOLD_ID, FILE_ID);
+        fileApi.recycle(HOUSEHOLD_ID, readableAttachment.id());
+        assertThat(fileApi.readContent(HOUSEHOLD_ID, readableAttachment.id()))
+                .hasValueSatisfying(content -> assertThat(content).isEqualTo(originalContent));
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机滤网怎么清洁？",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("NO_AVAILABLE_KNOWLEDGE_SOURCE"))
+                .andExpect(jsonPath("$.sources").isEmpty())
+                .andExpect(jsonPath("$.jumps[0].type").value("ATTACHMENT"));
+
+        assertThat(chatModel.callCount()).isZero();
+    }
+
+    @Test
+    void remountedAttachmentUsesTheNewKnowledgeScopeImmediately() throws Exception {
+        fileApi.remount(HOUSEHOLD_ID, FILE_ID, FileApi.MOUNT_LOT, LOT_ID);
+        chatModel.reset("按批次说明执行清洁。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个批次怎么清洁？",
+                                  "scope": {"type": "LOT", "id": "%s"}
+                                }
+                                """.formatted(LOT_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.sources[0].attachmentId").value(FILE_ID.toString()))
+                .andExpect(jsonPath("$.sources[0].mountType").value("LOT"))
+                .andExpect(jsonPath("$.sources[0].mountId").value(LOT_ID.toString()));
+    }
+
+    @Test
+    void renamedAttachmentAppearsWithItsNewNameInAnswerEvidence() throws Exception {
+        fileApi.rename(HOUSEHOLD_ID, FILE_ID, "新版咖啡机说明.pdf");
+        chatModel.reset("先取下滤网，用温水冲洗，完全晾干后再装回。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机滤网怎么清洁？",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sources[0].attachmentName").value("新版咖啡机说明.pdf"));
+    }
+
+    @Test
     void lotScopeIncludesHouseholdItemAndCurrentLotEvidence() throws Exception {
         insertAvailableAttachment(HOUSEHOLD_FILE_ID, HOUSEHOLD_SOURCE_ID,
                 "家庭维护约定.txt", "HOUSEHOLD", HOUSEHOLD_ID);
@@ -214,6 +313,58 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
                                 FILE_ID.toString(), HOUSEHOLD_FILE_ID.toString(), LOT_FILE_ID.toString())))
                 .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("LOT")))
                 .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("ATTACHMENT")));
+    }
+
+    @Test
+    void remountDuringPreparationCannotPublishChunksUnderTheOldScope() throws Exception {
+        UUID fileId = fileApi.store(
+                HOUSEHOLD_ID,
+                "并发改挂后的批次专用清洁步骤。".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "并发改挂说明.txt",
+                "text/plain",
+                FileApi.MOUNT_ITEM,
+                ITEM_ID).id();
+        mvc.perform(put("/api/v1/ai/knowledge-sources/{fileId}", fileId)
+                        .with(auth()).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PROCESSING"));
+
+        embeddingModel.blockNextEmbedding();
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var firstPreparation = executor.submit(
+                    () -> preparationService.prepareDue(OffsetDateTime.now()));
+            assertThat(embeddingModel.awaitBlocked()).isTrue();
+            try {
+                fileApi.remount(HOUSEHOLD_ID, fileId, FileApi.MOUNT_LOT, LOT_ID);
+            } finally {
+                embeddingModel.releaseEmbedding();
+            }
+            assertThat(firstPreparation.get(30, TimeUnit.SECONDS)).isOne();
+        }
+
+        mvc.perform(get("/api/v1/ai/knowledge-sources").with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.fileId == '%s')].status".formatted(fileId))
+                        .value("PROCESSING"));
+
+        assertThat(preparationService.prepareDue(OffsetDateTime.now().plusSeconds(1))).isOne();
+        chatModel.reset("按批次说明执行清洁。");
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个批次怎么清洁？",
+                                  "scope": {"type": "LOT", "id": "%s"}
+                                }
+                                """.formatted(LOT_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.sources[*].attachmentId")
+                        .value(org.hamcrest.Matchers.hasItem(fileId.toString())))
+                .andExpect(jsonPath("$.sources[?(@.attachmentId == '%s')].mountType".formatted(fileId))
+                        .value("LOT"));
     }
 
     @Test
@@ -308,6 +459,15 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
                         ?, ?, ?, CURRENT_TIMESTAMP)
                 """, fileId, HOUSEHOLD_ID, "knowledge/" + fileId, name, "a".repeat(64), mountType, mountId,
                 name.toLowerCase());
+        insertAvailableKnowledgeSource(fileId, sourceId, mountType, mountId);
+    }
+
+    private void insertAvailableKnowledgeSource(
+            UUID fileId,
+            UUID sourceId,
+            String mountType,
+            UUID mountId
+    ) {
         jdbc.update("""
                 INSERT INTO ai_knowledge_source
                     (id, household_id, file_id, mount_type, mount_id, status,
@@ -451,8 +611,13 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
 
     static final class DeterministicEmbeddingModel implements EmbeddingModel {
 
+        private final AtomicBoolean blockNext = new AtomicBoolean();
+        private volatile CountDownLatch blocked = new CountDownLatch(0);
+        private volatile CountDownLatch release = new CountDownLatch(0);
+
         @Override
         public EmbeddingResponse call(EmbeddingRequest request) {
+            awaitReleaseIfRequested();
             return new EmbeddingResponse(request.getInstructions().stream()
                     .map(ignored -> new Embedding(vector(), 0, EmbeddingResultMetadata.EMPTY))
                     .toList());
@@ -460,12 +625,49 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
 
         @Override
         public float[] embed(Document document) {
+            awaitReleaseIfRequested();
             return vector();
         }
 
         @Override
         public int dimensions() {
             return 1024;
+        }
+
+        void blockNextEmbedding() {
+            blocked = new CountDownLatch(1);
+            release = new CountDownLatch(1);
+            blockNext.set(true);
+        }
+
+        boolean awaitBlocked() throws InterruptedException {
+            return blocked.await(10, TimeUnit.SECONDS);
+        }
+
+        void releaseEmbedding() {
+            release.countDown();
+        }
+
+        void reset() {
+            releaseEmbedding();
+            blockNext.set(false);
+            blocked = new CountDownLatch(0);
+            release = new CountDownLatch(0);
+        }
+
+        private void awaitReleaseIfRequested() {
+            if (!blockNext.compareAndSet(true, false)) {
+                return;
+            }
+            blocked.countDown();
+            try {
+                if (!release.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("timed out waiting to release embedding");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("embedding interrupted", exception);
+            }
         }
 
         private static float[] vector() {

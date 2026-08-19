@@ -8,6 +8,7 @@ import com.zija.ai.internal.persistence.ClaimedKnowledgeSource;
 import com.zija.ai.internal.persistence.KnowledgeChunkMapper;
 import com.zija.ai.internal.persistence.KnowledgeSourceEntity;
 import com.zija.ai.internal.persistence.KnowledgeSourceMapper;
+import com.zija.file.AttachmentPurgedEvent;
 import com.zija.file.FileApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.event.EventListener;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,8 +35,12 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -81,6 +87,8 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     private KnowledgeChunkMapper knowledgeChunkMapper;
     @Autowired
     private DeterministicEmbeddingModel embeddingModel;
+    @Autowired
+    private BlockingPurgeListener blockingPurgeListener;
 
     @MockitoBean
     private ZijaSessionInvalidator sessionInvalidator;
@@ -97,6 +105,7 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         insertItem(LOT_ID, ITEM_ID);
         embeddingModel.setFailEmbedding(false);
         embeddingModel.resetEmbeddingCalls();
+        blockingPurgeListener.reset();
     }
 
     // ---------- 选择 / 取消 / 重试 端点 ----------
@@ -443,6 +452,23 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void renameUpdatesAttachmentReferenceWithoutReprocessingContent() throws Exception {
+        UUID fileId = storePdfAttachment(FileApi.MOUNT_ITEM, ITEM_ID, "原始说明.pdf");
+        select(fileId);
+        preparationService.prepareDue(OffsetDateTime.now());
+        int processingVersion = sourceOf(fileId).getProcessingVersion();
+        int embeddingCalls = embeddingModel.embeddingCalls();
+
+        assertThat(fileApi.rename(HOUSEHOLD_ID, fileId, "更新后的说明.pdf").name())
+                .isEqualTo("更新后的说明.pdf");
+        mvc.perform(get("/api/v1/ai/knowledge-sources").with(auth(member())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].status").value("AVAILABLE"))
+                .andExpect(jsonPath("$.items[0].processingVersion").value(processingVersion));
+        assertThat(embeddingModel.embeddingCalls()).isEqualTo(embeddingCalls);
+    }
+
+    @Test
     void purgeClearsSourceRowAndChunks() throws Exception {
         UUID fileId = storePdfAttachment(FileApi.MOUNT_ITEM, ITEM_ID, "待删除.pdf");
         select(fileId);
@@ -454,6 +480,72 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         assertThat(countSources()).isZero();
         assertThat(countChunks(fileId)).isZero();
+    }
+
+    @Test
+    void permanentDeletionDuringPreparationLeavesNoLateDerivedChunks() throws Exception {
+        UUID fileId = storePdfAttachment(FileApi.MOUNT_ITEM, ITEM_ID, "并发清理说明.pdf");
+        select(fileId);
+        embeddingModel.blockNextEmbedding();
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var preparation = executor.submit(() -> preparationService.prepareDue(OffsetDateTime.now()));
+            assertThat(embeddingModel.awaitBlocked()).isTrue();
+
+            fileApi.recycle(HOUSEHOLD_ID, fileId);
+            blockingPurgeListener.block(fileId);
+            var purge = executor.submit(() -> fileApi.purge(HOUSEHOLD_ID, fileId));
+            assertThat(blockingPurgeListener.awaitBlocked()).isTrue();
+            blockingPurgeListener.release();
+            assertThat(purge.get(30, TimeUnit.SECONDS)).isTrue();
+
+            embeddingModel.releaseEmbedding();
+            assertThat(preparation.get(30, TimeUnit.SECONDS)).isOne();
+        } finally {
+            embeddingModel.releaseEmbedding();
+            blockingPurgeListener.release();
+        }
+
+        assertThat(countSources()).isZero();
+        assertThat(countChunks(fileId)).isZero();
+    }
+
+    @Test
+    void restoreLosesCleanlyWhenConcurrentPermanentDeletionWins() throws Exception {
+        UUID fileId = storeAttachment(
+                "并发删除.txt",
+                "text/plain",
+                txtBytes(),
+                FileApi.MOUNT_ITEM,
+                ITEM_ID);
+        select(fileId);
+        fileApi.recycle(HOUSEHOLD_ID, fileId);
+
+        blockingPurgeListener.block(fileId);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var purge = executor.submit(() -> fileApi.purge(HOUSEHOLD_ID, fileId));
+            assertThat(blockingPurgeListener.awaitBlocked()).isTrue();
+
+            var restoreStarted = new CountDownLatch(1);
+            var restore = executor.submit(() -> {
+                restoreStarted.countDown();
+                return fileApi.restore(HOUSEHOLD_ID, fileId);
+            });
+            assertThat(restoreStarted.await(10, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(200);
+            assertThat(restore).isNotDone();
+
+            blockingPurgeListener.release();
+            assertThat(purge.get(30, TimeUnit.SECONDS)).isTrue();
+            assertThat(restore.get(30, TimeUnit.SECONDS)).isNull();
+        } finally {
+            blockingPurgeListener.release();
+        }
+
+        assertThat(fileApi.findAttachment(HOUSEHOLD_ID, fileId)).isEmpty();
+        mvc.perform(get("/api/v1/ai/knowledge-sources").with(auth(member())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.fileId == '%s')]".formatted(fileId)).isEmpty());
     }
 
     // ---------- 权限 ----------
@@ -661,6 +753,55 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         DeterministicEmbeddingModel deterministicEmbeddingModel() {
             return new DeterministicEmbeddingModel();
         }
+
+        @Bean
+        BlockingPurgeListener blockingPurgeListener() {
+            return new BlockingPurgeListener();
+        }
+    }
+
+    static final class BlockingPurgeListener {
+
+        private final AtomicReference<UUID> target = new AtomicReference<>();
+        private volatile CountDownLatch blocked = new CountDownLatch(0);
+        private volatile CountDownLatch release = new CountDownLatch(0);
+
+        void block(UUID fileId) {
+            blocked = new CountDownLatch(1);
+            release = new CountDownLatch(1);
+            target.set(fileId);
+        }
+
+        boolean awaitBlocked() throws InterruptedException {
+            return blocked.await(10, TimeUnit.SECONDS);
+        }
+
+        void release() {
+            release.countDown();
+        }
+
+        void reset() {
+            release();
+            target.set(null);
+            blocked = new CountDownLatch(0);
+            release = new CountDownLatch(0);
+        }
+
+        @EventListener
+        public void onAttachmentPurged(AttachmentPurgedEvent event) {
+            if (!event.fileId().equals(target.get())) {
+                return;
+            }
+            blocked.countDown();
+            try {
+                if (!release.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("timed out waiting to release attachment purge");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("attachment purge interrupted", exception);
+            }
+        }
     }
 
     /** 确定性的嵌入模型：默认返回 1024 维固定向量；可切换为失败以验证失败与重试路径。 */
@@ -668,10 +809,14 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         private final AtomicBoolean failEmbedding = new AtomicBoolean(false);
         private final AtomicInteger embeddingCalls = new AtomicInteger();
+        private final AtomicBoolean blockNext = new AtomicBoolean();
+        private volatile CountDownLatch blocked = new CountDownLatch(0);
+        private volatile CountDownLatch release = new CountDownLatch(0);
 
         @Override
         public EmbeddingResponse call(EmbeddingRequest request) {
             embeddingCalls.incrementAndGet();
+            awaitReleaseIfRequested();
             if (failEmbedding.get()) {
                 throw new IllegalStateException("mock embedding provider unavailable");
             }
@@ -684,6 +829,7 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         @Override
         public float[] embed(Document document) {
             embeddingCalls.incrementAndGet();
+            awaitReleaseIfRequested();
             return vector();
         }
 
@@ -702,6 +848,39 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         void resetEmbeddingCalls() {
             embeddingCalls.set(0);
+            releaseEmbedding();
+            blockNext.set(false);
+            blocked = new CountDownLatch(0);
+            release = new CountDownLatch(0);
+        }
+
+        void blockNextEmbedding() {
+            blocked = new CountDownLatch(1);
+            release = new CountDownLatch(1);
+            blockNext.set(true);
+        }
+
+        boolean awaitBlocked() throws InterruptedException {
+            return blocked.await(10, TimeUnit.SECONDS);
+        }
+
+        void releaseEmbedding() {
+            release.countDown();
+        }
+
+        private void awaitReleaseIfRequested() {
+            if (!blockNext.compareAndSet(true, false)) {
+                return;
+            }
+            blocked.countDown();
+            try {
+                if (!release.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("timed out waiting to release embedding");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("embedding interrupted", exception);
+            }
         }
 
         private static float[] vector() {
