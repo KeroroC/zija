@@ -10,6 +10,7 @@ export interface ApiProblem {
   title?: string;
   detail?: string;
   errorCode?: string;
+  reasonCode?: string;
   requestId?: string;
   fieldErrors?: Record<string, string>;
 }

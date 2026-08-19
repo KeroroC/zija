@@ -15,6 +15,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -79,12 +80,16 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     @Autowired
     private AiApi aiApi;
 
+    @Autowired
+    private AiRequestGuard requestGuard;
+
     @MockitoBean
     private ZijaSessionInvalidator sessionInvalidator;
 
     @BeforeEach
     void setUp() {
         TestDb.cleanAll(jdbc);
+        requestGuard.reset();
         jdbc.update("""
                 INSERT INTO ai_provider_setting(singleton_key, enabled, provider_id)
                 VALUES (1, TRUE, 'deterministic')
@@ -335,6 +340,7 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
                         .with(csrf())
+                        .header("X-Request-Id", "qa-invalid-scope")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -347,6 +353,39 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.errorCode").value("AI_INVALID_CONFIGURATION"));
 
         assertThat(chatModel.modelCallCount()).isZero();
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM audit_log
+                WHERE action = 'AI_HOUSEHOLD_QA'
+                  AND outcome = 'FAILURE'
+                  AND request_id = 'qa-invalid-scope'
+                  AND detail ->> 'reasonCode' = 'AI_QA_INVALID_REQUEST'
+                """, Integer.class)).isOne();
+    }
+
+    @Test
+    void invalidScopeTypeIsAuditedBeforeReturningTheValidationFailure() throws Exception {
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .header("X-Request-Id", "qa-invalid-scope-type")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个范围里有什么？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "UNKNOWN", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.errorCode").value("AI_INVALID_CONFIGURATION"));
+
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM audit_log
+                WHERE action = 'AI_HOUSEHOLD_QA'
+                  AND outcome = 'FAILURE'
+                  AND request_id = 'qa-invalid-scope-type'
+                  AND detail ->> 'reasonCode' = 'AI_QA_INVALID_REQUEST'
+                """, Integer.class)).isOne();
     }
 
     @Test
@@ -513,18 +552,57 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     // ==================== 模型不可用 ====================
 
     @Test
-    void modelUnavailableReturnsClearReasonWithoutModelCall() throws Exception {
+    void modelUnavailableReturnsControlledStructuredFactsWithoutModelCall() throws Exception {
         jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
 
         mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"question\":\"牛奶还有多少？\"}"))
+                        .content("""
+                                {
+                                  "question": "牛奶还有多少、放在哪里？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.modelAvailable").value(false))
-                .andExpect(jsonPath("$.reasonCode").value("AI_DISABLED"))
-                .andExpect(jsonPath("$.summary").isNotEmpty());
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.summary").value(
+                        org.hamcrest.Matchers.containsString("AI 模型当前不可用")))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.hasItems("ITEM_STOCK", "ITEM_STOCK_TOTAL")))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].当前总库存")
+                        .value("5"))
+                .andExpect(jsonPath("$.sources[0].category").value("HOUSEHOLD_FACT"))
+                .andExpect(jsonPath("$.sources[0].available").value(true))
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItems("ITEM", "LOT", "LOCATION")));
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
+    void configuredProviderControlsWhichQaClientCanReceiveHouseholdData() throws Exception {
+        jdbc.update("""
+                UPDATE ai_provider_setting
+                SET provider_id = 'selected-without-qa-client'
+                WHERE singleton_key = 1
+                """);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶还有多少？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"));
 
         assertThat(chatModel.modelCallCount()).isZero();
     }
@@ -629,6 +707,171 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.summary").value("牛奶有库存，请查看表格。"));
 
         assertThat(chatModel.toolDispatchCount()).isEqualTo(1);
+    }
+
+    @Test
+    void qaAuditStoresOnlyRequestMetadataAndGroundingCount() throws Exception {
+        String requestId = "qa-audit-request-44";
+        String sensitiveQuestion = "牛奶还有多少？不要把这个问题写入审计";
+        String sensitiveAnswer = "牛奶有库存，这段回答也不能进入审计。";
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}",
+                response -> sensitiveAnswer);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .header("X-Request-Id", requestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"" + sensitiveQuestion + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"));
+
+        Map<String, Object> audit = jdbc.queryForMap("""
+                SELECT actor_account_id, request_id, outcome, detail::text AS detail
+                FROM audit_log
+                WHERE action = 'AI_HOUSEHOLD_QA'
+                """);
+        assertThat(audit.get("actor_account_id")).isEqualTo(OWNER_ACCOUNT_ID);
+        assertThat(audit.get("request_id")).isEqualTo(requestId);
+        assertThat(audit.get("outcome")).isEqualTo("SUCCESS");
+        assertThat(String.valueOf(audit.get("detail")))
+                .contains("\"providerId\": \"deterministic\"")
+                .contains("\"groundingCount\": \"1\"")
+                .doesNotContain(sensitiveQuestion, sensitiveAnswer, "question", "answer");
+    }
+
+    @Test
+    void qaAuditKeepsTheProviderSelectedAtRequestStart() throws Exception {
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}",
+                response -> {
+                    jdbc.update("""
+                            UPDATE ai_provider_setting
+                            SET provider_id = 'selected-without-qa-client'
+                            WHERE singleton_key = 1
+                            """);
+                    return "牛奶有库存。";
+                });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth()).with(csrf())
+                        .header("X-Request-Id", "qa-provider-snapshot")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶还有多少？\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject("""
+                SELECT detail ->> 'providerId'
+                FROM audit_log
+                WHERE action = 'AI_HOUSEHOLD_QA'
+                  AND request_id = 'qa-provider-snapshot'
+                """, String.class)).isEqualTo("deterministic");
+    }
+
+    @Test
+    void memberRateLimitReturnsStableProblemReason() throws Exception {
+        jdbc.update("""
+                UPDATE ai_provider_setting
+                SET requests_per_minute = 10, member_requests_per_minute = 1
+                WHERE singleton_key = 1
+                """);
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}",
+                response -> "牛奶有库存。 ");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth()).with(csrf())
+                        .header("X-Request-Id", "qa-rate-first")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶还有多少？\"}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth()).with(csrf())
+                        .header("X-Request-Id", "qa-rate-limited")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶放在哪里？\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.errorCode").value("AI_REQUEST_LIMITED"))
+                .andExpect(jsonPath("$.reasonCode").value("AI_MEMBER_RATE_LIMITED"))
+                .andExpect(jsonPath("$.requestId").exists());
+
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM audit_log
+                WHERE action = 'AI_HOUSEHOLD_QA'
+                  AND outcome = 'FAILURE'
+                  AND request_id = 'qa-rate-limited'
+                  AND detail ->> 'reasonCode' = 'AI_MEMBER_RATE_LIMITED'
+                  AND detail ->> 'groundingCount' = '0'
+                """, Integer.class)).isOne();
+    }
+
+    @Test
+    void oversizedQaContextReturnsStableProblemReasonBeforeModelCall() throws Exception {
+        jdbc.update("""
+                UPDATE ai_provider_setting
+                SET max_context_tokens = 256
+                WHERE singleton_key = 1
+                """);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"" + "问".repeat(1500) + "\"}"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.errorCode").value("AI_REQUEST_LIMITED"))
+                .andExpect(jsonPath("$.reasonCode").value("AI_CONTEXT_LIMIT_EXCEEDED"));
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
+    void toolLoopStopsBeforeSecondModelCallWhenToolResultExceedsContextBudget() throws Exception {
+        jdbc.update("""
+                UPDATE ai_provider_setting
+                SET max_context_tokens = 4096
+                WHERE singleton_key = 1
+                """);
+        chatModel.script("largeResult", "{}", response -> "不应生成");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"请查询家庭事实\"}"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.errorCode").value("AI_REQUEST_LIMITED"))
+                .andExpect(jsonPath("$.reasonCode").value("AI_CONTEXT_LIMIT_EXCEEDED"));
+
+        assertThat(chatModel.modelCallCount()).isOne();
+    }
+
+    @Test
+    void modelTimeoutFallsBackToControlledStructuredFacts() throws Exception {
+        jdbc.update("""
+                UPDATE ai_provider_setting
+                SET request_timeout_seconds = 1
+                WHERE singleton_key = 1
+                """);
+        chatModel.delayNextCall();
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶还有多少？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].当前总库存")
+                        .value("5"));
+
+        assertThat(chatModel.interruptedCallCount()).isOne();
     }
 
     // ==================== helpers ====================
@@ -739,6 +982,85 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 }
             };
         }
+
+        @Bean
+        AiQaModelProvider deterministicQaModelProvider(
+                org.springframework.ai.chat.client.ChatClient.Builder chatClientBuilder
+        ) {
+            return new AiQaModelProvider() {
+                @Override
+                public String id() {
+                    return "deterministic";
+                }
+
+                @Override
+                public String completeQa(
+                        String systemPrompt,
+                        String userPrompt,
+                        Object[] tools,
+                        AiProviderConfiguration configuration
+                ) {
+                    var prompt = chatClientBuilder.build().prompt()
+                            .system(systemPrompt)
+                            .user(userPrompt);
+                    if (tools.length > 0) {
+                        prompt.tools(tools)
+                                .tools(new LargeTool())
+                                .advisors(new AiContextBudgetAdvisor(configuration.maxContextTokens()));
+                    }
+                    return prompt.call().content();
+                }
+            };
+        }
+
+        @Bean
+        AiModelProvider selectedProviderWithoutQaClient() {
+            return new AiModelProvider() {
+                @Override
+                public String id() {
+                    return "selected-without-qa-client";
+                }
+
+                @Override
+                public boolean requiresOutboundAccess() {
+                    return false;
+                }
+
+                @Override
+                public boolean requiresCredential() {
+                    return false;
+                }
+
+                @Override
+                public ProbeResult probe(AiProviderConfiguration configuration) {
+                    return ProbeResult.available("selected-chat", "selected-embedding");
+                }
+
+                @Override
+                public AiApi.ChatReply complete(
+                        AiApi.ChatRequest request,
+                        AiProviderConfiguration configuration
+                ) {
+                    throw new UnsupportedOperationException("provider has no Q&A client");
+                }
+
+                @Override
+                public AiApi.EmbeddingReply embed(
+                        AiApi.EmbeddingRequest request,
+                        AiProviderConfiguration configuration
+                ) {
+                    throw new UnsupportedOperationException("provider has no embedding client");
+                }
+            };
+        }
+    }
+
+    static final class LargeTool {
+
+        @Tool(description = "返回用于上下文预算回归测试的超长家庭事实结果")
+        String largeResult() {
+            return "家庭事实".repeat(2_000);
+        }
     }
 
     /**
@@ -750,14 +1072,26 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         private final AtomicInteger modelCalls = new AtomicInteger();
         private final AtomicInteger toolDispatchCount = new AtomicInteger();
+        private final AtomicInteger interruptedCalls = new AtomicInteger();
 
         private String toolName = "searchItems";
         private String toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
         private ToolConsumer finalText = response -> "完成。";
         private String firstPrompt = "";
+        private final java.util.concurrent.atomic.AtomicBoolean delayNextCall =
+                new java.util.concurrent.atomic.AtomicBoolean();
 
         @Override
         public ChatResponse call(Prompt prompt) {
+            if (delayNextCall.compareAndSet(true, false)) {
+                try {
+                    Thread.sleep(5_000);
+                } catch (InterruptedException exception) {
+                    interruptedCalls.incrementAndGet();
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("model call interrupted", exception);
+                }
+            }
             int call = modelCalls.incrementAndGet();
             if (call == 1) {
                 firstPrompt = prompt.getContents();
@@ -804,10 +1138,16 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         void reset() {
             modelCalls.set(0);
             toolDispatchCount.set(0);
+            interruptedCalls.set(0);
             toolName = "searchItems";
             toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
             finalText = response -> "完成。";
             firstPrompt = "";
+            delayNextCall.set(false);
+        }
+
+        void delayNextCall() {
+            delayNextCall.set(true);
         }
 
         int modelCallCount() {
@@ -816,6 +1156,10 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         int toolDispatchCount() {
             return toolDispatchCount.get();
+        }
+
+        int interruptedCallCount() {
+            return interruptedCalls.get();
         }
 
         String firstPrompt() {

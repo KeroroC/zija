@@ -1,7 +1,9 @@
 package com.zija.ai.internal;
 
+import com.zija.ZijaRequestIdFilter;
 import com.zija.ZijaPrincipal;
 import com.zija.household.RequireMember;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -53,25 +55,27 @@ class HouseholdFactQaController {
     @PostMapping("/qa")
     HouseholdFactQaModels.Answer ask(
             @AuthenticationPrincipal ZijaPrincipal principal,
-            @Valid @RequestBody QaRequest request
+            @Valid @RequestBody QaRequest request,
+            HttpServletRequest httpRequest
     ) {
-        HouseholdFactQaModels.QaTarget scope = request.scope() == null
+        HouseholdFactQaModels.QaTargetInput scope = request.scope() == null
                 ? null
-                : new HouseholdFactQaModels.QaTarget(
+                : new HouseholdFactQaModels.QaTargetInput(
                         request.scope().type(), request.scope().id(), request.scope().label());
-        HouseholdFactQaModels.QaTarget pageContext = request.pageContext() == null
+        HouseholdFactQaModels.QaTargetInput pageContext = request.pageContext() == null
                 ? null
-                : new HouseholdFactQaModels.QaTarget(
+                : new HouseholdFactQaModels.QaTargetInput(
                         request.pageContext().type(), request.pageContext().id(), request.pageContext().label());
-        List<HouseholdFactQaModels.QaTarget> confirmedScopes = request.confirmedScopes() == null
+        List<HouseholdFactQaModels.QaTargetInput> confirmedScopes = request.confirmedScopes() == null
                 ? List.of()
                 : request.confirmedScopes().stream()
-                .map(candidate -> new HouseholdFactQaModels.QaTarget(
+                .map(candidate -> new HouseholdFactQaModels.QaTargetInput(
                         candidate.type(), candidate.id(), candidate.label()))
                 .toList();
         return qaService.ask(
                 principal.getAccountId(),
-                new HouseholdFactQaModels.QaRequest(
-                        request.question(), scope, request.answerScope(), pageContext, confirmedScopes));
+                new HouseholdFactQaModels.QaInput(
+                        request.question(), scope, request.answerScope(), pageContext, confirmedScopes),
+                String.valueOf(httpRequest.getAttribute(ZijaRequestIdFilter.ATTRIBUTE)));
     }
 }

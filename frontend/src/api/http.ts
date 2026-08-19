@@ -2,6 +2,7 @@ import type { ApiProblem } from "../types/system";
 
 export class ApiError extends Error {
   readonly errorCode: string;
+  readonly reasonCode?: string;
   readonly requestId?: string;
   readonly status: number;
   readonly fieldErrors?: Record<string, string>;
@@ -11,7 +12,8 @@ export class ApiError extends Error {
     errorCode: string,
     status: number,
     requestId?: string,
-    fieldErrors?: Record<string, string>
+    fieldErrors?: Record<string, string>,
+    reasonCode?: string
   ) {
     super(message);
     this.name = "ApiError";
@@ -19,6 +21,7 @@ export class ApiError extends Error {
     this.status = status;
     this.requestId = requestId;
     this.fieldErrors = fieldErrors;
+    this.reasonCode = reasonCode;
   }
 }
 
@@ -151,7 +154,8 @@ async function coreRequest<T>(
     problem.errorCode ?? "http_error",
     response.status,
     problem.requestId ?? response.headers.get("X-Request-Id") ?? undefined,
-    problem.fieldErrors
+    problem.fieldErrors,
+    problem.reasonCode
   );
 }
 

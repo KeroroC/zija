@@ -1,11 +1,9 @@
 package com.zija.ai.internal;
 
-import com.zija.ai.AiApi;
 import com.zija.household.HouseholdApi;
 import com.zija.inventory.InventoryApi;
 import com.zija.shared.ZijaAuditOutcome;
 import com.zija.system.SystemApi;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -27,6 +25,9 @@ class HouseholdFactQaService {
 
     private static final String REASON_ANSWERED = "ANSWERED";
     private static final String REASON_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE";
+    private static final String REASON_STRUCTURED_FACTS_FALLBACK = "STRUCTURED_FACTS_FALLBACK";
+    private static final String REASON_INVALID_REQUEST = "AI_QA_INVALID_REQUEST";
+    private static final String REASON_QA_FAILED = "AI_QA_FAILED";
 
     private static final String SYSTEM_PROMPT = """
             你是知家家庭物品库存助手。你只能调用提供的工具查询当前家庭的真实数据来回答问题。
@@ -38,84 +39,131 @@ class HouseholdFactQaService {
             - 用简洁自然的中文回答：先给结论，再列关键事实。""";
 
     private final HouseholdApi householdApi;
-    private final AiApi aiApi;
+    private final AiService aiService;
     private final InventoryApi inventoryApi;
     private final HouseholdFactQueries queries;
-    private final ChatClient.Builder chatClientBuilder;
     private final SystemApi systemApi;
     private final KnowledgeQaService knowledgeQaService;
     private final QaScopePlanner scopePlanner;
+    private final AiQaExecutionGuard executionGuard;
 
     HouseholdFactQaService(
             HouseholdApi householdApi,
-            AiApi aiApi,
+            AiService aiService,
             InventoryApi inventoryApi,
             HouseholdFactQueries queries,
-            ChatClient.Builder chatClientBuilder,
             SystemApi systemApi,
             KnowledgeQaService knowledgeQaService,
-            QaScopePlanner scopePlanner
+            QaScopePlanner scopePlanner,
+            AiQaExecutionGuard executionGuard
     ) {
         this.householdApi = householdApi;
-        this.aiApi = aiApi;
+        this.aiService = aiService;
         this.inventoryApi = inventoryApi;
         this.queries = queries;
-        this.chatClientBuilder = chatClientBuilder;
         this.systemApi = systemApi;
         this.knowledgeQaService = knowledgeQaService;
         this.scopePlanner = scopePlanner;
+        this.executionGuard = executionGuard;
     }
 
-    HouseholdFactQaModels.Answer ask(UUID accountId, HouseholdFactQaModels.QaRequest request) {
+    HouseholdFactQaModels.Answer ask(
+            UUID accountId,
+            HouseholdFactQaModels.QaInput input,
+            String requestId
+    ) {
         var member = householdApi.requireActiveMember(accountId);
         UUID householdId = member.householdId();
-        String question = request.question().trim();
-        HouseholdFactQaModels.ScopePlan plan = scopePlanner.plan(householdId, request);
-        if (plan.needsConfirmation()) {
-            return clarification(question, plan);
+        var session = aiService.startQaSession();
+        String question = input.question().trim();
+        HouseholdFactQaModels.ScopePlan plan;
+        try {
+            var request = toRequest(input);
+            plan = scopePlanner.plan(householdId, request);
+        } catch (IllegalArgumentException exception) {
+            auditFailure(householdId, accountId, requestId, session.providerId(), REASON_INVALID_REQUEST);
+            throw exception;
+        } catch (RuntimeException exception) {
+            auditFailure(householdId, accountId, requestId, session.providerId(), REASON_QA_FAILED);
+            throw exception;
         }
+        HouseholdFactQaModels.Answer answer;
+        try {
+            answer = executionGuard.invoke(accountId, session, question,
+                    () -> executePlan(householdId, question, plan, session));
+        } catch (AiRequestLimitException exception) {
+            auditFailure(householdId, accountId, requestId, session.providerId(), exception.reasonCode());
+            throw exception;
+        } catch (AiProviderUnavailableException exception) {
+            answer = executionFailureFallback(householdId, question, plan);
+        } catch (RuntimeException exception) {
+            auditFailure(householdId, accountId, requestId, session.providerId(), REASON_QA_FAILED);
+            throw exception;
+        }
+        audit(householdId, accountId, requestId, session.providerId(), answer);
+        return answer;
+    }
 
+    private HouseholdFactQaModels.QaRequest toRequest(HouseholdFactQaModels.QaInput input) {
+        return new HouseholdFactQaModels.QaRequest(
+                input.question(),
+                toTarget(input.scope()),
+                input.answerScope(),
+                toTarget(input.pageContext()),
+                input.confirmedScopes().stream().map(this::toTarget).toList());
+    }
+
+    private HouseholdFactQaModels.QaTarget toTarget(HouseholdFactQaModels.QaTargetInput input) {
+        return input == null ? null : new HouseholdFactQaModels.QaTarget(
+                input.type(), input.id(), input.label());
+    }
+
+    private HouseholdFactQaModels.Answer executePlan(
+            UUID householdId,
+            String question,
+            HouseholdFactQaModels.ScopePlan plan,
+            AiService.QaSession session
+    ) {
+        if (plan.needsConfirmation()) {
+            return clarification(question, plan, session);
+        }
         return switch (plan.usedAnswerScope()) {
-            case QaScopePlanner.HOUSEHOLD_FACT -> askFacts(householdId, accountId, question, plan.target())
+            case QaScopePlanner.HOUSEHOLD_FACT -> askFacts(householdId, question, plan.target(), session)
                     .withPlan(plan);
             case QaScopePlanner.KNOWLEDGE_SOURCE -> knowledgeQaService
-                    .ask(householdId, accountId, question, plan.target())
+                    .ask(householdId, question, plan.target(), session)
                     .withPlan(plan);
-            case QaScopePlanner.BOTH -> mixedAnswer(householdId, accountId, question, plan);
+            case QaScopePlanner.BOTH -> mixedAnswer(householdId, question, plan, session);
             default -> throw new IllegalArgumentException("不支持的回答范围");
         };
     }
 
     private HouseholdFactQaModels.Answer askFacts(
             UUID householdId,
-            UUID accountId,
             String question,
-            HouseholdFactQaModels.QaTarget target
+            HouseholdFactQaModels.QaTarget target,
+            AiService.QaSession session
     ) {
 
-        AiApi.AiStatus status = aiApi.status();
+        var status = session.status();
         if (!status.available()) {
-            systemApi.recordAudit(new SystemApi.AuditEvent(
-                    SystemApi.AuditAction.AI_HOUSEHOLD_QA, ZijaAuditOutcome.FAILURE,
-                    householdId, accountId, null, null, null,
-                    Map.of("reasonCode", status.reasonCode())));
-            return new HouseholdFactQaModels.Answer(
-                    question, false, status.reasonCode(),
-                    "AI 模型当前不可用（" + status.reasonCode() + "），暂时无法确认家庭事实。",
-                    List.of(), List.of(), List.of(), OffsetDateTime.now());
+            return structuredFactFallback(householdId, question, target, status.reasonCode());
         }
 
+        String userPrompt = factQuestion(householdId, question, target);
         var collector = new HouseholdFactQaModels.Collector();
-        var tools = new HouseholdFactTools(householdId, queries, collector, target, inventoryApi);
+        var tools = new HouseholdFactTools(
+                householdId, queries, collector, target, inventoryApi);
         OffsetDateTime dataTime = OffsetDateTime.now();
-
-        ChatClient chatClient = chatClientBuilder.build();
-        String summary = chatClient.prompt()
-                .system(SYSTEM_PROMPT)
-                .tools(tools)
-                .user(factQuestion(householdId, question, target))
-                .call()
-                .content();
+        String summary;
+        try {
+            executionGuard.checkContext(session, SYSTEM_PROMPT + userPrompt);
+            summary = session.completeQa(SYSTEM_PROMPT, userPrompt, tools);
+        } catch (AiRequestLimitException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            return structuredFactFallback(householdId, question, target, "MODEL_CALL_FAILED");
+        }
 
         var answer = new HouseholdFactQaModels.Answer(
                 question, true, REASON_ANSWERED,
@@ -130,14 +178,146 @@ class HouseholdFactQaService {
                 collector.jumps(),
                 dataTime);
 
-        systemApi.recordAudit(new SystemApi.AuditEvent(
-                SystemApi.AuditAction.AI_HOUSEHOLD_QA, ZijaAuditOutcome.SUCCESS,
-                householdId, accountId, null, null, null,
-                Map.of("reasonCode", REASON_ANSWERED,
-                        "modelAvailable", Boolean.TRUE.toString(),
-                        "structuredResultCount", String.valueOf(answer.structuredResults().size()),
-                        "jumpCount", String.valueOf(answer.jumps().size()))));
         return answer;
+    }
+
+    private HouseholdFactQaModels.Answer executionFailureFallback(
+            UUID householdId,
+            String question,
+            HouseholdFactQaModels.ScopePlan plan
+    ) {
+        return switch (plan.usedAnswerScope()) {
+            case QaScopePlanner.HOUSEHOLD_FACT -> structuredFactFallback(
+                    householdId, question, plan.target(), "AI_QA_TIMEOUT").withPlan(plan);
+            case QaScopePlanner.KNOWLEDGE_SOURCE -> knowledgeQaService
+                    .executionUnavailable(householdId, question, plan.target())
+                    .withPlan(plan);
+            case QaScopePlanner.BOTH -> {
+                var fact = structuredFactFallback(
+                        householdId, question, plan.target(), "AI_QA_TIMEOUT");
+                var knowledge = knowledgeQaService
+                        .executionUnavailable(householdId, question, plan.knowledgeTarget());
+                yield combineMixedAnswer(question, plan, fact, knowledge);
+            }
+            default -> new HouseholdFactQaModels.Answer(
+                    question, false, REASON_MODEL_UNAVAILABLE,
+                    "AI 问答处理超时，请稍后重试。", List.of(), List.of(), List.of(), OffsetDateTime.now())
+                    .withPlan(plan);
+        };
+    }
+
+    private void audit(
+            UUID householdId,
+            UUID accountId,
+            String requestId,
+            String providerId,
+            HouseholdFactQaModels.Answer answer
+    ) {
+        boolean hasAvailableGrounding = answer.sources().stream()
+                .anyMatch(HouseholdFactQaModels.AnswerSource::available);
+        String outcome = hasAvailableGrounding ? ZijaAuditOutcome.SUCCESS : ZijaAuditOutcome.FAILURE;
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                SystemApi.AuditAction.AI_HOUSEHOLD_QA,
+                outcome,
+                householdId,
+                accountId,
+                null,
+                requestId,
+                null,
+                Map.of(
+                        "reasonCode", answer.reasonCode(),
+                        "providerId", providerId,
+                        "groundingCount", String.valueOf(answer.sources().size()))));
+    }
+
+    private void auditFailure(
+            UUID householdId,
+            UUID accountId,
+            String requestId,
+            String providerId,
+            String reasonCode
+    ) {
+        systemApi.recordAudit(new SystemApi.AuditEvent(
+                SystemApi.AuditAction.AI_HOUSEHOLD_QA,
+                ZijaAuditOutcome.FAILURE,
+                householdId,
+                accountId,
+                null,
+                requestId,
+                null,
+                Map.of(
+                        "reasonCode", reasonCode,
+                        "providerId", providerId,
+                        "groundingCount", "0")));
+    }
+
+    private HouseholdFactQaModels.Answer structuredFactFallback(
+            UUID householdId,
+            String question,
+            HouseholdFactQaModels.QaTarget target,
+            String modelReasonCode
+    ) {
+        var collector = new HouseholdFactQaModels.Collector();
+        var tools = new HouseholdFactTools(householdId, queries, collector, target, inventoryApi);
+        String normalized = question.toLowerCase(java.util.Locale.ROOT);
+
+        if (target != null && "LOCATION".equals(target.type())) {
+            tools.locationStock("", 10);
+        } else if (containsAny(normalized, "流水", "入库", "领用", "报损", "变化", "操作人")
+                && target != null) {
+            fallbackItemId(householdId, target).ifPresentOrElse(
+                    itemId -> tools.itemMovements(itemId.toString(), 10),
+                    () -> collector.markFactSourceUnavailable());
+        } else if (containsAny(normalized, "到期", "临期")) {
+            tools.expiringLots(30, 10);
+        } else if (containsAny(normalized, "低库存", "缺货", "短缺")) {
+            tools.lowStock(10);
+        } else if (target != null) {
+            fallbackItemId(householdId, target).ifPresentOrElse(
+                    itemId -> tools.itemStock(itemId.toString(), 10),
+                    () -> collector.markFactSourceUnavailable());
+        } else {
+            tools.searchItems("", 10);
+        }
+
+        OffsetDateTime dataTime = OffsetDateTime.now();
+        boolean available = !collector.factSourceUnavailable();
+        String summary = available
+                ? "AI 模型当前不可用（" + modelReasonCode + "），已返回可直接核对的家庭事实。"
+                : "AI 模型和家庭事实来源当前均不可用，暂时无法确认。";
+        return new HouseholdFactQaModels.Answer(
+                question,
+                false,
+                available ? REASON_STRUCTURED_FACTS_FALLBACK : modelReasonCode,
+                summary,
+                collector.results(),
+                available
+                        ? List.of(new HouseholdFactQaModels.AnswerSource(
+                                HouseholdFactTools.CATEGORY_HOUSEHOLD_FACT,
+                                "家庭事实",
+                                dataTime,
+                                true,
+                                "模型不可用，未生成自然语言摘要"))
+                        : List.of(),
+                collector.jumps(),
+                dataTime);
+    }
+
+    private java.util.Optional<UUID> fallbackItemId(
+            UUID householdId,
+            HouseholdFactQaModels.QaTarget target
+    ) {
+        if ("ITEM".equals(target.type())) {
+            return java.util.Optional.of(target.id());
+        }
+        if ("LOT".equals(target.type())) {
+            return inventoryApi.findLot(householdId, target.id()).map(InventoryApi.LotFlat::itemId);
+        }
+        return java.util.Optional.empty();
+    }
+
+    private static boolean containsAny(String value, String... terms) {
+        return java.util.Arrays.stream(terms).anyMatch(value::contains);
     }
 
     private String factQuestion(
@@ -159,13 +339,14 @@ class HouseholdFactQaService {
 
     private HouseholdFactQaModels.Answer clarification(
             String question,
-            HouseholdFactQaModels.ScopePlan plan
+            HouseholdFactQaModels.ScopePlan plan,
+            AiService.QaSession session
     ) {
         String summary = plan.candidates().isEmpty()
                 ? "请先选择要查询的物品或批次，再继续提问。"
                 : "找到多个可能的对象，请先确认你指的是哪一个。";
         return new HouseholdFactQaModels.Answer(
-                question, aiApi.status().available(), "AMBIGUOUS_TARGET", summary,
+                question, session.status().available(), "AMBIGUOUS_TARGET", summary,
                 List.of(), List.of(), List.of(), OffsetDateTime.now(),
                 plan.recommendedAnswerScope(), plan.usedAnswerScope(), plan.scopeReason(),
                 plan.target(), plan.candidates(), List.of(), List.of());
@@ -173,14 +354,23 @@ class HouseholdFactQaService {
 
     private HouseholdFactQaModels.Answer mixedAnswer(
             UUID householdId,
-            UUID accountId,
             String question,
-            HouseholdFactQaModels.ScopePlan plan
+            HouseholdFactQaModels.ScopePlan plan,
+            AiService.QaSession session
     ) {
-        HouseholdFactQaModels.Answer fact = askFacts(householdId, accountId, question, plan.target());
+        HouseholdFactQaModels.Answer fact = askFacts(householdId, question, plan.target(), session);
         HouseholdFactQaModels.Answer knowledge = knowledgeQaService
-                .ask(householdId, accountId, question, plan.knowledgeTarget());
+                .ask(householdId, question, plan.knowledgeTarget(), session);
 
+        return combineMixedAnswer(question, plan, fact, knowledge);
+    }
+
+    private HouseholdFactQaModels.Answer combineMixedAnswer(
+            String question,
+            HouseholdFactQaModels.ScopePlan plan,
+            HouseholdFactQaModels.Answer fact,
+            HouseholdFactQaModels.Answer knowledge
+    ) {
         List<HouseholdFactQaModels.AnswerPart> parts = List.of(
                 answerPart(HouseholdFactTools.CATEGORY_HOUSEHOLD_FACT, "家庭事实", fact),
                 answerPart(KnowledgeQaService.CATEGORY_KNOWLEDGE_SOURCE, "知识来源", knowledge));
@@ -196,11 +386,16 @@ class HouseholdFactQaService {
         sources.addAll(knowledge.sources());
         List<HouseholdFactQaModels.Jump> jumps = distinctJumps(fact.jumps(), knowledge.jumps());
         boolean answered = REASON_ANSWERED.equals(fact.reasonCode()) || REASON_ANSWERED.equals(knowledge.reasonCode());
+        boolean hasStructuredFallback = REASON_STRUCTURED_FACTS_FALLBACK.equals(fact.reasonCode())
+                || REASON_STRUCTURED_FACTS_FALLBACK.equals(knowledge.reasonCode());
+        String reasonCode = answered
+                ? REASON_ANSWERED
+                : hasStructuredFallback ? REASON_STRUCTURED_FACTS_FALLBACK : knowledge.reasonCode();
 
         return new HouseholdFactQaModels.Answer(
                 question,
                 fact.modelAvailable() && knowledge.modelAvailable(),
-                answered ? REASON_ANSWERED : knowledge.reasonCode(),
+                reasonCode,
                 summary,
                 List.copyOf(results),
                 List.copyOf(sources),
@@ -217,8 +412,7 @@ class HouseholdFactQaService {
     ) {
         return new HouseholdFactQaModels.AnswerPart(
                 category, label, answer.reasonCode(), answer.summary(),
-                REASON_ANSWERED.equals(answer.reasonCode())
-                        && !answer.sources().isEmpty()
+                !answer.sources().isEmpty()
                         && answer.sources().stream().allMatch(HouseholdFactQaModels.AnswerSource::available));
     }
 

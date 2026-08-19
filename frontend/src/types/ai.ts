@@ -4,6 +4,7 @@ export interface AiSettings {
   credentialConfigured: boolean;
   outboundEnabled: boolean;
   requestsPerMinute: number;
+  memberRequestsPerMinute: number;
   maxContextTokens: number;
   maxConcurrentRequests: number;
   requestTimeoutSeconds: number;
@@ -19,6 +20,7 @@ export interface AiStatus {
   embeddingModel: string | null;
   outboundEnabled: boolean;
   requestsPerMinute: number;
+  memberRequestsPerMinute: number;
   maxContextTokens: number;
   maxConcurrentRequests: number;
   requestTimeoutSeconds: number;
@@ -31,6 +33,7 @@ export interface AiSettingsUpdate {
   clearCredential: boolean;
   outboundEnabled: boolean;
   requestsPerMinute: number;
+  memberRequestsPerMinute: number;
   maxContextTokens: number;
   maxConcurrentRequests: number;
   requestTimeoutSeconds: number;

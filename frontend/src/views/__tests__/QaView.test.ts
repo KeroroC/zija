@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
-import ElementPlus from "element-plus";
+import ElementPlus, { ElMessage } from "element-plus";
 
 vi.mock("../../api/ai", () => ({
   askHouseholdQuestion: vi.fn(),
@@ -25,6 +25,7 @@ import QaView from "../QaView.vue";
 import { askHouseholdQuestion } from "../../api/ai";
 import { fetchItems } from "../../api/catalog";
 import { fetchLots } from "../../api/inventory";
+import { ApiError } from "../../api/http";
 
 const mockAsk = vi.mocked(askHouseholdQuestion);
 const mockFetchItems = vi.mocked(fetchItems);
@@ -74,6 +75,13 @@ const unavailableFixture = {
   sources: [],
   structuredResults: [],
   jumps: [],
+};
+
+const structuredFallbackFixture = {
+  ...answerFixture,
+  modelAvailable: false,
+  reasonCode: "STRUCTURED_FACTS_FALLBACK",
+  summary: "AI 模型当前不可用，已返回可直接核对的家庭事实。",
 };
 
 const knowledgeFixture = {
@@ -221,6 +229,42 @@ describe("QaView", () => {
     expect(wrapper.text()).toContain("暂时无法确认");
     expect(wrapper.find(".qa-result").exists()).toBe(false);
     expect(wrapper.find(".qa-jump").exists()).toBe(false);
+  });
+
+  it("renders structured facts when the model is unavailable", async () => {
+    mockAsk.mockResolvedValue(structuredFallbackFixture);
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("牛奶还有多少？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='qa-fallback']").exists()).toBe(true);
+    expect(wrapper.find(".qa-result-table").exists()).toBe(true);
+    expect(wrapper.text()).toContain("AI 模型当前不可用");
+    expect(wrapper.findAll(".qa-summary").filter(
+      (summary) => summary.text().includes("AI 模型当前不可用")
+    )).toHaveLength(1);
+  });
+
+  it("keeps the question out of the thread when the server rate-limits it", async () => {
+    const errorSpy = vi.spyOn(ElMessage, "error");
+    mockAsk.mockRejectedValue(new ApiError(
+      "AI 请求受限",
+      "AI_REQUEST_LIMITED",
+      429,
+      "request-44",
+      undefined,
+      "AI_MEMBER_RATE_LIMITED",
+    ));
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("牛奶还有多少？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll(".qa-question-text")).toHaveLength(0);
+    expect(errorSpy).toHaveBeenCalledWith("你的提问过于频繁，请稍后再试");
   });
 
   it("clears input after a successful question and keeps it in the thread", async () => {

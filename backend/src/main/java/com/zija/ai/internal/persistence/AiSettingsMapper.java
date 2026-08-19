@@ -10,9 +10,10 @@ public interface AiSettingsMapper extends BaseMapper<AiSettingsEntity> {
     @Insert("""
             INSERT INTO ai_provider_setting(
                 singleton_key, enabled, provider_id, outbound_enabled,
-                requests_per_minute, max_context_tokens, max_concurrent_requests,
+                requests_per_minute, member_requests_per_minute,
+                max_context_tokens, max_concurrent_requests,
                 request_timeout_seconds, version
-            ) VALUES (1, FALSE, 'ollama', FALSE, 20, 8192, 2, 30, 0)
+            ) VALUES (1, FALSE, 'ollama', FALSE, 20, 10, 8192, 2, 30, 0)
             ON CONFLICT (singleton_key) DO NOTHING
             """)
     int insertDefaultIfMissing();

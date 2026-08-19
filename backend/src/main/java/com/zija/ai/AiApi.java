@@ -35,7 +35,8 @@ public interface AiApi {
             int requestsPerMinute,
             int maxContextTokens,
             int maxConcurrentRequests,
-            int requestTimeoutSeconds
+            int requestTimeoutSeconds,
+            int memberRequestsPerMinute
     ) {
     }
 

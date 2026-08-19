@@ -8,6 +8,7 @@ import com.zija.shared.ZijaProblems;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -55,5 +56,19 @@ class AiExceptionHandler {
     ProblemDetail handleInvalidArgument(HttpServletRequest request, IllegalArgumentException exception) {
         return ZijaProblems.of(request, HttpStatus.UNPROCESSABLE_CONTENT, exception.getMessage(),
                 ErrorCodes.INVALID_CONFIGURATION);
+    }
+
+    @ExceptionHandler(AiRequestLimitException.class)
+    ResponseEntity<ProblemDetail> handleRequestLimit(
+            HttpServletRequest request,
+            AiRequestLimitException exception
+    ) {
+        HttpStatus status = "AI_CONTEXT_LIMIT_EXCEEDED".equals(exception.reasonCode())
+                ? HttpStatus.PAYLOAD_TOO_LARGE
+                : HttpStatus.TOO_MANY_REQUESTS;
+        ProblemDetail problem = ZijaProblems.of(
+                request, status, "AI 请求受限", exception.getMessage(), ErrorCodes.REQUEST_LIMITED);
+        problem.setProperty("reasonCode", exception.reasonCode());
+        return ResponseEntity.status(status).body(problem);
     }
 }

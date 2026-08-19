@@ -7,6 +7,7 @@ final class ErrorCodes {
     static final String KNOWLEDGE_SOURCE_NOT_FOUND = "AI_KNOWLEDGE_SOURCE_NOT_FOUND";
     static final String KNOWLEDGE_SOURCE_FORMAT_UNSUPPORTED = "AI_KNOWLEDGE_SOURCE_FORMAT_UNSUPPORTED";
     static final String KNOWLEDGE_SOURCE_STATE_CONFLICT = "AI_KNOWLEDGE_SOURCE_STATE_CONFLICT";
+    static final String REQUEST_LIMITED = "AI_REQUEST_LIMITED";
 
     private ErrorCodes() {
     }

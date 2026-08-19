@@ -15,7 +15,7 @@ import java.util.Objects;
  * probe is converted into a status result; it never prevents the application from starting.
  */
 @Service
-class SpringAiProvider implements AiModelProvider {
+class SpringAiProvider implements AiModelProvider, AiQaModelProvider {
 
     private final ChatClient.Builder chatClientBuilder;
     private final EmbeddingModel embeddingModel;
@@ -92,6 +92,25 @@ class SpringAiProvider implements AiModelProvider {
                 .call()
                 .content();
         return new AiApi.ChatReply(content == null ? "" : content);
+    }
+
+    @Override
+    public String completeQa(
+            String systemPrompt,
+            String userPrompt,
+            Object[] tools,
+            AiProviderConfiguration configuration
+    ) {
+        var prompt = chatClientBuilder.build()
+                .prompt()
+                .system(systemPrompt)
+                .user(userPrompt);
+        if (tools.length > 0) {
+            prompt.tools(tools)
+                    .advisors(new AiContextBudgetAdvisor(configuration.maxContextTokens()));
+        }
+        String content = prompt.call().content();
+        return content == null ? "" : content;
     }
 
     @Override

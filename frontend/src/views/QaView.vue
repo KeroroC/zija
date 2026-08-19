@@ -101,7 +101,7 @@
                 <span class="qa-candidate-detail">{{ candidate.detail }}</span>
               </button>
             </div>
-            <div v-else-if="turn.answer.reasonCode !== 'ANSWERED'" class="qa-unavailable">
+            <div v-else-if="!hasDisplayableResults(turn.answer)" class="qa-unavailable">
               <span class="zj-badge zj-badge-warn">{{ turn.answer.reasonCode }}</span>
               <p class="qa-summary">{{ turn.answer.summary }}</p>
               <el-button
@@ -116,6 +116,16 @@
               </el-button>
             </div>
             <template v-else>
+              <div
+                v-if="turn.answer.reasonCode === 'STRUCTURED_FACTS_FALLBACK'"
+                class="qa-fallback"
+                data-testid="qa-fallback"
+              >
+                <span class="zj-badge zj-badge-warn">模型不可用</span>
+                <p v-if="!turn.answer.answerParts?.length" class="qa-summary">
+                  {{ turn.answer.summary }}
+                </p>
+              </div>
               <div v-if="turn.answer.answerParts?.length" class="qa-answer-parts">
                 <article
                   v-for="part in turn.answer.answerParts"
@@ -132,7 +142,12 @@
                   <p class="qa-summary">{{ part.summary }}</p>
                 </article>
               </div>
-              <p v-else class="qa-summary">{{ turn.answer.summary }}</p>
+              <p
+                v-else-if="turn.answer.reasonCode !== 'STRUCTURED_FACTS_FALLBACK'"
+                class="qa-summary"
+              >
+                {{ turn.answer.summary }}
+              </p>
 
               <div
                 v-for="conflict in turn.answer.conflicts ?? []"
@@ -256,6 +271,7 @@ import type {
 import type { CatalogItem } from "../types/catalog";
 import type { LotSummary } from "../types/inventory";
 import { ApiError } from "../api/http";
+import { AI_REQUEST_LIMITED } from "../types/errorCodes";
 
 const router = useRouter();
 const route = useRoute();
@@ -392,7 +408,7 @@ async function submit() {
     question.value = "";
   } catch (e) {
     if (e instanceof ApiError) {
-      ElMessage.error(e.message);
+      ElMessage.error(qaErrorMessage(e));
     } else {
       ElMessage.error("提问失败，请稍后重试");
     }
@@ -423,7 +439,7 @@ async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
       turn.confirmedScopes.push(confirmedScope);
     }
   } catch (e) {
-    ElMessage.error(e instanceof ApiError ? e.message : "提问失败，请稍后重试");
+    ElMessage.error(e instanceof ApiError ? qaErrorMessage(e) : "提问失败，请稍后重试");
   } finally {
     submitting.value = false;
   }
@@ -448,6 +464,21 @@ function columnsOf(rows: Array<Record<string, string>>): string[] {
     }
   }
   return cols;
+}
+
+function hasDisplayableResults(answer: HouseholdFactAnswer): boolean {
+  return answer.reasonCode === "ANSWERED" || answer.reasonCode === "STRUCTURED_FACTS_FALLBACK";
+}
+
+function qaErrorMessage(error: ApiError): string {
+  if (error.errorCode !== AI_REQUEST_LIMITED) return error.message;
+  switch (error.reasonCode) {
+    case "AI_MEMBER_RATE_LIMITED": return "你的提问过于频繁，请稍后再试";
+    case "AI_DEPLOYMENT_RATE_LIMITED": return "当前 AI 请求较多，请稍后再试";
+    case "AI_CONTEXT_LIMIT_EXCEEDED": return "问题和资料内容超过当前上下文上限";
+    case "AI_CONCURRENCY_LIMIT_EXCEEDED": return "当前 AI 正在处理其他请求，请稍后再试";
+    default: return "AI 请求受限，请稍后再试";
+  }
 }
 
 function goJump(jump: QaJump) {
@@ -685,6 +716,19 @@ function formatDateTime(iso: string): string {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--zj-space-3);
   margin-bottom: var(--zj-space-3);
+}
+
+.qa-fallback {
+  display: grid;
+  gap: var(--zj-space-2);
+  margin-bottom: var(--zj-space-3);
+  padding-bottom: var(--zj-space-3);
+  border-bottom: 1px solid var(--zj-line);
+}
+
+.qa-fallback .qa-summary {
+  margin-bottom: 0;
+  color: var(--zj-ink-600);
 }
 
 .qa-answer-part {

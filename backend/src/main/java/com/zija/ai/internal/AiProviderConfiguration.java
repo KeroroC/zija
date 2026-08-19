@@ -6,6 +6,7 @@ record AiProviderConfiguration(
         String credential,
         boolean outboundEnabled,
         int requestsPerMinute,
+        int memberRequestsPerMinute,
         int maxContextTokens,
         int maxConcurrentRequests,
         int requestTimeoutSeconds

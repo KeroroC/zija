@@ -1,7 +1,6 @@
 package com.zija.ai.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.zija.ai.AiApi;
 import com.zija.ai.internal.HouseholdFactQaModels.Answer;
 import com.zija.ai.internal.HouseholdFactQaModels.AnswerSource;
 import com.zija.ai.internal.HouseholdFactQaModels.Jump;
@@ -12,9 +11,6 @@ import com.zija.catalog.CatalogApi;
 import com.zija.file.FileApi;
 import com.zija.household.HouseholdApi;
 import com.zija.inventory.InventoryApi;
-import com.zija.shared.ZijaAuditOutcome;
-import com.zija.system.SystemApi;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
 
@@ -45,39 +41,38 @@ class KnowledgeQaService {
             - 不要生成来源、页码、章节或引用编号；应用会根据检索结果单独展示回答依据。
             - 用简洁自然的中文给出可执行步骤；资料不足时明确说「现有资料无法确认」。""";
 
-    private final AiApi aiApi;
-    private final ChatClient.Builder chatClientBuilder;
     private final AiKnowledgeVectorStore vectorStore;
     private final KnowledgeSourceMapper sourceMapper;
     private final FileApi fileApi;
     private final CatalogApi catalogApi;
     private final InventoryApi inventoryApi;
     private final HouseholdApi householdApi;
-    private final SystemApi systemApi;
+    private final AiQaExecutionGuard executionGuard;
 
     KnowledgeQaService(
-            AiApi aiApi,
-            ChatClient.Builder chatClientBuilder,
             AiKnowledgeVectorStore vectorStore,
             KnowledgeSourceMapper sourceMapper,
             FileApi fileApi,
             CatalogApi catalogApi,
             InventoryApi inventoryApi,
             HouseholdApi householdApi,
-            SystemApi systemApi
+            AiQaExecutionGuard executionGuard
     ) {
-        this.aiApi = aiApi;
-        this.chatClientBuilder = chatClientBuilder;
         this.vectorStore = vectorStore;
         this.sourceMapper = sourceMapper;
         this.fileApi = fileApi;
         this.catalogApi = catalogApi;
         this.inventoryApi = inventoryApi;
         this.householdApi = householdApi;
-        this.systemApi = systemApi;
+        this.executionGuard = executionGuard;
     }
 
-    Answer ask(UUID householdId, UUID accountId, String question, QaTarget scope) {
+    Answer ask(
+            UUID householdId,
+            String question,
+            QaTarget scope,
+            AiService.QaSession session
+    ) {
         Target target = resolveTarget(householdId, scope);
         KnowledgeAvailability availability = knowledgeAvailability(householdId, target);
         List<AvailableAttachment> attachments = availability.available();
@@ -87,10 +82,8 @@ class KnowledgeQaService {
             if (!availability.failures().isEmpty()) {
                 PreparationFailure firstFailure = availability.failures().getFirst();
                 return unavailable(
-                        householdId,
-                        accountId,
                         question,
-                        aiApi.status().available(),
+                        session.status().available(),
                         REASON_PREPARATION_FAILED,
                         preparationFailureSummary(firstFailure, availability.failures().size()),
                         attachmentJumps(availability.failures().stream()
@@ -98,24 +91,28 @@ class KnowledgeQaService {
                                 .toList()),
                         dataTime);
             }
-            return unavailable(householdId, accountId, question, aiApi.status().available(), REASON_NO_SOURCE,
+            return unavailable(question, session.status().available(), REASON_NO_SOURCE,
                     "当前范围没有可用的知识来源，请先到附件管理中选择或处理附件。", List.of(), dataTime);
         }
 
-        AiApi.AiStatus status = aiApi.status();
+        var status = session.status();
         if (!status.available()) {
-            return unavailable(householdId, accountId, question, false, REASON_MODEL_UNAVAILABLE,
+            return unavailable(question, false, REASON_MODEL_UNAVAILABLE,
                     "AI 模型当前不可用（" + status.reasonCode() + "），无法依据附件生成回答。",
                     attachmentJumps(attachments), dataTime);
         }
 
         List<Document> documents;
         try {
+            float[] queryEmbedding = session.embedQuery(question);
             documents = vectorStore.search(new AiKnowledgeVectorStore.KnowledgeSearchScope(
                     householdId, target.itemId(), target.lotId(),
-                    attachments.stream().map(AvailableAttachment::fileId).toList()), question, TOP_K);
+                    attachments.stream().map(AvailableAttachment::fileId).toList()),
+                    question,
+                    queryEmbedding,
+                    TOP_K);
         } catch (RuntimeException exception) {
-            return unavailable(householdId, accountId, question, false, REASON_MODEL_UNAVAILABLE,
+            return unavailable(question, false, REASON_MODEL_UNAVAILABLE,
                     "知识检索暂时不可用，请稍后重试或查看附件。", attachmentJumps(attachments), dataTime);
         }
 
@@ -126,27 +123,26 @@ class KnowledgeQaService {
                 .filter(java.util.Objects::nonNull)
                 .toList();
         if (groundings.isEmpty()) {
-            return unavailable(householdId, accountId, question, true, REASON_NO_SOURCE,
+            return unavailable(question, true, REASON_NO_SOURCE,
                     "没有检索到能回答该问题的可用资料，请查看附件或换一种问法。",
                     attachmentJumps(attachments), dataTime);
         }
 
         String summary;
+        String prompt = groundedPrompt(question, groundings);
         try {
-            summary = chatClientBuilder.build()
-                    .prompt()
-                    .system(SYSTEM_PROMPT)
-                    .user(groundedPrompt(question, groundings))
-                    .call()
-                    .content();
+            executionGuard.checkContext(session, SYSTEM_PROMPT + prompt);
+            summary = session.completeQa(SYSTEM_PROMPT, prompt);
+        } catch (AiRequestLimitException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
-            return unavailable(householdId, accountId, question, false, REASON_MODEL_UNAVAILABLE,
+            return unavailable(question, false, REASON_MODEL_UNAVAILABLE,
                     "AI 模型暂时无法依据资料生成回答，请稍后重试或查看附件。",
                     attachmentJumps(attachments), dataTime);
         }
 
         if (summary == null || summary.isBlank()) {
-            return unavailable(householdId, accountId, question, false, REASON_MODEL_UNAVAILABLE,
+            return unavailable(question, false, REASON_MODEL_UNAVAILABLE,
                     "AI 模型未能生成有依据的回答，请查看附件。", attachmentJumps(attachments), dataTime);
         }
 
@@ -154,10 +150,8 @@ class KnowledgeQaService {
                 .map(grounding -> grounding.toAnswerSource(dataTime))
                 .toList();
         List<Jump> jumps = answerJumps(target, attachments);
-        Answer answer = new Answer(question, true, REASON_ANSWERED, summary.trim(),
+        return new Answer(question, true, REASON_ANSWERED, summary.trim(),
                 List.of(), sources, jumps, dataTime);
-        audit(householdId, accountId, ZijaAuditOutcome.SUCCESS, REASON_ANSWERED, sources.size());
-        return answer;
     }
 
     private Target resolveTarget(UUID householdId, QaTarget scope) {
@@ -305,8 +299,6 @@ class KnowledgeQaService {
     }
 
     private Answer unavailable(
-            UUID householdId,
-            UUID accountId,
             String question,
             boolean modelAvailable,
             String reasonCode,
@@ -314,24 +306,20 @@ class KnowledgeQaService {
             List<Jump> jumps,
             OffsetDateTime dataTime
     ) {
-        audit(householdId, accountId, ZijaAuditOutcome.FAILURE, reasonCode, 0);
         return new Answer(question, modelAvailable, reasonCode, summary,
                 List.of(), List.of(), jumps.isEmpty() ? attachmentJumps(List.of()) : jumps, dataTime);
     }
 
-    private void audit(
-            UUID householdId,
-            UUID accountId,
-            String outcome,
-            String reasonCode,
-            int groundingCount
-    ) {
-        systemApi.recordAudit(new SystemApi.AuditEvent(
-                SystemApi.AuditAction.AI_HOUSEHOLD_QA, outcome, householdId, accountId,
-                null, null, null,
-                Map.of("reasonCode", reasonCode,
-                        "providerId", aiApi.providerId(),
-                        "groundingCount", String.valueOf(groundingCount))));
+    Answer executionUnavailable(UUID householdId, String question, QaTarget scope) {
+        Target target = resolveTarget(householdId, scope);
+        KnowledgeAvailability availability = knowledgeAvailability(householdId, target);
+        return unavailable(
+                question,
+                false,
+                REASON_MODEL_UNAVAILABLE,
+                "AI 问答处理超时，无法依据附件生成回答。",
+                attachmentJumps(availability.available()),
+                OffsetDateTime.now());
     }
 
     private static UUID metadataUuid(Document document, String key) {

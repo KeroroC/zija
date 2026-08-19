@@ -59,6 +59,9 @@ final class HouseholdFactTools {
             @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
     ) {
         int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("search_items");
+        }
         try {
             if (target != null && !isItemTarget()) {
                 return unavailable("search_items");
@@ -97,6 +100,9 @@ final class HouseholdFactTools {
             @ToolParam(description = "最多返回多少条位置分布，1-50，选填") Integer limit
     ) {
         int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("item_stock");
+        }
         try {
             var stock = scopeStock(queries.itemStock(householdId, authorizedItemId(itemId)));
             List<Map<String, String>> rows = stock.positions().stream()
@@ -147,6 +153,9 @@ final class HouseholdFactTools {
             @ToolParam(description = "最多返回多少条库存位，1-50，选填") Integer limit
     ) {
         int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("location_stock");
+        }
         try {
             if (!isLocationTarget()) {
                 return unavailable("location_stock");
@@ -196,6 +205,9 @@ final class HouseholdFactTools {
     ) {
         int days = withinDays == null ? 30 : Math.max(1, withinDays);
         int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("expiring_lots");
+        }
         try {
             if (isLocationTarget() || isLotTarget() && targetItemId() == null) {
                 return unavailable("expiring_lots");
@@ -236,6 +248,9 @@ final class HouseholdFactTools {
             @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
     ) {
         int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("low_stock");
+        }
         try {
             if (target != null && !isItemTarget()) {
                 return unavailable("low_stock");
@@ -268,6 +283,9 @@ final class HouseholdFactTools {
             @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
     ) {
         int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("item_movements");
+        }
         try {
             UUID authorizedItemId = authorizedItemId(itemId);
             var movements = queries.itemMovements(
@@ -360,6 +378,10 @@ final class HouseholdFactTools {
 
     private Map<String, Object> unavailable(String tool) {
         collector.markFactSourceUnavailable();
+        return unavailableBody(tool);
+    }
+
+    private Map<String, Object> unavailableBody(String tool) {
         var body = new LinkedHashMap<String, Object>();
         body.put("status", "UNAVAILABLE");
         body.put("detail", "家庭事实来源暂时不可用，无法确认（tool=" + tool + "）");

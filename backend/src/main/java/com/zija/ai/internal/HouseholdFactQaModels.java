@@ -17,6 +17,22 @@ final class HouseholdFactQaModels {
     private HouseholdFactQaModels() {
     }
 
+    record QaInput(
+            String question,
+            QaTargetInput scope,
+            String answerScope,
+            QaTargetInput pageContext,
+            List<QaTargetInput> confirmedScopes
+    ) {
+
+        QaInput {
+            confirmedScopes = confirmedScopes == null ? List.of() : List.copyOf(confirmedScopes);
+        }
+    }
+
+    record QaTargetInput(String type, UUID id, String label) {
+    }
+
     record QaRequest(
             String question,
             QaTarget scope,
@@ -152,8 +168,11 @@ final class HouseholdFactQaModels {
 
     /** 收集工具执行期间产生的结构化结果与跳转（受控、确定性）。 */
     static final class Collector {
+        private static final int MAX_TOOL_CALLS = 4;
+
         private final List<StructuredResult> results = new ArrayList<>();
         private final List<Jump> jumps = new ArrayList<>();
+        private int toolCalls;
         private boolean factSourceUnavailable;
 
         void addResult(StructuredResult result) {
@@ -171,6 +190,15 @@ final class HouseholdFactQaModels {
 
         boolean factSourceUnavailable() {
             return factSourceUnavailable;
+        }
+
+        boolean beginToolCall() {
+            toolCalls++;
+            if (toolCalls <= MAX_TOOL_CALLS) {
+                return true;
+            }
+            factSourceUnavailable = true;
+            return false;
         }
 
         List<StructuredResult> results() {
