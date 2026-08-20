@@ -155,7 +155,7 @@
           </el-table-column>
           <el-table-column label="差异" min-width="80">
             <template #default="{ row }">
-              {{ computeDiff(row) }}
+              {{ computeDiff(row as EditStocktakeRow) }}
             </template>
           </el-table-column>
           <el-table-column label="原因" min-width="120">
@@ -240,6 +240,9 @@ import type {
 } from '../../types/inventory'
 import type { LocationNode, LocationTree } from '../../types/location'
 
+// 盘点编辑/预览行的形状：账面数量来自 DTO（string），实际数量由前端解析为 number
+type EditStocktakeRow = Omit<StocktakeItem, 'actualQuantity'> & { actualQuantity: number }
+
 const props = defineProps<{
   modelValue: boolean
   stocktakeId: string | null
@@ -262,7 +265,7 @@ const refreshLoading = ref(false)
 const cancelLoading = ref(false)
 
 const stocktakeDetail = ref<StocktakeDetail | null>(null)
-const editItems = ref<(Omit<StocktakeItem, 'actualQuantity'> & { actualQuantity: number })[]>([])
+const editItems = ref<EditStocktakeRow[]>([])
 
 // Backfill state
 const showBackfill = ref(false)
@@ -287,8 +290,8 @@ function displayUnit(row: { unitName?: string | null }): string {
   return row.unitName && row.unitName.length ? row.unitName : '—'
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function computeDiff(row: any): string {
+// 盘点预览行的账面数量来自 DTO（string），实际数量由前端解析为 number
+function computeDiff(row: EditStocktakeRow): string {
   const book = parseFloat(String(row.bookQuantity))
   const actual = Number(row.actualQuantity)
   const diff = actual - book

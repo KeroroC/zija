@@ -17,7 +17,7 @@
           :expand-on-click-node="false"
           @node-click="selectNode"
         >
-          <template #default="{ node, data }">
+          <template #default="{ data }">
             <div class="tree-node">
               <span class="tree-node-label">{{ data.name }}</span>
               <span class="tree-node-actions">
@@ -287,8 +287,8 @@ async function selectNode(data: LocationNode) {
     // 只取少量用于核对服务端 total，避免拉整张库存表
     const pos = await fetchStockPositions({ locationId: data.id, pageSize: 200 })
     locationStockCount.value = pos.total
-  } catch (e: any) {
-    ElMessage.error(e?.message || '库存加载失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '库存加载失败')
     locationStockCount.value = 0
   } finally {
     locationStockLoading.value = false
@@ -336,8 +336,8 @@ async function submitName() {
     nameDialogVisible.value = false
     await loadTree()
     ElMessage.success(nameForm.editingId ? '已重命名' : '已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '操作失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '操作失败')
   }
 }
 
@@ -367,8 +367,8 @@ async function submitMove() {
     moveDialogVisible.value = false
     await loadTree()
     ElMessage.success('已移动')
-  } catch (e: any) {
-    ElMessage.error(e.message || '移动失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '移动失败')
   }
 }
 
@@ -387,8 +387,8 @@ async function deleteNode(node: LocationNode) {
     await deleteLocation(node.id, node.version)
     await loadTree()
     ElMessage.success('已删除')
-  } catch (e: any) {
-    ElMessage.error(e.message || '删除失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '删除失败')
   }
 }
 

@@ -51,7 +51,8 @@
         <el-tree-select
           v-model="form.categoryId"
           :data="categoryTree"
-          :props="{ label: 'name', value: 'id', children: 'children' } as any"
+          value-key="id"
+          :props="{ label: 'name', children: 'children' }"
           placeholder="请选择分类"
           clearable
           check-strictly
@@ -174,7 +175,7 @@
         <ItemCoverUpload
           :item-id="props.item!.id"
           :cover-url="props.item!.coverUrl ?? null"
-          :version="props.item!.version"
+          :version="coverVersion"
           @uploaded="onCoverUploaded"
           @removed="onCoverRemoved"
         />
@@ -312,6 +313,8 @@ const emit = defineEmits<{
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+/** 封面操作的乐观锁版本：跟随 @uploaded/@removed 更新，避免直接改写 item prop */
+const coverVersion = ref(0)
 const createUnitVisible = ref(false)
 const creatingUnit = ref(false)
 const unitFilterQuery = ref('')
@@ -450,6 +453,7 @@ watch(
     if (visible) {
       if (props.item) {
         fillForm(props.item)
+        coverVersion.value = props.item.version
       } else {
         resetForm()
         if (props.presetName.trim()) {
@@ -466,19 +470,13 @@ function close() {
 }
 
 function onCoverUploaded(payload: { coverFileId: string; coverUrl: string; version: number }) {
-  if (props.item) {
-    props.item.coverFileId = payload.coverFileId
-    props.item.coverUrl = payload.coverUrl
-    props.item.version = payload.version
-  }
+  // 封面上传后服务器会递增版本号，用响应里的版本号同步乐观锁版本（避免直接改写 item prop）
+  coverVersion.value = payload.version
 }
 
 function onCoverRemoved() {
-  if (props.item) {
-    props.item.coverFileId = null
-    props.item.coverUrl = undefined
-    props.item.version++
-  }
+  // 移除封面同样会令服务器递增版本号，本地同步递增
+  coverVersion.value++
 }
 
 function onUnitFilter(query: string) {
@@ -519,8 +517,8 @@ async function submitCreateUnit() {
     form.unitId = created.id
     createUnitVisible.value = false
     ElMessage.success('单位已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建单位失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建单位失败')
   } finally {
     creatingUnit.value = false
   }
@@ -559,8 +557,8 @@ async function submitCreateBrand() {
     form.brandId = created.id
     createBrandVisible.value = false
     ElMessage.success('品牌已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建品牌失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建品牌失败')
   } finally {
     creatingBrand.value = false
   }
@@ -601,8 +599,8 @@ async function submitCreateTag() {
     }
     createTagVisible.value = false
     ElMessage.success('标签已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建标签失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建标签失败')
   } finally {
     creatingTag.value = false
   }
@@ -638,7 +636,7 @@ async function handleSubmit() {
     const data = buildSubmitData()
     let saved: CatalogItem
     if (isEdit.value && props.item) {
-      data.version = props.item.version
+      data.version = coverVersion.value
       saved = await updateItem(props.item.id, data)
       ElMessage.success('物品已更新')
     } else {
@@ -647,8 +645,8 @@ async function handleSubmit() {
     }
     emit('saved', saved)
     close()
-  } catch (e: any) {
-    ElMessage.error(e.message || '操作失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '操作失败')
   } finally {
     submitting.value = false
   }

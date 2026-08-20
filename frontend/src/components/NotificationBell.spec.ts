@@ -13,7 +13,6 @@ import NotificationBell from "./NotificationBell.vue";
 import {
   fetchUnreadCount,
   fetchNotifications,
-  markAllNotificationsRead,
 } from "../api/notification";
 
 beforeEach(() => {

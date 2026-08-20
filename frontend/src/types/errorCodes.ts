@@ -1,16 +1,25 @@
 // ==================== Error Codes ====================
-// 后端错误码常量镜像（RFC 7807 problem.errorCode 取值）。
-// 来源：各模块 internal/ErrorCodes.java 与 com.zija.shared.ZijaErrorCodes。
-// 前端一律从这里导入，禁止在组件/测试中硬编码错误码字面量；
-// 后端新增错误码时请同步维护本文件。
+// 后端 RFC 7807 problem.errorCode 取值的手写镜像目录。
+// 权威源：各模块 internal/ErrorCodes.java、ZijaErrorCodes.VALIDATION_FAILED、
+// 以及安全层 ZijaProblemHandlers 中的 HTTP 错误码。
+//
+// 契约（由 backend HttpErrorCodeCatalogContractTest 守护，集合必须相等）：
+// - 本文件导出的字符串取值 ≡ 上述后端 HTTP errorCode 全集
+// - 排除 ZijaErrorCodes.UNKNOWN_ERROR（UnknownError）：事件死信内部名，不是 HTTP errorCode
+// - 排除前端客户端自造名（http_error、invalid_csrf_response 等），它们不属于本目录
+//
+// 后端新增/改名/删除 HTTP errorCode 时请同步维护本文件；前端一律从这里导入。
 
 // ==================== Shared (ZijaErrorCodes) ====================
 
 /** 请求字段校验失败（根包校验处理器与 inventory 共用）。 */
 export const VALIDATION_FAILED = "VALIDATION_FAILED";
 
-/** 事件处理异常信息缺失时的兜底错误名（reminder 与 reporting 共用）。 */
-export const UNKNOWN_ERROR = "UnknownError";
+// ==================== Security (ZijaProblemHandlers) ====================
+
+export const AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED";
+export const CSRF_TOKEN_INVALID = "CSRF_TOKEN_INVALID";
+export const ACCESS_DENIED = "ACCESS_DENIED";
 
 // ==================== Identity ====================
 
@@ -86,6 +95,9 @@ export const REMINDER_TASK_SNOOZE_UNTIL_INVALID = "REMINDER_TASK_SNOOZE_UNTIL_IN
 
 export const AI_CONFIGURATION_VERSION_CONFLICT = "AI_CONFIGURATION_VERSION_CONFLICT";
 export const AI_INVALID_CONFIGURATION = "AI_INVALID_CONFIGURATION";
+export const AI_KNOWLEDGE_SOURCE_NOT_FOUND = "AI_KNOWLEDGE_SOURCE_NOT_FOUND";
+export const AI_KNOWLEDGE_SOURCE_FORMAT_UNSUPPORTED = "AI_KNOWLEDGE_SOURCE_FORMAT_UNSUPPORTED";
+export const AI_KNOWLEDGE_SOURCE_STATE_CONFLICT = "AI_KNOWLEDGE_SOURCE_STATE_CONFLICT";
 export const AI_REQUEST_LIMITED = "AI_REQUEST_LIMITED";
 
 // ==================== Reporting ====================

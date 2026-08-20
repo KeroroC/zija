@@ -7,6 +7,7 @@ export interface SessionInfo {
 
 export interface HouseholdStatus {
   initialized: boolean;
+  setupTokenRequired: boolean;
 }
 
 export interface CurrentMember {

@@ -82,15 +82,15 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { rebuildProjection } from '../../api/reporting'
-import { getJson } from '../../api/http'
+import { fetchAuditLogs } from '../../api/audit'
 import { formatDateTime } from '../../utils/date'
-import { ACTION_LABELS } from '../../types/audit'
+import { ACTION_LABELS, type AuditLogItem } from '../../types/audit'
 
 const rebuilding = ref(false)
 const rebuildResult = ref('')
 const rebuildFailed = ref(false)
 const auditLoading = ref(false)
-const auditLogs = ref<any[]>([])
+const auditLogs = ref<AuditLogItem[]>([])
 
 async function doRebuild() {
   rebuilding.value = true
@@ -111,8 +111,8 @@ async function doRebuild() {
 async function loadAuditLogs() {
   auditLoading.value = true
   try {
-    const result = await getJson<any>('/api/v1/audit-logs?action=EXPORT_PERFORMED&page=1&pageSize=50')
-    auditLogs.value = result.items || []
+    const result = await fetchAuditLogs({ action: 'EXPORT_PERFORMED', page: 1, pageSize: 50 })
+    auditLogs.value = result.items ?? []
   } finally {
     auditLoading.value = false
   }

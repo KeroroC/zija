@@ -26,17 +26,26 @@ async function waitForAppReady(page: Page): Promise<void> {
 }
 
 export async function bootstrapViaUi(page: Page, user = owner): Promise<void> {
+  const setupToken = process.env.ZIJA_SETUP_TOKEN;
   await page.goto("/");
   await waitForAppReady(page);
   if (!page.url().includes("/bootstrap")) {
     await page.goto("/bootstrap");
   }
   await expect(page.getByRole("heading", { name: "初始化你的家庭" })).toBeVisible();
-  const inputs = page.locator("input");
-  await inputs.nth(0).fill(user.householdName);
-  await inputs.nth(1).fill(user.username);
-  await inputs.nth(2).fill(user.password);
-  await inputs.nth(3).fill(user.displayName);
+
+  const setupTokenField = page.getByLabel("初始化口令");
+  if (await setupTokenField.isVisible().catch(() => false)) {
+    if (!setupToken) {
+      throw new Error("ZIJA_SETUP_TOKEN is required for bootstrap but was not set");
+    }
+    await setupTokenField.fill(setupToken);
+  }
+
+  await page.getByLabel("家庭名称").fill(user.householdName);
+  await page.getByLabel("用户名").fill(user.username);
+  await page.getByLabel("密码", { exact: true }).fill(user.password);
+  await page.getByLabel("显示名").fill(user.displayName);
   await page.getByRole("button", { name: "创建家庭" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "首页" })).toBeVisible();

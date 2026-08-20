@@ -81,10 +81,6 @@ describe("RemindersView", () => {
     await nextTick();
 
     // Click the "重新打开" dropdown item
-    const reopenItem = document.querySelector(
-      ".el-dropdown-menu__item"
-    );
-    // Find the specific reopen item among all dropdown items
     const allItems = document.querySelectorAll(".el-dropdown-menu__item");
     const reopenEl = Array.from(allItems).find((el) =>
       el.textContent?.includes("重新打开")

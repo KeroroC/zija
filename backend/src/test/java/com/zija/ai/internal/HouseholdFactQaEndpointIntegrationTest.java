@@ -847,6 +847,38 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void ambiguousTargetSurvivesProviderProbeTimeout() throws Exception {
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '牛奶', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, SECOND_ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                UPDATE ai_provider_setting
+                SET request_timeout_seconds = 1
+                WHERE singleton_key = 1
+                """);
+        FakeModelSeam.delayNextProbe();
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶还有多少？",
+                                  "answerScope": "KNOWLEDGE_SOURCE"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.structuredResults").isEmpty());
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
     void modelTimeoutFallsBackToControlledStructuredFacts() throws Exception {
         jdbc.update("""
                 UPDATE ai_provider_setting
@@ -941,6 +973,13 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     @TestConfiguration(proxyBeanMethods = false)
     static class FakeModelSeam {
 
+        private static final java.util.concurrent.atomic.AtomicBoolean delayNextProbe =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
+        static void delayNextProbe() {
+            delayNextProbe.set(true);
+        }
+
         @Bean
         @org.springframework.context.annotation.Primary
         ScriptedChatModel scriptedChatModel() {
@@ -968,6 +1007,14 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
                 @Override
                 public ProbeResult probe(AiProviderConfiguration configuration) {
+                    if (delayNextProbe.compareAndSet(true, false)) {
+                        try {
+                            Thread.sleep(5_000);
+                        } catch (InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException("provider probe interrupted", exception);
+                        }
+                    }
                     return ProbeResult.available("fake-chat", "fake-embedding");
                 }
 

@@ -39,6 +39,12 @@ class HouseholdExceptionHandler {
                 "链接无效或已过期", ErrorCodes.HOUSEHOLD_TOKEN_INVALID);
     }
 
+    @ExceptionHandler(InvalidSetupTokenException.class)
+    ProblemDetail handleInvalidSetupToken(HttpServletRequest request) {
+        return ZijaProblems.of(request, HttpStatus.FORBIDDEN,
+                "初始化口令无效", ErrorCodes.HOUSEHOLD_TOKEN_INVALID);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleInvalidArgument(HttpServletRequest request) {
         return ZijaProblems.of(request, HttpStatus.BAD_REQUEST,

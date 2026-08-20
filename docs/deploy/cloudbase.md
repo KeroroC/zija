@@ -128,7 +128,7 @@ curl -s -m 15 -w '\nHTTP %{http_code}\n' "$URL/actuator/health"
 curl -s -m 15 "$URL/api/v1/system/info"
 ```
 
-首次部署后访问首页进行家庭初始化（`POST /api/v1/household/bootstrap`，字段为 `householdName` / `username` / `password` / `displayName`）。
+首次部署后访问首页进行家庭初始化（`POST /api/v1/household/bootstrap`，字段为 `householdName` / `username` / `password` / `displayName`；`prod` 下还须配置 `ZIJA_SETUP_TOKEN` 并在引导页填写）。
 
 接口写操作需带 CSRF：先 `GET /api/v1/auth/csrf` 拿 Cookie，再把 **`XSRF-TOKEN` Cookie 的原始值**放进 `X-XSRF-TOKEN` 请求头（响应体里的 token 是掩码值，仅用于表单参数）。
 

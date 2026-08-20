@@ -168,19 +168,16 @@ class QaScopePlanner {
         String normalized = question == null ? "" : question.toLowerCase(Locale.ROOT);
         Map<String, List<ScopeCandidate>> groups = new LinkedHashMap<>();
         for (var item : catalogApi.listActiveItems(householdId)) {
-            String itemKey = item.name().toLowerCase(Locale.ROOT);
-            if (normalized.contains(itemKey)) {
-                addCandidate(groups, "ITEM:" + itemKey,
+            if (questionContainsTerm(normalized, item.name())) {
+                addCandidate(groups, "ITEM:" + item.name().toLowerCase(Locale.ROOT),
                         new ScopeCandidate("ITEM", item.id(), item.name(),
                                 "物品 · " + ("DURABLE".equals(item.managementType()) ? "耐用品" : "消耗品")
                                         + " · 编号 " + shortId(item.id())));
             }
             for (var lotInfo : inventoryApi.lotsOfItem(householdId, item.id())) {
                 inventoryApi.findLot(householdId, lotInfo.lotId()).ifPresent(lot -> {
-                    boolean lotNumberMatches = lot.lotNumber() != null
-                            && normalized.contains(lot.lotNumber().toLowerCase(Locale.ROOT));
-                    boolean serialMatches = lot.serialNumber() != null
-                            && normalized.contains(lot.serialNumber().toLowerCase(Locale.ROOT));
+                    boolean lotNumberMatches = questionContainsTerm(normalized, lot.lotNumber());
+                    boolean serialMatches = questionContainsTerm(normalized, lot.serialNumber());
                     if (lotNumberMatches || serialMatches) {
                         String label = lot.lotNumber() == null || lot.lotNumber().isBlank()
                                 ? item.name() + "的批次" : item.name() + " · " + lot.lotNumber();
@@ -225,7 +222,7 @@ class QaScopePlanner {
     ) {
         for (var node : nodes) {
             String path = prefix.isBlank() ? node.name() : prefix + " / " + node.name();
-            if (question.contains(node.name().toLowerCase(Locale.ROOT))) {
+            if (questionContainsTerm(question, node.name())) {
                 addCandidate(groups, "LOCATION:" + node.name().toLowerCase(Locale.ROOT),
                         new ScopeCandidate("LOCATION", node.id(), node.name(),
                                 "位置 · " + path + " · 编号 " + shortId(node.id())));
@@ -240,6 +237,11 @@ class QaScopePlanner {
             ScopeCandidate candidate
     ) {
         groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(candidate);
+    }
+
+    private static boolean questionContainsTerm(String question, String term) {
+        return term != null && !term.isBlank()
+                && question.contains(term.toLowerCase(Locale.ROOT));
     }
 
     private static boolean containsAny(String value, List<String> terms) {

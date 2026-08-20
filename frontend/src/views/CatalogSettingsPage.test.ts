@@ -1,4 +1,4 @@
-import ElementPlus from "element-plus";
+import ElementPlus, { ElMessage } from "element-plus";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
@@ -284,6 +284,19 @@ describe("CatalogSettingsPage", () => {
     expect(text).toContain("单位");
     expect(text).toContain("标签");
     expect(text).toContain("提醒规则");
+  });
+
+  it("shows fallback message instead of crashing when catalog load rejects with a non-Error value", async () => {
+    const errorSpy = vi.spyOn(ElMessage, "error").mockReturnValue({} as never);
+    fetchCategoriesMock.mockReset().mockRejectedValue(null);
+
+    wrapper = mount(CatalogSettingsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    // A null rejection must not throw "Cannot read properties of null (reading 'message')" —
+    // it should surface the user-facing fallback.
+    expect(errorSpy).toHaveBeenCalledWith("加载分类失败");
+    errorSpy.mockRestore();
   });
 
   it("displays category tree with root and child nodes", async () => {

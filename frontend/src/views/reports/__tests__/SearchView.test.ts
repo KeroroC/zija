@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mount, flushPromises, type VueWrapper } from "@vue/test-utils";
-import ElementPlus from "element-plus";
+import ElementPlus, { ElMessage } from "element-plus";
 
 vi.mock("../../../api/reporting", () => ({
   searchReporting: vi.fn(),
@@ -12,6 +12,8 @@ vi.mock("vue-router", () => ({
 
 import SearchView from "../SearchView.vue";
 import { searchReporting } from "../../../api/reporting";
+import { ApiError } from "../../../api/http";
+import { REPORTING_INVALID_REQUEST } from "../../../types/errorCodes";
 
 const mockSearchReporting = vi.mocked(searchReporting);
 
@@ -177,5 +179,34 @@ describe("SearchView", () => {
     const tagTexts = tags.map((t) => t.text());
     expect(tagTexts).toContain("名称");
     expect(tagTexts).toContain("批次号");
+  });
+
+  it("surfaces search API failure without an unhandled rejection (#31)", async () => {
+    const errorSpy = vi.spyOn(ElMessage, "error").mockReturnValue({} as never);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+
+    mockSearchReporting.mockRejectedValue(
+      new ApiError("搜索服务暂时不可用", REPORTING_INVALID_REQUEST, 500),
+    );
+    wrapper = mountV();
+
+    await wrapper.find("input").setValue("纸巾");
+    await wrapper.find("input").trigger("keyup.enter");
+    await flushPromises();
+    await flushPromises();
+
+    // User-visible error message from the backend problem title
+    expect(errorSpy).toHaveBeenCalledWith("搜索服务暂时不可用");
+    // loading must be reset even on failure
+    expect((wrapper.vm as any).loading).toBe(false);
+    // no unhandled rejection may escape doSearch()
+    expect(unhandled).toHaveLength(0);
+
+    process.off("unhandledRejection", onUnhandled);
+    errorSpy.mockRestore();
   });
 });

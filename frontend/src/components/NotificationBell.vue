@@ -61,8 +61,8 @@ async function onReadAll() {
     await refresh();
     recent.value = [];
     ElMessage.success("已全部标为已读");
-  } catch (e: any) {
-    ElMessage.error(e?.message ?? "操作失败");
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "操作失败");
   }
 }
 

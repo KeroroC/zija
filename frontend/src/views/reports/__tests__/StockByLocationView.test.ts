@@ -109,7 +109,6 @@ function mountV() {
 
 describe("StockByLocationView", () => {
   let wrapper: VueWrapper | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let openSpy: any;
 
   beforeEach(() => {

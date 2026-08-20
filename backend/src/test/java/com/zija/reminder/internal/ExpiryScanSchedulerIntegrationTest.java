@@ -172,6 +172,38 @@ class ExpiryScanSchedulerIntegrationTest {
     }
 
     @Test
+    void snoozedUntilBeijingMorning_staysSnoozedUntilAfterBusinessMidnight() {
+        // Issue #29: scanAt 用 today.atStartOfDay().atOffset(ZoneOffset.UTC) 把「北京午夜」错当成
+        // 「UTC 午夜」= 北京 08:00，使 SNOOZED 到期回 OPEN 的判定提前约 5~8 小时。
+        // 家庭业务时区 = Asia/Shanghai：扫描在凌晨 03:00 触发，但 computed now = 北京 08:00。
+        ZoneId sh = ZoneId.of("Asia/Shanghai");
+        var scanDay = LocalDate.of(2026, 8, 18);
+        var scanInstant = scanDay.atTime(3, 0).atZone(sh).toInstant();
+        when(clock.instant()).thenReturn(scanInstant);
+        when(clock.getZone()).thenReturn(sh);
+
+        inbound(LocalDate.of(2026, 8, 24)); // 6 days left → 任务创建为 WARN/OPEN
+        scheduler.scanAt(scanDay);
+        var taskId = taskMapper.selectList(null).get(0).getId();
+
+        // 用户把任务延后到「今天(北京) 06:00」——晚于 03:00 扫描时刻。
+        OffsetDateTime untilBeijing0600 = OffsetDateTime.of(2026, 8, 18, 6, 0, 0, 0, ZoneOffset.ofHours(8));
+        new TransactionTemplate(txManager).executeWithoutResult(s ->
+                taskMapper.snooze(householdId, taskId, List.of("OPEN", "SNOOZED"), untilBeijing0600));
+
+        // 同一业务日再跑一次凌晨扫描：延后目标(06:00)仍在今天之内，不应提前回 OPEN。
+        scheduler.scanAt(scanDay);
+        assertThat(taskMapper.selectById(taskId).getStatus()).isEqualTo("SNOOZED");
+
+        // 次日扫描才把已到期的 SNOOZED 回 OPEN。
+        var nextDay = scanDay.plusDays(1);
+        var nextInstant = nextDay.atTime(3, 0).atZone(sh).toInstant();
+        when(clock.instant()).thenReturn(nextInstant);
+        scheduler.scanAt(nextDay);
+        assertThat(taskMapper.selectById(taskId).getStatus()).isEqualTo("OPEN");
+    }
+
+    @Test
     void crossHouseholdIsolation() {
         tick(LocalDate.of(2026, 12, 25));
         inbound(LocalDate.of(2026, 12, 29));

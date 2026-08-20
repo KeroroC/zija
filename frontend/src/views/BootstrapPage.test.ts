@@ -23,7 +23,7 @@ vi.mock("../api/auth", () => ({
 }));
 
 vi.mock("../api/household", () => ({
-  householdApi: { bootstrap: vi.fn() }
+  householdApi: { bootstrap: vi.fn(), getStatus: vi.fn() }
 }));
 
 vi.mock("../stores/session", () => ({
@@ -38,6 +38,7 @@ const sessionInfo = {
 };
 
 const bootstrapMock = vi.mocked(householdApi.bootstrap);
+const getStatusMock = vi.mocked(householdApi.getStatus);
 
 describe("BootstrapPage", () => {
   let wrapper: VueWrapper | null = null;
@@ -48,6 +49,7 @@ describe("BootstrapPage", () => {
     ensureInitializedMock.mockReset().mockResolvedValue(undefined);
     vi.mocked(authApi.initializeCsrf).mockReset().mockResolvedValue(undefined);
     bootstrapMock.mockReset().mockResolvedValue(sessionInfo);
+    getStatusMock.mockReset().mockResolvedValue({ initialized: false, setupTokenRequired: false });
     sessionStoreMock.householdInitialized = false;
   });
 
@@ -58,6 +60,7 @@ describe("BootstrapPage", () => {
 
   it("applies the SessionInfo returned by bootstrap without re-initializing", async () => {
     wrapper = mount(BootstrapPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
     const inputs = wrapper.findAll("input");
     await inputs[0].setValue("我的家");
     await inputs[1].setValue("owner");
@@ -75,6 +78,7 @@ describe("BootstrapPage", () => {
   it("keeps the created household initialized and navigates when session sync is incomplete", async () => {
     applySessionMock.mockResolvedValue(false);
     wrapper = mount(BootstrapPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
     const inputs = wrapper.findAll("input");
     await inputs[0].setValue("我的家");
     await inputs[1].setValue("owner");
@@ -85,5 +89,24 @@ describe("BootstrapPage", () => {
 
     expect(sessionStoreMock.householdInitialized).toBe(true);
     expect(pushMock).toHaveBeenCalledWith({ name: "home" });
+  });
+
+  it("sends setup token when bootstrap requires it", async () => {
+    getStatusMock.mockResolvedValue({ initialized: false, setupTokenRequired: true });
+    wrapper = mount(BootstrapPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+    const inputs = wrapper.findAll("input");
+    await inputs[0].setValue("setup-secret");
+    await inputs[1].setValue("我的家");
+    await inputs[2].setValue("owner");
+    await inputs[3].setValue("secret");
+    await inputs[4].setValue("户主");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(bootstrapMock).toHaveBeenCalledWith(
+      expect.objectContaining({ householdName: "我的家", username: "owner" }),
+      "setup-secret"
+    );
   });
 });

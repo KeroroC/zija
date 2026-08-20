@@ -111,8 +111,19 @@ class FileService implements FileApi {
         entity.setMountType(mountType);
         entity.setMountId(mountId);
         entity.setNameNormalized(nameNormalized);
-        storedFileMapper.insert(entity);
-        audit(householdId, SystemApi.AuditAction.FILE_UPLOADED, entity.getId());
+        try {
+            storedFileMapper.insert(entity);
+            audit(householdId, SystemApi.AuditAction.FILE_UPLOADED, entity.getId());
+        } catch (RuntimeException e) {
+            // 落盘已成功而 DB 未提交：删除已写的卷对象，避免崩溃/失败后遗留孤儿文件。
+            // 事务回滚由 Spring 代理负责，这里只补偿跨事务的文件系统副作用。
+            try {
+                fileStorage.delete(storageKey);
+            } catch (IOException ex) {
+                log.warn("上传失败回滚卷对象失败，残留孤儿文件待完整性扫描: storageKey={}", storageKey, ex);
+            }
+            throw e;
+        }
         return toAttachment(entity, householdId);
     }
 
@@ -358,15 +369,26 @@ class FileService implements FileApi {
         var expired = storedFileMapper.findExpired(before);
         int purged = 0;
         for (var entity : expired) {
+            // 与 purge() 同一顺序：先以行级条件删除「认领」该行，再删卷对象。
+            // 崩溃窗口只留「无引用 + 文件仍在」的孤儿文件（可由完整性报告检出），
+            // 不留「引用仍在 + 文件已删」的悬空行；并发恢复先赢时受影响行数为 0 → 跳过，不触碰卷对象。
+            int rows = storedFileMapper.delete(new LambdaQueryWrapper<StoredFileEntity>()
+                    .eq(StoredFileEntity::getId, entity.getId())
+                    .eq(StoredFileEntity::getHouseholdId, entity.getHouseholdId())
+                    .isNotNull(StoredFileEntity::getDeletedAt));
+            if (rows == 0) {
+                // 已被恢复或并发清除：不删卷对象，避免删掉已恢复活附件的内容
+                continue;
+            }
             try {
                 fileStorage.delete(entity.getStorageKey());
             } catch (IOException e) {
-                // 卷上对象删除失败：保留记录，等待下一轮重试
-                log.warn("物理删除附件卷对象失败，保留记录待重试: fileId={} storageKey={}",
+                // 行已认领删除但卷上对象删除失败：回插该行保留待重试，避免留下无引用的孤儿文件
+                storedFileMapper.insert(entity);
+                log.warn("物理删除附件卷对象失败，回插记录待重试: fileId={} storageKey={}",
                         entity.getId(), entity.getStorageKey(), e);
                 continue;
             }
-            storedFileMapper.deleteById(entity.getId());
             eventPublisher.publishPurged(entity.getHouseholdId(), entity.getId());
             purged++;
         }

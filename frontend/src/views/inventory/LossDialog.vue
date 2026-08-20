@@ -136,7 +136,7 @@ import { ApiError } from '../../api/http'
 import type { StockPosition } from '../../types/inventory'
 import type { LocationNode } from '../../types/location'
 
-const props = defineProps<{
+defineProps<{
   modelValue: boolean
 }>()
 
