@@ -174,7 +174,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 // 即输即搜：输入防抖 300ms，避免每个按键都打后端
 function onInput() {
-  debounceTimer && clearTimeout(debounceTimer)
+  if (debounceTimer) clearTimeout(debounceTimer)
   if (!query.value.trim()) {
     clearResults()
     return
@@ -185,7 +185,7 @@ function onInput() {
 function doSearch() {
   if (!query.value.trim()) return
   loading.value = true
-  debounceTimer && clearTimeout(debounceTimer)
+  if (debounceTimer) clearTimeout(debounceTimer)
   searchReporting(query.value.trim())
     .then((r) => {
       results.value = r
@@ -197,7 +197,7 @@ function doSearch() {
 }
 
 function clearResults() {
-  debounceTimer && clearTimeout(debounceTimer)
+  if (debounceTimer) clearTimeout(debounceTimer)
   searched.value = false
   results.value = { items: [], lots: [], locations: [] }
 }

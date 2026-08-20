@@ -86,7 +86,6 @@ function mountV() {
 
 describe("MovementsView 数量符号", () => {
   let wrapper: VueWrapper | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let openSpy: any;
 
   beforeEach(() => {

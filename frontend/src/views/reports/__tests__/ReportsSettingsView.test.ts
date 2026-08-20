@@ -107,7 +107,7 @@ describe("ReportsSettingsView", () => {
     await flushPromises();
 
     expect(mockGetJson).toHaveBeenCalledWith(
-      "/api/v1/audit-logs?action=EXPORT_PERFORMED&page=1&pageSize=50",
+      "/api/v1/audit-logs?page=1&pageSize=50&action=EXPORT_PERFORMED",
     );
   });
 

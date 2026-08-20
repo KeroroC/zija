@@ -1,6 +1,6 @@
 ENV_FILE ?= .env
 
-.PHONY: verify-layout backup-restore-contract-test backend-test backend-build frontend-test frontend-build verify dev-db dev-backend dev-frontend compose-smoke e2e-smoke recover-owner clean backup-test restore-smoke
+.PHONY: verify-layout backup-restore-contract-test backend-test backend-build frontend-test frontend-lint frontend-build verify dev-db dev-backend dev-frontend compose-smoke e2e-smoke recover-owner clean backup-test restore-smoke
 
 verify-layout:
 	./scripts/verify-layout.sh
@@ -17,10 +17,13 @@ backend-build:
 frontend-test:
 	npm --prefix frontend test
 
+frontend-lint:
+	npm --prefix frontend run lint
+
 frontend-build:
 	npm --prefix frontend run build
 
-verify: verify-layout backup-restore-contract-test backend-test frontend-test backend-build frontend-build
+verify: verify-layout backup-restore-contract-test backend-test frontend-test frontend-lint backend-build frontend-build
 	git diff --check
 
 dev-db:

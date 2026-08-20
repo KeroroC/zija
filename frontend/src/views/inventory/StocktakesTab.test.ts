@@ -1,4 +1,4 @@
-import ElementPlus, { ElMessage, ElMessageBox } from "element-plus"
+import ElementPlus, { ElMessageBox } from "element-plus"
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {

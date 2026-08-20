@@ -163,7 +163,7 @@ import { ApiError } from '../../api/http'
 import { INVENTORY_INSUFFICIENT_STOCK } from '../../types/errorCodes'
 import type { CatalogItem } from '../../types/catalog'
 import type { StockPosition } from '../../types/inventory'
-import type { LocationNode, LocationTree } from '../../types/location'
+import type { LocationNode } from '../../types/location'
 
 const props = defineProps<{
   modelValue: boolean

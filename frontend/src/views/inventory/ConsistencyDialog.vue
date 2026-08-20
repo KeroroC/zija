@@ -54,11 +54,11 @@ import { fetchLocationTree } from '../../api/location'
 import type { ConsistencyDiscrepancy } from '../../types/inventory'
 import type { LocationNode } from '../../types/location'
 
-const props = defineProps<{
+defineProps<{
   modelValue: boolean
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   'update:modelValue': [value: boolean]
 }>()
 

@@ -17,7 +17,7 @@
           :expand-on-click-node="false"
           @node-click="selectNode"
         >
-          <template #default="{ node, data }">
+          <template #default="{ data }">
             <div class="tree-node">
               <span class="tree-node-label">{{ data.name }}</span>
               <span class="tree-node-actions">
