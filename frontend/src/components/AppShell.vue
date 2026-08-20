@@ -8,6 +8,7 @@
       <div class="brand">
         <span class="brand-cn">知家</span>
         <span class="brand-en">ZIJA</span>
+        <span class="brand-rule" aria-hidden="true"></span>
       </div>
       <el-menu
         router
