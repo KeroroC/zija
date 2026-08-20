@@ -140,6 +140,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Box, Tickets, Location, Search } from '@element-plus/icons-vue'
 import { searchReporting } from '../../api/reporting'
 import type { SearchResult } from '../../types/reporting'
@@ -182,18 +183,19 @@ function onInput() {
   debounceTimer = setTimeout(doSearch, 300)
 }
 
-function doSearch() {
+async function doSearch() {
   if (!query.value.trim()) return
   loading.value = true
   if (debounceTimer) clearTimeout(debounceTimer)
-  searchReporting(query.value.trim())
-    .then((r) => {
-      results.value = r
-      searched.value = true
-    })
-    .finally(() => {
-      loading.value = false
-    })
+  try {
+    results.value = await searchReporting(query.value.trim())
+    searched.value = true
+  } catch (e) {
+    // 复用后端 Problem Details 文案；非 Error 拒绝时给兜底文案
+    ElMessage.error(e instanceof Error ? e.message : '搜索失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 function clearResults() {
