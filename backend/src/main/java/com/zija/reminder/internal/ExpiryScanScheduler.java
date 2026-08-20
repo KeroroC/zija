@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -60,7 +59,9 @@ class ExpiryScanScheduler {
     /** 测试入口：按指定「今天」扫描，便于 Clock 覆盖。 */
     @Transactional
     public void scanAt(LocalDate today) {
-        OffsetDateTime now = today.atStartOfDay().atOffset(ZoneOffset.UTC);
+        // Issue #29: 用业务时区（ClockConfig 注入的 Clock）的零点作为 SNOOZED 到期回 OPEN 的判定时刻，
+        // 不再把「今天」的午夜硬编码成 UTC 零点（那会造成北京 08:00 的 ~5h 偏移）。
+        OffsetDateTime now = today.atStartOfDay(clock.getZone()).toOffsetDateTime();
 
         // 1. 批量刷新 SNOOZED 过期 → OPEN
         int refreshed = taskMapper.refreshSnoozedPast(now);
