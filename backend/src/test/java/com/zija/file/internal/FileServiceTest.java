@@ -81,6 +81,23 @@ class FileServiceTest {
     }
 
     @Test
+    void storeDeletesWrittenFileWhenDbInsertFails() throws IOException {
+        byte[] content = new byte[]{1, 2, 3};
+        when(inspector.inspect(content, "photo.jpg", "image/jpeg"))
+                .thenReturn(new FileContentInspector.InspectionResult("image/jpeg", "photo.jpg", "h"));
+        when(fileStorage.store(content, ".jpg")).thenReturn("2026/07/uuid.jpg");
+        when(storedFileMapper.selectCount(any())).thenReturn(0L);
+        doThrow(new RuntimeException("db down")).when(storedFileMapper).insert(any(StoredFileEntity.class));
+
+        assertThatThrownBy(() -> service.store(householdId, content, "photo.jpg", "image/jpeg",
+                FileApi.MOUNT_HOUSEHOLD, householdId))
+                .isInstanceOf(RuntimeException.class);
+
+        // 落盘成功、DB insert 失败：必须删除已写的卷对象，避免孤儿文件
+        verify(fileStorage).delete("2026/07/uuid.jpg");
+    }
+
+    @Test
     void storeRejectsDuplicateNameOnSameMount() {
         byte[] content = new byte[]{1, 2, 3};
         when(inspector.inspect(content, "photo.jpg", "image/jpeg"))
@@ -249,30 +266,55 @@ class FileServiceTest {
     }
 
     @Test
-    void purgeExpiredDeletesStorageAndRows() throws IOException {
+    void purgeExpiredDeletesRowThenStorage() throws IOException {
         UUID fileId = UUID.randomUUID();
         var expired = entity(fileId, householdId, "2026/07/old.jpg", "old.jpg", "image/jpeg",
                 OffsetDateTime.now().minusDays(40));
         when(storedFileMapper.findExpired(any())).thenReturn(List.of(expired));
+        when(storedFileMapper.delete(any())).thenReturn(1);
 
         int purged = service.purgeExpired(OffsetDateTime.now().minusDays(30));
 
         assertThat(purged).isEqualTo(1);
-        verify(fileStorage).delete("2026/07/old.jpg");
-        verify(storedFileMapper).deleteById(fileId);
+        // 与 purge() 同一顺序：先认领删除 DB 行，再删卷对象；
+        // 崩溃窗口只留「无引用 + 文件仍在」的孤儿文件，不留「引用仍在 + 文件已删」的悬空行。
+        var order = inOrder(storedFileMapper, fileStorage);
+        order.verify(storedFileMapper).delete(any());
+        order.verify(fileStorage).delete("2026/07/old.jpg");
+        verify(storedFileMapper, never()).deleteById(any(UUID.class));
     }
 
     @Test
-    void purgeExpiredKeepsRowWhenStorageDeleteFails() throws IOException {
+    void purgeExpiredReinsertsRowWhenStorageDeleteFails() throws IOException {
         UUID fileId = UUID.randomUUID();
         var expired = entity(fileId, householdId, "2026/07/old.jpg", "old.jpg", "image/jpeg",
                 OffsetDateTime.now().minusDays(40));
         when(storedFileMapper.findExpired(any())).thenReturn(List.of(expired));
+        when(storedFileMapper.delete(any())).thenReturn(1);
         doThrow(new IOException("disk")).when(fileStorage).delete(anyString());
 
         int purged = service.purgeExpired(OffsetDateTime.now().minusDays(30));
 
         assertThat(purged).isZero();
+        // 行已被认领删除但卷对象删除失败：回插该行保留待重试，避免留下孤儿文件
+        verify(storedFileMapper).insert(expired);
+        verify(storedFileMapper, never()).deleteById(any(UUID.class));
+    }
+
+    @Test
+    void purgeExpiredSkipsFileWhenRowNoLongerRecycled() throws IOException {
+        UUID fileId = UUID.randomUUID();
+        var expired = entity(fileId, householdId, "2026/07/old.jpg", "old.jpg", "image/jpeg",
+                OffsetDateTime.now().minusDays(40));
+        when(storedFileMapper.findExpired(any())).thenReturn(List.of(expired));
+        // 认领删除返回 0 行：并发中已被恢复或清除，不得触碰卷对象，避免删掉已恢复活附件的内容
+        when(storedFileMapper.delete(any())).thenReturn(0);
+
+        int purged = service.purgeExpired(OffsetDateTime.now().minusDays(30));
+
+        assertThat(purged).isZero();
+        verify(fileStorage, never()).delete(anyString());
+        verify(storedFileMapper, never()).insert(any(StoredFileEntity.class));
         verify(storedFileMapper, never()).deleteById(any(UUID.class));
     }
 
