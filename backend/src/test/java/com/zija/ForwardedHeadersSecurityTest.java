@@ -41,7 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "spring.session.jdbc.initialize-schema=never",
         "server.forward-headers-strategy=native",
-        "zija.file.storage-path=/tmp/zija-test-files"
+        "zija.file.storage-path=/tmp/zija-test-files",
+        "zija.setup.token=test-setup-token"
 })
 class ForwardedHeadersSecurityTest {
 
