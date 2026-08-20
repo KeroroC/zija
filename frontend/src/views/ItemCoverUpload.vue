@@ -75,7 +75,8 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
+import { ApiError } from '../api/http'
 import { uploadItemCover, removeItemCover, COVER_IMAGE_TYPES } from '../api/file'
 import type { CoverResult } from '../api/file'
 import {
@@ -156,15 +157,15 @@ async function doUpload(file: File, oldCoverAction?: 'KEEP' | 'RECYCLE') {
     currentCoverUrl.value = result.url
     emit('uploaded', { coverFileId: result.id, coverUrl: result.url, version: result.version })
     ElMessage.success(oldCoverAction === 'RECYCLE' ? '已替换封面，旧封面已送回收站' : '封面上传成功')
-  } catch (e: any) {
+  } catch (e) {
     clearInterval(progressTimer)
-    errorMsg.value = mapServerError(e.errorCode || '')
+    errorMsg.value = mapServerError(e instanceof ApiError ? e.errorCode : '')
   } finally {
     uploading.value = false
   }
 }
 
-function onFileSelected(uploadFile: any) {
+function onFileSelected(uploadFile: UploadFile) {
   // el-upload 的 onChange 回调，file 在 uploadFile.raw 中
   const file: File | undefined = uploadFile?.raw
   if (file) {
@@ -219,8 +220,8 @@ async function handleRemove() {
     currentCoverUrl.value = null
     emit('removed')
     ElMessage.success('封面已移除')
-  } catch (e: any) {
-    errorMsg.value = e.message || '移除失败，请重试'
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : '移除失败，请重试'
   }
 }
 </script>

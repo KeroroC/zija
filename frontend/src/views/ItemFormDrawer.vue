@@ -51,7 +51,8 @@
         <el-tree-select
           v-model="form.categoryId"
           :data="categoryTree"
-          :props="{ label: 'name', value: 'id', children: 'children' } as any"
+          value-key="id"
+          :props="{ label: 'name', children: 'children' }"
           placeholder="请选择分类"
           clearable
           check-strictly
@@ -519,8 +520,8 @@ async function submitCreateUnit() {
     form.unitId = created.id
     createUnitVisible.value = false
     ElMessage.success('单位已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建单位失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建单位失败')
   } finally {
     creatingUnit.value = false
   }
@@ -559,8 +560,8 @@ async function submitCreateBrand() {
     form.brandId = created.id
     createBrandVisible.value = false
     ElMessage.success('品牌已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建品牌失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建品牌失败')
   } finally {
     creatingBrand.value = false
   }
@@ -601,8 +602,8 @@ async function submitCreateTag() {
     }
     createTagVisible.value = false
     ElMessage.success('标签已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建标签失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建标签失败')
   } finally {
     creatingTag.value = false
   }
@@ -647,8 +648,8 @@ async function handleSubmit() {
     }
     emit('saved', saved)
     close()
-  } catch (e: any) {
-    ElMessage.error(e.message || '操作失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '操作失败')
   } finally {
     submitting.value = false
   }

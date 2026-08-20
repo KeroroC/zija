@@ -21,7 +21,8 @@
       <el-tree-select
         v-model="filters.categoryId"
         :data="categoryTree"
-        :props="({ label: 'name', value: 'id', children: 'children' } as any)"
+        value-key="id"
+        :props="{ label: 'name', children: 'children' }"
         placeholder="分类"
         clearable
         check-strictly
@@ -43,7 +44,7 @@
       </el-select>
     </div>
 
-    <el-table :data="items" v-loading="loading" class="items-table table-clickable" @row-click="(row: any) => openDetail(row as CatalogItem)">
+    <el-table :data="items" v-loading="loading" class="items-table table-clickable" @row-click="openDetail">
       <el-table-column label="封面" width="60" class-name="col-cover">
         <template #default="{ row }">
           <img v-if="row.coverUrl" :src="row.coverUrl" class="cover-thumb" alt="封面" />
@@ -400,8 +401,8 @@ async function fetchItems() {
     })
     items.value = res.items
     pagination.total = res.total
-  } catch (e: any) {
-    ElMessage.error(e.message || '加载失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '加载失败')
   } finally {
     loading.value = false
   }

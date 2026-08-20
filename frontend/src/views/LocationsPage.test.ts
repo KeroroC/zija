@@ -320,7 +320,8 @@ describe("LocationsPage", () => {
   });
 
   it("shows an error message when the server rejects the move", async () => {
-    moveMock.mockRejectedValue({ message: "移动会导致循环" });
+    // 真实链路只会 reject Error（http.ts 抛出 ApiError/TypeError 等），用 Error 建模更贴近实际
+    moveMock.mockRejectedValue(new Error("移动会导致循环"));
 
     wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
     await flushPromises();

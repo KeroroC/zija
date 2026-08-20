@@ -33,7 +33,7 @@
                     <el-icon><Plus /></el-icon>
                   </el-button>
                 </el-tooltip>
-                <el-button size="small" text @click.stop="openRename('category', data)">重命名</el-button>
+                <el-button size="small" text @click.stop="openRename('category', data as Category)">重命名</el-button>
                 <el-button size="small" text @click.stop="openMoveCategory(data)">移动</el-button>
                 <el-button v-if="data.status === 'ACTIVE'" size="small" text type="danger" @click.stop="handleArchiveCategory(data)">归档</el-button>
                 <el-button v-if="data.status === 'ARCHIVED'" size="small" text type="success" @click.stop="handleRestoreCategory(data)">恢复</el-button>
@@ -62,9 +62,9 @@
           </el-table-column>
           <el-table-column label="操作" width="180" fixed="right">
             <template #default="{ row }">
-              <el-button size="small" text @click="openRename('brand', row)">重命名</el-button>
-              <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveBrand(row)">归档</el-button>
-              <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreBrand(row)">恢复</el-button>
+              <el-button size="small" text @click="openRename('brand', row as Brand)">重命名</el-button>
+              <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveBrand(row as Brand)">归档</el-button>
+              <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreBrand(row as Brand)">恢复</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -91,10 +91,10 @@
           </el-table-column>
           <el-table-column label="操作" width="260" fixed="right">
             <template #default="{ row }">
-              <el-button size="small" text @click="openRename('unit', row)">重命名</el-button>
+              <el-button size="small" text @click="openRename('unit', row as Unit)">重命名</el-button>
               <el-button size="small" text @click="openDecimalScaleDialog(row as Unit)">修改小数位</el-button>
-              <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveUnit(row)">归档</el-button>
-              <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreUnit(row)">恢复</el-button>
+              <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveUnit(row as Unit)">归档</el-button>
+              <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreUnit(row as Unit)">恢复</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -119,9 +119,9 @@
           </el-table-column>
           <el-table-column label="操作" width="160" fixed="right">
             <template #default="{ row }">
-              <el-button size="small" text @click="openRename('tag', row)">重命名</el-button>
-              <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveTag(row)">归档</el-button>
-              <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreTag(row)">恢复</el-button>
+              <el-button size="small" text @click="openRename('tag', row as Tag)">重命名</el-button>
+              <el-button v-if="row.status === 'ACTIVE'" size="small" text type="danger" @click="handleArchiveTag(row as Tag)">归档</el-button>
+              <el-button v-if="row.status === 'ARCHIVED'" size="small" text type="success" @click="handleRestoreTag(row as Tag)">恢复</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -172,7 +172,8 @@
           <el-tree-select
             v-model="moveCategoryForm.newParentId"
             :data="moveCategoryTreeData"
-            :props="{ label: 'name', value: 'id', children: 'children' } as any"
+            value-key="id"
+            :props="{ label: 'name', children: 'children' }"
             placeholder="选择目标父级（留空为根节点）"
             clearable
             check-strictly
@@ -388,8 +389,8 @@ async function loadCategories() {
   loading.categories = true
   try {
     categories.value = await fetchCategories(includeArchived.categories)
-  } catch (e: any) {
-    ElMessage.error(e.message || '加载分类失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '加载分类失败')
   } finally {
     loading.categories = false
   }
@@ -399,8 +400,8 @@ async function loadBrands() {
   loading.brands = true
   try {
     brands.value = await fetchBrands(includeArchived.brands)
-  } catch (e: any) {
-    ElMessage.error(e.message || '加载品牌失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '加载品牌失败')
   } finally {
     loading.brands = false
   }
@@ -410,8 +411,8 @@ async function loadUnits() {
   loading.units = true
   try {
     units.value = await fetchUnits(includeArchived.units)
-  } catch (e: any) {
-    ElMessage.error(e.message || '加载单位失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '加载单位失败')
   } finally {
     loading.units = false
   }
@@ -421,8 +422,8 @@ async function loadTags() {
   loading.tags = true
   try {
     tags.value = await fetchTags(includeArchived.tags)
-  } catch (e: any) {
-    ElMessage.error(e.message || '加载标签失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '加载标签失败')
   } finally {
     loading.tags = false
   }
@@ -452,8 +453,8 @@ async function handleCreateCategory() {
     createCategoryVisible.value = false
     await loadCategories()
     ElMessage.success('已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建失败')
   }
 }
 
@@ -463,8 +464,8 @@ async function handleArchiveCategory(cat: CategoryTreeNode) {
     await archiveCategory(cat.id, cat.version)
     await loadCategories()
     ElMessage.success('已归档')
-  } catch (e: any) {
-    ElMessage.error(e.message || '归档失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '归档失败')
   }
 }
 
@@ -473,8 +474,8 @@ async function handleRestoreCategory(cat: CategoryTreeNode) {
     await restoreCategory(cat.id, cat.version)
     await loadCategories()
     ElMessage.success('已恢复')
-  } catch (e: any) {
-    ElMessage.error(e.message || '恢复失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '恢复失败')
   }
 }
 
@@ -500,8 +501,8 @@ async function submitMoveCategory() {
     moveCategoryVisible.value = false
     await loadCategories()
     ElMessage.success('已移动')
-  } catch (e: any) {
-    ElMessage.error(e.message || '移动失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '移动失败')
   }
 }
 
@@ -517,29 +518,29 @@ async function handleCreateBrand() {
     newBrandName.value = ''
     await loadBrands()
     ElMessage.success('已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建失败')
   }
 }
 
-async function handleArchiveBrand(brand: any) {
+async function handleArchiveBrand(brand: Brand) {
   await ElMessageBox.confirm(`确定归档品牌"${brand.name}"？`, '确认')
   try {
     await archiveBrand(brand.id, brand.version)
     await loadBrands()
     ElMessage.success('已归档')
-  } catch (e: any) {
-    ElMessage.error(e.message || '归档失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '归档失败')
   }
 }
 
-async function handleRestoreBrand(brand: any) {
+async function handleRestoreBrand(brand: Brand) {
   try {
     await restoreBrand(brand.id, brand.version)
     await loadBrands()
     ElMessage.success('已恢复')
-  } catch (e: any) {
-    ElMessage.error(e.message || '恢复失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '恢复失败')
   }
 }
 
@@ -556,29 +557,29 @@ async function handleCreateUnit() {
     newUnitDecimalScale.value = 0
     await loadUnits()
     ElMessage.success('已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建失败')
   }
 }
 
-async function handleArchiveUnit(unit: any) {
+async function handleArchiveUnit(unit: Unit) {
   await ElMessageBox.confirm(`确定归档单位"${unit.name}"？`, '确认')
   try {
     await archiveUnit(unit.id, unit.version)
     await loadUnits()
     ElMessage.success('已归档')
-  } catch (e: any) {
-    ElMessage.error(e.message || '归档失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '归档失败')
   }
 }
 
-async function handleRestoreUnit(unit: any) {
+async function handleRestoreUnit(unit: Unit) {
   try {
     await restoreUnit(unit.id, unit.version)
     await loadUnits()
     ElMessage.success('已恢复')
-  } catch (e: any) {
-    ElMessage.error(e.message || '恢复失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '恢复失败')
   }
 }
 
@@ -613,8 +614,8 @@ async function submitDecimalScaleChange() {
       await loadUnits()
       ElMessage.success('已修改小数位')
     }
-  } catch (e: any) {
-    ElMessage.error(e.message || '修改失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '修改失败')
   }
 }
 
@@ -630,8 +631,8 @@ async function confirmTruncate() {
     decimalScaleDialogVisible.value = false
     await loadUnits()
     ElMessage.success(`已修改小数位，${result.affectedItems} 个物品的数据已截断`)
-  } catch (e: any) {
-    ElMessage.error(e.message || '修改失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '修改失败')
   }
 }
 
@@ -647,35 +648,35 @@ async function handleCreateTag() {
     newTagName.value = ''
     await loadTags()
     ElMessage.success('已创建')
-  } catch (e: any) {
-    ElMessage.error(e.message || '创建失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '创建失败')
   }
 }
 
-async function handleArchiveTag(tag: any) {
+async function handleArchiveTag(tag: Tag) {
   await ElMessageBox.confirm(`确定归档标签"${tag.name}"？`, '确认')
   try {
     await archiveTag(tag.id, tag.version)
     await loadTags()
     ElMessage.success('已归档')
-  } catch (e: any) {
-    ElMessage.error(e.message || '归档失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '归档失败')
   }
 }
 
-async function handleRestoreTag(tag: any) {
+async function handleRestoreTag(tag: Tag) {
   try {
     await restoreTag(tag.id, tag.version)
     await loadTags()
     ElMessage.success('已恢复')
-  } catch (e: any) {
-    ElMessage.error(e.message || '恢复失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '恢复失败')
   }
 }
 
 // --------------- Rename dialog ---------------
 
-function openRename(type: 'category' | 'brand' | 'unit' | 'tag', item: any) {
+function openRename(type: 'category' | 'brand' | 'unit' | 'tag', item: Category | Brand | Unit | Tag) {
   renameForm.type = type
   renameForm.id = item.id
   renameForm.name = item.name
@@ -711,8 +712,8 @@ async function submitRename() {
     }
     renameDialogVisible.value = false
     ElMessage.success('已重命名')
-  } catch (e: any) {
-    ElMessage.error(e.message || '重命名失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '重命名失败')
   }
 }
 
