@@ -8,64 +8,7 @@
     </header>
 
     <section class="qa-shell">
-      <!-- 输入区 -->
-      <div class="qa-composer">
-        <div class="qa-scope-bar">
-          <div class="qa-scope-control" data-testid="qa-answer-scope">
-            <span class="qa-control-label">回答来源</span>
-            <el-segmented v-model="answerScope" :options="answerScopeOptions" :disabled="submitting" />
-          </div>
-          <div class="qa-scope-control qa-target-control">
-            <span class="qa-control-label">回答对象</span>
-            <div data-testid="qa-target-type">
-              <el-segmented v-model="targetType" :options="targetTypeOptions" :disabled="submitting" />
-            </div>
-            <el-select
-              v-if="targetType"
-              v-model="selectedScopeId"
-              data-testid="qa-scope-select"
-              filterable
-              clearable
-              :loading="scopeLoading"
-              :disabled="submitting"
-              :placeholder="targetType === 'ITEM' ? '选择物品' : '选择批次'"
-              class="qa-scope-select"
-            >
-              <el-option
-                v-for="option in scopeChoices"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
-              />
-            </el-select>
-          </div>
-        </div>
-        <div class="qa-scope-preview" data-testid="qa-scope-recommendation">
-          <span class="zj-badge zj-badge-pine">推荐 {{ answerScopeLabel(recommendedScope) }}</span>
-          <span v-if="pageContext" class="qa-context-label">
-            当前页面 · {{ pageContext.label ?? answerTargetLabel(pageContext.type) }}
-          </span>
-        </div>
-        <el-input
-          v-model="question"
-          type="textarea"
-          :rows="2"
-          resize="none"
-          maxlength="2000"
-          :placeholder="questionPlaceholder"
-          :disabled="submitting"
-          class="qa-input"
-          @keydown.enter.exact.prevent="submit"
-        />
-        <div class="qa-composer-footer">
-          <span class="qa-hint">{{ scopeHint }}</span>
-          <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="submit">
-            提问
-          </el-button>
-        </div>
-      </div>
-
-      <!-- 对话记录（仅当前浏览器会话，不存服务端） -->
+      <!-- 对话记录（仅当前浏览器会话，不存服务端） / 空状态 -->
       <div v-if="turns.length" class="qa-thread">
         <div v-for="(turn, i) in turns" :key="i" class="qa-turn">
           <div class="qa-question">
@@ -247,6 +190,95 @@
           「牛奶最近有没有入库？」
         </p>
       </div>
+
+      <!-- 输入区：固定吸视口底，settings 面板可折叠。out 当 backdrop, card 内嵌 -->
+      <div class="qa-composer">
+        <div class="qa-composer-card">
+          <div class="qa-composer-scope">
+            <button
+              type="button"
+              class="qa-scope-chip"
+              data-testid="qa-settings-toggle"
+              :aria-expanded="settingsOpen"
+              @click="settingsOpen = !settingsOpen"
+            >
+              <el-icon class="qa-scope-chip-icon"><Setting /></el-icon>
+              <span class="qa-scope-chip-label">{{ settingsOpen ? "收起范围设置" : "范围设置" }}</span>
+              <el-icon class="qa-scope-chip-caret" :class="{ 'is-open': settingsOpen }">
+                <ArrowDown />
+              </el-icon>
+            </button>
+            <span
+              v-if="!settingsOpen"
+              class="zj-badge zj-badge-pine"
+              data-testid="qa-active-scope-chip"
+            >
+              {{ answerScopeLabel(effectiveScope) }}
+            </span>
+            <span v-if="!settingsOpen && pageContext" class="qa-context-label">
+              当前页面 · {{ pageContext.label ?? answerTargetLabel(pageContext.type) }}
+            </span>
+          </div>
+
+          <!-- settings 面板：v-show 保留 DOM，settings 测试选择器稳定 -->
+          <div v-show="settingsOpen" class="qa-settings" data-testid="qa-settings-panel">
+            <div class="qa-scope-bar">
+              <div class="qa-scope-control" data-testid="qa-answer-scope">
+                <span class="qa-control-label">回答来源</span>
+                <el-segmented v-model="answerScope" :options="answerScopeOptions" :disabled="submitting" />
+              </div>
+              <div class="qa-scope-control qa-target-control">
+                <span class="qa-control-label">回答对象</span>
+                <div data-testid="qa-target-type">
+                  <el-segmented v-model="targetType" :options="targetTypeOptions" :disabled="submitting" />
+                </div>
+                <el-select
+                  v-if="targetType"
+                  v-model="selectedScopeId"
+                  data-testid="qa-scope-select"
+                  filterable
+                  clearable
+                  :loading="scopeLoading"
+                  :disabled="submitting"
+                  :placeholder="targetType === 'ITEM' ? '选择物品' : '选择批次'"
+                  class="qa-scope-select"
+                >
+                  <el-option
+                    v-for="option in scopeChoices"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+              </div>
+            </div>
+            <div class="qa-scope-preview" data-testid="qa-scope-recommendation">
+              <span class="zj-badge zj-badge-pine">推荐 {{ answerScopeLabel(recommendedScope) }}</span>
+              <span v-if="pageContext" class="qa-context-label">
+                当前页面 · {{ pageContext.label ?? answerTargetLabel(pageContext.type) }}
+              </span>
+            </div>
+          </div>
+
+          <el-input
+            v-model="question"
+            type="textarea"
+            :rows="2"
+            resize="none"
+            maxlength="2000"
+            :placeholder="questionPlaceholder"
+            :disabled="submitting"
+            class="qa-input"
+            @keydown.enter.exact.prevent="submit"
+          />
+          <div class="qa-composer-footer">
+            <span class="qa-hint">{{ scopeHint }}</span>
+            <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="submit">
+              提问
+            </el-button>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 </template>
@@ -255,7 +287,7 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { ChatDotRound, Location, Paperclip } from "@element-plus/icons-vue";
+import { ChatDotRound, Location, Paperclip, Setting, ArrowDown } from "@element-plus/icons-vue";
 import { askHouseholdQuestion } from "../api/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
@@ -283,6 +315,8 @@ const turns = ref<Array<{
   answer: HouseholdFactAnswer;
   confirmedScopes: QaQuestionScope[];
 }>>([]);
+// 范围设置面板：首次默认展开，提问后自动收起；用户后续可手动再展开。
+const settingsOpen = ref(true);
 const answerScope = ref<QaAnswerScope>("AUTO");
 const targetType = ref<"" | "ITEM" | "LOT">("");
 const selectedScopeId = ref("");
@@ -376,6 +410,12 @@ watch(targetType, async (mode, _previousMode, onCleanup) => {
   } finally {
     if (active) scopeLoading.value = false;
   }
+});
+
+// 聊过一次后自动收起范围设置，让 composer 回归到聊天输入框的瘦体形态；
+// 用户仍可手动点 chip 再次展开。
+watch(() => turns.value.length, (count) => {
+  if (count > 0 && settingsOpen.value) settingsOpen.value = false;
 });
 
 async function loadAllScopeOptions<T>(
@@ -574,6 +614,8 @@ function formatDateTime(iso: string): string {
 <style scoped>
 .qa-page {
   max-width: 1120px;
+  /* composer position: fixed 吸视口底，padding 让出 composer 高度避免遮挡最后一条 turn */
+  padding-bottom: 140px;
 }
 
 .qa-shell {
@@ -582,24 +624,128 @@ function formatDateTime(iso: string): string {
   gap: var(--zj-space-5);
 }
 
-/* ---------- 输入区 ---------- */
+/* ---------- 输入区：position: fixed 吸视口底，外层 backdrop + 内层 card ---------- */
 .qa-composer {
+  position: fixed;
+  /* 让出侧边栏 224px，再镜像 .app-main 的 40px 内边距 */
+  left: 224px;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  padding: 24px 40px 16px;
+  /* 顶部渐变让 thread 在 composer 后方有"褪到纸边"的感觉，不割裂 */
+  background: linear-gradient(
+    to bottom,
+    rgba(246, 245, 241, 0) 0%,
+    rgba(246, 245, 241, 0.7) 55%,
+    var(--zj-canvas) 100%
+  );
+}
+
+.qa-composer-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--zj-space-3);
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
   background: var(--zj-surface);
   border: 1px solid var(--zj-line);
   border-radius: var(--zj-radius-md);
   padding: var(--zj-space-4);
-  box-shadow: var(--zj-shadow-sm);
+  /* shadow-md 比 shadow-sm 重一档，让 composer 像"账册底页"压在 thread 上 */
+  box-shadow: var(--zj-shadow-md);
 }
 
-.qa-input :deep(.el-textarea__inner) {
+/* 顶部 1px 内阴影：纸边立起来感，跟 .card 一致 */
+.qa-composer-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  border-radius: var(--zj-radius-md) var(--zj-radius-md) 0 0;
+  box-shadow: inset 0 1px 0 rgba(28, 58, 47, 0.04);
+  pointer-events: none;
+}
+
+/* 默认让 children 上的 margin 失效，由父级 .qa-composer-card 的 gap 统筹间距 */
+.qa-composer-card > .qa-composer-scope,
+.qa-composer-card > .qa-settings,
+.qa-composer-card > .qa-composer-footer {
+  margin: 0;
+}
+
+.qa-composer-scope {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--zj-space-2);
+}
+
+.qa-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--zj-line);
+  border-radius: 999px;
   background: var(--zj-surface);
-  color: var(--zj-ink-900);
+  color: var(--zj-ink-600);
+  font-family: inherit;
+  font-size: var(--zj-text-body-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color var(--zj-dur-fast) var(--zj-ease-out),
+    background-color var(--zj-dur-fast) var(--zj-ease-out),
+    color var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.qa-scope-chip:hover {
+  border-color: var(--zj-pine-500);
+  background: var(--zj-pine-50);
+  color: var(--zj-pine-600);
+}
+
+.qa-scope-chip[aria-expanded="true"] {
+  border-color: var(--zj-pine-600);
+  background: var(--zj-pine-50);
+  color: var(--zj-pine-600);
+}
+
+.qa-scope-chip:active {
+  transform: scale(0.98);
+}
+
+.qa-scope-chip-icon,
+.qa-scope-chip-caret {
+  font-size: 14px;
+}
+
+.qa-scope-chip-caret {
+  transition: transform var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.qa-scope-chip-caret.is-open {
+  transform: rotate(180deg);
+}
+
+/* settings 面板：折叠时 v-show 隐藏，但仍在 DOM 里供测试与无障碍访问 */
+.qa-settings {
+  border-bottom: 1px solid var(--zj-line);
+  padding-bottom: var(--zj-space-3);
+  margin-bottom: var(--zj-space-3);
 }
 
 .qa-scope-bar {
   display: grid;
   gap: var(--zj-space-3);
-  margin-bottom: var(--zj-space-3);
+}
+
+.qa-input :deep(.el-textarea__inner) {
+  background: var(--zj-surface);
+  color: var(--zj-ink-900);
 }
 
 .qa-scope-control {
@@ -634,12 +780,17 @@ function formatDateTime(iso: string): string {
 }
 
 .qa-scope-preview {
-  margin-bottom: var(--zj-space-3);
+  /* 在 settings 面板内跟 .qa-scope-bar 之间留一拍呼吸 */
+  margin-top: var(--zj-space-3);
 }
 
 .qa-context-label {
   color: var(--zj-ink-400);
   font-size: var(--zj-text-caption);
+}
+
+.qa-composer-scope .qa-context-label {
+  margin-left: 2px;
 }
 
 .qa-composer-footer {
@@ -965,6 +1116,23 @@ function formatDateTime(iso: string): string {
 }
 
 @media (max-width: 720px) {
+  .qa-page {
+    padding-bottom: 160px;
+  }
+
+  .qa-composer {
+    padding: 16px 20px 12px;
+  }
+
+  .qa-composer-card {
+    padding: var(--zj-space-3);
+  }
+
+  .qa-composer-scope {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .qa-scope-bar {
     align-items: stretch;
   }
