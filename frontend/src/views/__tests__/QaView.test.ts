@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import ElementPlus, { ElMessage } from "element-plus";
 
@@ -153,6 +153,16 @@ function mountV() {
   return mount(QaView, { global: { plugins: [ElementPlus] } });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("QaView", () => {
   beforeEach(() => {
     pushMock.mockReset();
@@ -164,11 +174,124 @@ describe("QaView", () => {
     mockFetchLots.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders empty state with composer", () => {
     const wrapper = mountV();
     expect(wrapper.text()).toContain("家庭问答");
     expect(wrapper.find(".qa-empty").exists()).toBe(true);
     expect(wrapper.find("textarea").exists()).toBe(true);
+    expect(wrapper.find(".qa-page").classes()).toContain("page-container");
+    expect(wrapper.find(".qa-shell > .qa-composer").exists()).toBe(true);
+  });
+
+  it("shows a waiting card instead of a blank thread while the first question is in flight", async () => {
+    vi.useFakeTimers();
+    const ask = deferred<typeof answerFixture>();
+    mockAsk.mockReturnValue(ask.promise);
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("牛奶还有多少？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".qa-empty").exists()).toBe(false);
+    const pending = wrapper.get('[data-testid="qa-pending"]');
+    expect(pending.text()).toContain("牛奶还有多少？");
+    expect(pending.text()).toContain("正在查阅账册");
+    expect(wrapper.text()).not.toContain("已等待");
+    expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("");
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(wrapper.text()).toContain("已等待 3 秒");
+
+    ask.resolve(answerFixture);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="qa-pending"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("牛奶当前库存 5 瓶，放在厨房。");
+  });
+
+  it("appends a waiting card after existing turns for a follow-up question", async () => {
+    mockAsk.mockResolvedValueOnce(answerFixture);
+    const wrapper = mountV();
+    await wrapper.find("textarea").setValue("牛奶还有多少、放在哪里？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    const followUp = deferred<typeof answerFixture>();
+    mockAsk.mockReturnValue(followUp.promise);
+    await wrapper.find("textarea").setValue("哪些批次快到期了？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll(".qa-turn")).toHaveLength(2);
+    expect(wrapper.get('[data-testid="qa-pending"]').text()).toContain("哪些批次快到期了？");
+    expect(wrapper.text()).toContain("牛奶当前库存 5 瓶，放在厨房。");
+
+    followUp.resolve(answerFixture);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="qa-pending"]').exists()).toBe(false);
+    expect(wrapper.findAll(".qa-turn")).toHaveLength(2);
+  });
+
+  it("scrolls new turns inside the conversation thread instead of the document", async () => {
+    mockAsk.mockResolvedValueOnce(answerFixture);
+    const wrapper = mountV();
+    await wrapper.find("textarea").setValue("牛奶还有多少、放在哪里？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    const threadEl = wrapper.get('[data-testid="qa-thread"]').element as HTMLElement;
+    Object.defineProperty(threadEl, "scrollHeight", { configurable: true, get: () => 2400 });
+    threadEl.scrollTop = 12;
+
+    const followUp = deferred<typeof answerFixture>();
+    mockAsk.mockReturnValue(followUp.promise);
+    await wrapper.find("textarea").setValue("哪些批次快到期了？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".qa-shell > .qa-composer").exists()).toBe(true);
+    expect(threadEl.scrollTop).toBe(2400);
+  });
+
+  it("replaces the current answer with a waiting card while confirming a candidate", async () => {
+    const ambiguous = {
+      ...answerFixture,
+      reasonCode: "AMBIGUOUS_TARGET",
+      summary: "找到多个可能的对象，请先确认。",
+      structuredResults: [],
+      sources: [],
+      jumps: [],
+      recommendedAnswerScope: "HOUSEHOLD_FACT" as const,
+      usedAnswerScope: "HOUSEHOLD_FACT" as const,
+      candidates: [
+        { type: "ITEM" as const, id: "item-1", label: "牛奶", detail: "物品 · 消耗品" },
+        { type: "ITEM" as const, id: "item-2", label: "牛奶", detail: "物品 · 耐用品" },
+      ],
+    };
+    mockAsk.mockResolvedValueOnce(ambiguous);
+    const wrapper = mountV();
+    await wrapper.find("textarea").setValue("牛奶还有多少？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    const confirmed = deferred<typeof answerFixture>();
+    mockAsk.mockReturnValue(confirmed.promise);
+    await wrapper.findAll('[data-testid="qa-candidate"]')[0].trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="qa-candidate"]').exists()).toBe(false);
+    expect(wrapper.findAll(".qa-question-text")).toHaveLength(1);
+    expect(wrapper.get('[data-testid="qa-pending"]').text()).toContain("正在查阅账册");
+
+    confirmed.resolve(answerFixture);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="qa-pending"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("牛奶当前库存 5 瓶");
   });
 
   it("asks a question and renders summary, source, structured result and jumps", async () => {
@@ -287,8 +410,10 @@ describe("QaView", () => {
     await wrapper.find(".qa-composer-footer .el-button").trigger("click");
     await flushPromises();
 
-    // 失败不产生对话记录
+    // 失败不产生对话记录，输入保留以便重试
     expect(wrapper.findAll(".qa-question-text")).toHaveLength(0);
+    expect(wrapper.find(".qa-empty").exists()).toBe(true);
+    expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("查询会失败吗？");
   });
 
   it("does not post an empty scope id when Enter is pressed without a selected target", async () => {

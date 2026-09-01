@@ -9,7 +9,12 @@
 
     <section class="qa-shell">
       <!-- 对话记录（仅当前浏览器会话，不存服务端） / 空状态 -->
-      <div v-if="turns.length" class="qa-thread">
+      <div
+        v-if="turns.length || submitting"
+        ref="threadEl"
+        class="qa-thread"
+        data-testid="qa-thread"
+      >
         <div v-for="(turn, i) in turns" :key="i" class="qa-turn">
           <div class="qa-question">
             <span class="qa-question-label">问</span>
@@ -17,6 +22,27 @@
           </div>
 
           <div class="qa-answer">
+            <div
+              v-if="submitting && confirmingIndex === i"
+              class="qa-pending"
+              data-testid="qa-pending"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <el-skeleton animated class="qa-pending-skeleton">
+                <template #template>
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-wide" />
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-mid" />
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-narrow" />
+                </template>
+              </el-skeleton>
+              <p class="qa-pending-copy">正在查阅账册…</p>
+              <p v-if="waitingElapsedSeconds >= WAITING_ELAPSED_HINT_AFTER" class="qa-pending-elapsed">
+                已等待 {{ waitingElapsedSeconds }} 秒
+              </p>
+            </div>
+            <div v-else>
             <div v-if="turn.answer.usedAnswerScope" class="qa-used-scope" data-testid="qa-used-scope">
               <span class="zj-badge zj-badge-ink">
                 实际 {{ answerScopeLabel(turn.answer.usedAnswerScope) }}
@@ -176,11 +202,43 @@
                 <p v-else class="qa-result-empty">暂无数据</p>
               </div>
             </template>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="submitting && confirmingIndex === null"
+          class="qa-turn"
+          data-testid="qa-pending"
+        >
+          <div class="qa-question">
+            <span class="qa-question-label">问</span>
+            <span class="qa-question-text">{{ pendingQuestion }}</span>
+          </div>
+          <div
+            class="qa-answer"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div class="qa-pending">
+              <el-skeleton animated class="qa-pending-skeleton">
+                <template #template>
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-wide" />
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-mid" />
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-narrow" />
+                </template>
+              </el-skeleton>
+              <p class="qa-pending-copy">正在查阅账册…</p>
+              <p v-if="waitingElapsedSeconds >= WAITING_ELAPSED_HINT_AFTER" class="qa-pending-elapsed">
+                已等待 {{ waitingElapsedSeconds }} 秒
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      <div v-else-if="!submitting" class="qa-empty">
+      <div v-else class="qa-empty">
         <div class="qa-empty-icon" aria-hidden="true">
           <el-icon><ChatDotRound /></el-icon>
         </div>
@@ -284,7 +342,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ChatDotRound, Location, Paperclip, Setting, ArrowDown } from "@element-plus/icons-vue";
@@ -307,8 +365,16 @@ import { AI_REQUEST_LIMITED } from "../types/errorCodes";
 
 const router = useRouter();
 const route = useRoute();
+const WAITING_ELAPSED_HINT_AFTER = 3;
+
 const question = ref("");
 const submitting = ref(false);
+const pendingQuestion = ref("");
+const confirmingIndex = ref<number | null>(null);
+const waitingElapsedSeconds = ref(0);
+const threadEl = ref<HTMLElement | null>(null);
+let waitingTimer: ReturnType<typeof setInterval> | null = null;
+let waitingStartedAt = 0;
 const turns = ref<Array<{
   question: string;
   answerScope: QaAnswerScope;
@@ -416,7 +482,46 @@ watch(targetType, async (mode, _previousMode, onCleanup) => {
 // 用户仍可手动点 chip 再次展开。
 watch(() => turns.value.length, (count) => {
   if (count > 0 && settingsOpen.value) settingsOpen.value = false;
+  if (count === 0) return;
+  void scrollThreadToLatest();
 });
+
+watch([submitting, confirmingIndex], ([isSubmitting, index]) => {
+  if (!isSubmitting || index !== null) return;
+  void scrollThreadToLatest();
+});
+
+async function scrollThreadToLatest() {
+  await nextTick();
+  const thread = threadEl.value;
+  if (!thread) return;
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function startWaiting(text: string, index: number | null) {
+  pendingQuestion.value = text;
+  confirmingIndex.value = index;
+  waitingStartedAt = Date.now();
+  waitingElapsedSeconds.value = 0;
+  if (waitingTimer !== null) {
+    clearInterval(waitingTimer);
+  }
+  waitingTimer = setInterval(() => {
+    waitingElapsedSeconds.value = Math.floor((Date.now() - waitingStartedAt) / 1000);
+  }, 1000);
+}
+
+function stopWaiting() {
+  if (waitingTimer !== null) {
+    clearInterval(waitingTimer);
+    waitingTimer = null;
+  }
+  pendingQuestion.value = "";
+  confirmingIndex.value = null;
+  waitingElapsedSeconds.value = 0;
+}
+
+onUnmounted(stopWaiting);
 
 async function loadAllScopeOptions<T>(
   fetchPage: (page: number) => Promise<{ items: T[]; total: number }>,
@@ -434,6 +539,8 @@ async function loadAllScopeOptions<T>(
 async function submit() {
   if (!canSubmit.value) return;
   const text = question.value.trim();
+  question.value = "";
+  startWaiting(text, null);
   submitting.value = true;
   try {
     const options = questionOptions();
@@ -445,14 +552,15 @@ async function submit() {
       answer: result,
       confirmedScopes: initialConfirmedScope ? [initialConfirmedScope] : [],
     });
-    question.value = "";
   } catch (e) {
+    question.value = text;
     if (e instanceof ApiError) {
       ElMessage.error(qaErrorMessage(e));
     } else {
       ElMessage.error("提问失败，请稍后重试");
     }
   } finally {
+    stopWaiting();
     submitting.value = false;
   }
 }
@@ -460,6 +568,7 @@ async function submit() {
 async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
   const turn = turns.value[index];
   if (!turn || submitting.value) return;
+  startWaiting(turn.question, index);
   submitting.value = true;
   try {
     const confirmedScope: QaQuestionScope = {
@@ -481,6 +590,7 @@ async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
   } catch (e) {
     ElMessage.error(e instanceof ApiError ? qaErrorMessage(e) : "提问失败，请稍后重试");
   } finally {
+    stopWaiting();
     submitting.value = false;
   }
 }
@@ -613,42 +723,43 @@ function formatDateTime(iso: string): string {
 
 <style scoped>
 .qa-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   max-width: 1120px;
-  /* composer position: fixed 吸视口底，padding 让出 composer 高度避免遮挡最后一条 turn */
-  padding-bottom: 140px;
+  overflow: hidden;
+}
+
+.qa-page .page-header {
+  flex-shrink: 0;
 }
 
 .qa-shell {
   display: flex;
   flex-direction: column;
-  gap: var(--zj-space-5);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  gap: var(--zj-space-4);
 }
 
-/* ---------- 输入区：position: fixed 吸视口底，外层 backdrop + 内层 card ---------- */
+/* ---------- 输入区：钉在问答页底部，由对话线程承担滚动 ---------- */
 .qa-composer {
-  position: fixed;
-  /* 让出侧边栏 224px，再镜像 .app-main 的 40px 内边距 */
-  left: 224px;
-  right: 0;
-  bottom: 0;
-  z-index: 50;
-  padding: 24px 40px 16px;
-  /* 顶部渐变让 thread 在 composer 后方有"褪到纸边"的感觉，不割裂 */
-  background: linear-gradient(
-    to bottom,
-    rgba(246, 245, 241, 0) 0%,
-    rgba(246, 245, 241, 0.7) 55%,
-    var(--zj-canvas) 100%
-  );
+  flex-shrink: 0;
+  width: 100%;
 }
 
 .qa-composer-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--zj-space-3);
   width: 100%;
-  max-width: 1120px;
-  margin: 0 auto;
   background: var(--zj-surface);
   border: 1px solid var(--zj-line);
   border-radius: var(--zj-radius-md);
@@ -809,7 +920,14 @@ function formatDateTime(iso: string): string {
 .qa-thread {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
   gap: var(--zj-space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .qa-turn {
@@ -854,6 +972,51 @@ function formatDateTime(iso: string): string {
   padding: var(--zj-space-4);
   box-shadow: var(--zj-shadow-sm);
   max-width: 90%;
+}
+
+.qa-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--zj-space-3);
+}
+
+.qa-pending-skeleton :deep(.el-skeleton__item) {
+  background: var(--zj-surface-sunken);
+}
+
+.qa-pending-line {
+  display: block;
+  height: 14px;
+  margin-top: 0;
+}
+
+.qa-pending-line + .qa-pending-line {
+  margin-top: var(--zj-space-2);
+}
+
+.qa-pending-line-wide {
+  width: 92%;
+}
+
+.qa-pending-line-mid {
+  width: 72%;
+}
+
+.qa-pending-line-narrow {
+  width: 48%;
+}
+
+.qa-pending-copy {
+  margin: 0;
+  font-size: var(--zj-text-body-sm);
+  color: var(--zj-ink-600);
+}
+
+.qa-pending-elapsed {
+  margin: 0;
+  font-size: var(--zj-text-caption);
+  color: var(--zj-ink-400);
+  font-variant-numeric: tabular-nums;
 }
 
 .qa-used-scope {
@@ -1080,7 +1243,15 @@ function formatDateTime(iso: string): string {
 
 /* ---------- 空状态 ---------- */
 .qa-empty {
-  padding: 56px 0 64px;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  padding: 24px 0;
   text-align: center;
 }
 
@@ -1116,14 +1287,6 @@ function formatDateTime(iso: string): string {
 }
 
 @media (max-width: 720px) {
-  .qa-page {
-    padding-bottom: 160px;
-  }
-
-  .qa-composer {
-    padding: 16px 20px 12px;
-  }
-
   .qa-composer-card {
     padding: var(--zj-space-3);
   }

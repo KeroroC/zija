@@ -76,7 +76,7 @@
       </el-menu>
     </el-aside>
 
-    <el-container>
+    <el-container class="app-body">
       <el-header class="app-header" height="56px">
         <span class="header-context">家庭：{{ householdName }}</span>
         <div class="header-right">
