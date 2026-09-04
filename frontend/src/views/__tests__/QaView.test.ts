@@ -165,6 +165,7 @@ function deferred<T>() {
 
 describe("QaView", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     pushMock.mockReset();
     mockAsk.mockReset();
     mockFetchItems.mockReset();
@@ -779,5 +780,114 @@ describe("QaView", () => {
     await jumps[1].trigger("click");
     expect(pushMock).toHaveBeenCalledWith({ path: "/items", query: { highlight: "item-1" } });
     expect(pushMock).toHaveBeenCalledWith({ path: "/files", query: { highlight: "file-1" } });
+  });
+
+  it("sends the last confirmed scope on a follow-up without an explicit composer scope", async () => {
+    const ambiguous = {
+      ...answerFixture,
+      reasonCode: "AMBIGUOUS_TARGET",
+      summary: "找到多个可能的对象，请先确认。",
+      structuredResults: [],
+      sources: [],
+      jumps: [],
+      candidates: [
+        { type: "ITEM" as const, id: "item-1", label: "牛奶", detail: "物品 · 消耗品" },
+        { type: "ITEM" as const, id: "item-2", label: "牛奶", detail: "物品 · 耐用品" },
+      ],
+    };
+    mockAsk
+      .mockResolvedValueOnce(ambiguous)
+      .mockResolvedValueOnce(answerFixture)
+      .mockResolvedValueOnce({ ...answerFixture, question: "那放在哪？", summary: "放在厨房。" });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("牛奶还有多少？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+    await wrapper.findAll('[data-testid="qa-candidate"]')[0].trigger("click");
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("那放在哪？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenNthCalledWith(3, "那放在哪？", {
+      answerScope: "AUTO",
+      confirmedScopes: [{ type: "ITEM", id: "item-1", label: "牛奶" }],
+    });
+  });
+
+  it("keeps confirmed scopes on a follow-up after the view is remounted", async () => {
+    const ambiguous = {
+      ...answerFixture,
+      reasonCode: "AMBIGUOUS_TARGET",
+      summary: "找到多个可能的对象，请先确认。",
+      structuredResults: [],
+      sources: [],
+      jumps: [],
+      candidates: [
+        { type: "ITEM" as const, id: "item-1", label: "牛奶", detail: "物品 · 消耗品" },
+        { type: "ITEM" as const, id: "item-2", label: "牛奶", detail: "物品 · 耐用品" },
+      ],
+    };
+    mockAsk
+      .mockResolvedValueOnce(ambiguous)
+      .mockResolvedValueOnce(answerFixture);
+    const first = mountV();
+    await first.find("textarea").setValue("牛奶还有多少？");
+    await first.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+    await first.findAll('[data-testid="qa-candidate"]')[0].trigger("click");
+    await flushPromises();
+    first.unmount();
+
+    mockAsk.mockResolvedValueOnce({ ...answerFixture, question: "那放在哪？", summary: "放在厨房。" });
+    const second = mountV();
+    await second.find("textarea").setValue("那放在哪？");
+    await second.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenLastCalledWith("那放在哪？", {
+      answerScope: "AUTO",
+      confirmedScopes: [{ type: "ITEM", id: "item-1", label: "牛奶" }],
+    });
+  });
+
+  it("restores the conversation after leaving the view and coming back", async () => {
+    mockAsk.mockResolvedValue(answerFixture);
+    const first = mountV();
+    await first.find("textarea").setValue("牛奶还有多少、放在哪里？");
+    await first.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+    first.unmount();
+
+    const second = mountV();
+    expect(second.text()).toContain("牛奶还有多少、放在哪里？");
+    expect(second.text()).toContain("牛奶当前库存 5 瓶，放在厨房。");
+    expect(second.find(".qa-empty").exists()).toBe(false);
+  });
+
+  it("restores an unsent question draft after remount", async () => {
+    const first = mountV();
+    await first.find("textarea").setValue("那放在哪？");
+    first.unmount();
+
+    const second = mountV();
+    expect((second.find("textarea").element as HTMLTextAreaElement).value).toBe("那放在哪？");
+  });
+
+  it("keeps the restored thread when returning via a page context query", async () => {
+    mockAsk.mockResolvedValue(answerFixture);
+    const first = mountV();
+    await first.find("textarea").setValue("牛奶还有多少、放在哪里？");
+    await first.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+    first.unmount();
+
+    routeQuery.contextType = "ITEM";
+    routeQuery.contextId = "item-1";
+    const second = mountV();
+    expect(second.text()).toContain("牛奶当前库存 5 瓶，放在厨房。");
+    expect(second.find(".qa-empty").exists()).toBe(false);
   });
 });

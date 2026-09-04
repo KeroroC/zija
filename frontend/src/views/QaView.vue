@@ -349,6 +349,7 @@ import { ChatDotRound, Location, Paperclip, Setting, ArrowDown } from "@element-
 import { askHouseholdQuestion } from "../api/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
+import { loadQaThread, saveQaThread } from "../utils/qaThread";
 import type {
   HouseholdFactAnswer,
   QaAnswerScope,
@@ -367,7 +368,8 @@ const router = useRouter();
 const route = useRoute();
 const WAITING_ELAPSED_HINT_AFTER = 3;
 
-const question = ref("");
+const restoredThread = loadQaThread();
+const question = ref(restoredThread.draft);
 const submitting = ref(false);
 const pendingQuestion = ref("");
 const confirmingIndex = ref<number | null>(null);
@@ -375,14 +377,16 @@ const waitingElapsedSeconds = ref(0);
 const threadEl = ref<HTMLElement | null>(null);
 let waitingTimer: ReturnType<typeof setInterval> | null = null;
 let waitingStartedAt = 0;
-const turns = ref<Array<{
-  question: string;
-  answerScope: QaAnswerScope;
-  answer: HouseholdFactAnswer;
-  confirmedScopes: QaQuestionScope[];
-}>>([]);
+const turns = ref(restoredThread.turns);
 // 范围设置面板：首次默认展开，提问后自动收起；用户后续可手动再展开。
-const settingsOpen = ref(true);
+const settingsOpen = ref(restoredThread.turns.length === 0);
+
+watch(
+  [turns, question],
+  () => saveQaThread({ turns: turns.value, draft: question.value }),
+  { deep: true },
+);
+
 const answerScope = ref<QaAnswerScope>("AUTO");
 const targetType = ref<"" | "ITEM" | "LOT">("");
 const selectedScopeId = ref("");
@@ -545,12 +549,11 @@ async function submit() {
   try {
     const options = questionOptions();
     const result = await askHouseholdQuestion(text, options);
-    const initialConfirmedScope = options.scope ?? options.pageContext;
     turns.value.push({
       question: text,
       answerScope: answerScope.value,
       answer: result,
-      confirmedScopes: initialConfirmedScope ? [initialConfirmedScope] : [],
+      confirmedScopes: nextConfirmedScopes(options),
     });
   } catch (e) {
     question.value = text;
@@ -599,10 +602,42 @@ function questionOptions(): QaQuestionOptions {
   const options: QaQuestionOptions = { answerScope: answerScope.value };
   if (targetType.value && selectedScopeId.value) {
     options.scope = { type: targetType.value, id: selectedScopeId.value };
-  } else if (pageContext.value) {
+    return options;
+  }
+  if (pageContext.value) {
     options.pageContext = pageContext.value;
   }
+  const confirmedScopes = lastConfirmedScopes();
+  if (confirmedScopes.length > 0) {
+    options.confirmedScopes = confirmedScopes;
+  }
   return options;
+}
+
+const MAX_CONFIRMED_SCOPES = 3;
+
+function lastConfirmedScopes(): QaQuestionScope[] {
+  const last = turns.value.at(-1);
+  if (!last) return [];
+  return uniqueScopes(last.confirmedScopes).slice(-MAX_CONFIRMED_SCOPES);
+}
+
+function nextConfirmedScopes(options: QaQuestionOptions): QaQuestionScope[] {
+  if (options.scope) return uniqueScopes([options.scope]);
+  return uniqueScopes([...(options.confirmedScopes ?? []), options.pageContext])
+    .slice(-MAX_CONFIRMED_SCOPES);
+}
+
+function uniqueScopes(scopes: Array<QaQuestionScope | undefined>): QaQuestionScope[] {
+  const result: QaQuestionScope[] = [];
+  for (const scope of scopes) {
+    if (!scope) continue;
+    if (result.some((existing) => existing.type === scope.type && existing.id === scope.id)) {
+      continue;
+    }
+    result.push(scope);
+  }
+  return result;
 }
 
 /** 从行数据推断列名（保持插入顺序）。 */
