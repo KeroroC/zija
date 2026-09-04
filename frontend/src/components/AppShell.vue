@@ -80,7 +80,11 @@
 
     <el-container class="app-body">
       <el-header class="app-header" height="56px">
-        <span class="header-context">家庭：{{ householdName }}</span>
+        <div class="header-context">
+          <span class="header-kicker">家庭</span>
+          <span class="header-rule" aria-hidden="true"></span>
+          <span class="header-household" :title="householdName">{{ householdName }}</span>
+        </div>
         <div class="header-right">
           <el-dropdown trigger="click" @command="onInventoryCommand">
             <el-button size="small" type="primary" plain>

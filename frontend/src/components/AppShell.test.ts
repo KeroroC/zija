@@ -175,7 +175,11 @@ describe("AppShell", () => {
     await router.push({ name: "home" });
     await flushPromises();
 
-    expect(wrapper.text()).toContain("测试家庭");
+    const context = wrapper.find(".header-context");
+    expect(context.exists()).toBe(true);
+    expect(context.find(".header-kicker").text()).toBe("家庭");
+    expect(context.find(".header-household").text()).toBe("测试家庭");
+    expect(context.text()).not.toContain("家庭：");
     expect(wrapper.text()).not.toContain("家庭：我的家");
   });
 

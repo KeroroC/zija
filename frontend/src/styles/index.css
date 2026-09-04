@@ -207,7 +207,7 @@ body::after {
   align-items: center;
   justify-content: space-between;
   height: 56px;
-  padding: 0 32px;
+  padding: 0 40px;
   background: var(--zj-surface);
   border-top: 1px solid var(--zj-line);
   border-bottom: 1px solid var(--zj-line);
@@ -225,14 +225,51 @@ body::after {
   pointer-events: none;
 }
 
+/* 顶栏书眉：把「家庭」降为字距拉开的旁注，名称用衬线体当账册题名，
+   中间发丝竖线呼应侧栏 brand-rule，避免「家庭：Name」这种表单标签写法。 */
 .header-context {
-  font-size: 13px;
-  color: var(--zj-ink-600);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+  margin-right: 24px;
+}
+
+.header-kicker {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--zj-ink-400);
+  line-height: 1;
+}
+
+.header-rule {
+  flex-shrink: 0;
+  align-self: center;
+  width: 1px;
+  height: 13px;
+  background: var(--zj-line-strong);
+}
+
+.header-household {
+  min-width: 0;
+  font-family: var(--zj-serif);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--zj-ink-900);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-right {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 16px;
 }
 
