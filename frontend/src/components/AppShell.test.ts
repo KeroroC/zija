@@ -78,6 +78,10 @@ describe("AppShell", () => {
     });
 
     expect(wrapper.text()).toContain("知家");
+    expect(wrapper.text()).toContain("ZIJA");
+    const brandLink = wrapper.find("a.brand");
+    expect(brandLink.exists()).toBe(true);
+    expect(brandLink.attributes("href")).toBe("/");
     expect(wrapper.text()).toContain("首页");
     expect(wrapper.text()).toContain("成员管理");
     expect(wrapper.text()).toContain("个人资料");

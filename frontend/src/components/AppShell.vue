@@ -5,11 +5,13 @@
   </template>
   <el-container v-else class="app-shell">
     <el-aside class="app-sidebar" width="224px">
-      <div class="brand">
-        <span class="brand-cn">知家</span>
-        <span class="brand-en">ZIJA</span>
+      <router-link to="/" class="brand" aria-label="知家首页">
+        <span class="brand-lockup">
+          <span class="brand-cn">知家</span>
+          <span class="brand-en">ZIJA</span>
+        </span>
         <span class="brand-rule" aria-hidden="true"></span>
-      </div>
+      </router-link>
       <el-menu
         router
         class="app-menu"
