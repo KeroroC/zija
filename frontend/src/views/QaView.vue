@@ -322,7 +322,7 @@
                   clearable
                   :loading="scopeLoading"
                   :disabled="submitting"
-                  :placeholder="targetType === 'ITEM' ? '选择物品' : '选择批次'"
+                  :placeholder="scopePlaceholder"
                   class="qa-scope-select"
                 >
                   <el-option
@@ -373,7 +373,9 @@ import { ChatDotRound, Location, Paperclip, Setting, ArrowDown } from "@element-
 import { askHouseholdQuestion, fetchAiStatus, fetchKnowledgeSources } from "../api/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
+import { fetchLocationTree } from "../api/location";
 import { loadQaThread, saveQaThread } from "../utils/qaThread";
+import { flattenLocationChoices } from "../utils/location";
 import { movementTypeLabel } from "../utils/movement";
 import { aiStatusReasonLabel } from "../utils/aiStatus";
 import type {
@@ -389,6 +391,7 @@ import type {
 } from "../types/ai";
 import type { CatalogItem } from "../types/catalog";
 import type { LotSummary } from "../types/inventory";
+import type { LocationNode } from "../types/location";
 import { ApiError } from "../api/http";
 import { AI_REQUEST_LIMITED } from "../types/errorCodes";
 
@@ -416,11 +419,12 @@ watch(
 );
 
 const answerScope = ref<QaAnswerScope>("AUTO");
-const targetType = ref<"" | "ITEM" | "LOT">("");
+const targetType = ref<"" | "ITEM" | "LOT" | "LOCATION">("");
 const selectedScopeId = ref("");
 const scopeLoading = ref(false);
 const items = ref<CatalogItem[]>([]);
 const lots = ref<LotSummary[]>([]);
+const locationRoots = ref<LocationNode[]>([]);
 const aiStatus = ref<AiStatus | null>(null);
 const knowledgePrep = ref<{ processing: number; available: number; failed: number } | null>(null);
 const SCOPE_PAGE_SIZE = 100;
@@ -433,6 +437,7 @@ const answerScopeOptions = [
 const targetTypeOptions = [
   { label: "物品", value: "ITEM" },
   { label: "批次", value: "LOT" },
+  { label: "位置", value: "LOCATION" },
 ];
 
 const pageContext = computed<QaQuestionScope | undefined>(() => {
@@ -447,7 +452,7 @@ const pageContext = computed<QaQuestionScope | undefined>(() => {
 });
 
 const knowledgeRange = computed<{ type: "ITEM" | "LOT"; id: string } | undefined>(() => {
-  if (targetType.value && selectedScopeId.value) {
+  if ((targetType.value === "ITEM" || targetType.value === "LOT") && selectedScopeId.value) {
     return { type: targetType.value, id: selectedScopeId.value };
   }
   const ctx = pageContext.value;
@@ -478,7 +483,19 @@ const scopeChoices = computed(() => {
   if (targetType.value === "LOT") {
     return lots.value.map((lot) => ({ value: lot.lotId, label: lotLabel(lot) }));
   }
+  if (targetType.value === "LOCATION") {
+    return flattenLocationChoices(locationRoots.value);
+  }
   return [];
+});
+
+const scopePlaceholder = computed(() => {
+  switch (targetType.value) {
+    case "ITEM": return "选择物品";
+    case "LOT": return "选择批次";
+    case "LOCATION": return "选择位置";
+    default: return "";
+  }
 });
 
 const canSubmit = computed(() => Boolean(question.value.trim()) && !submitting.value);
@@ -594,9 +611,11 @@ watch(targetType, async (mode, _previousMode, onCleanup) => {
         page,
         pageSize: SCOPE_PAGE_SIZE,
       }));
+    } else if (mode === "LOCATION" && locationRoots.value.length === 0) {
+      locationRoots.value = (await fetchLocationTree()).roots;
     }
   } catch {
-    if (active) ElMessage.error(mode === "ITEM" ? "物品列表加载失败" : "批次列表加载失败");
+    if (active) ElMessage.error(scopeLoadError(mode));
   } finally {
     if (active) scopeLoading.value = false;
   }
@@ -721,7 +740,12 @@ async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
 function questionOptions(): QaQuestionOptions {
   const options: QaQuestionOptions = { answerScope: answerScope.value };
   if (targetType.value && selectedScopeId.value) {
-    options.scope = { type: targetType.value, id: selectedScopeId.value };
+    const choice = scopeChoices.value.find((option) => option.value === selectedScopeId.value);
+    options.scope = {
+      type: targetType.value,
+      id: selectedScopeId.value,
+      ...(targetType.value === "LOCATION" && choice?.label ? { label: choice.label } : {}),
+    };
     return options;
   }
   if (pageContext.value) {
@@ -877,6 +901,14 @@ function evidenceLocation(source: QaAnswerSource): string {
 
 function lotLabel(lot: LotSummary): string {
   return `${lot.itemName} · ${lot.lotNumber || lot.serialNumber || "未编号批次"}`;
+}
+
+function scopeLoadError(mode: "ITEM" | "LOT" | "LOCATION"): string {
+  switch (mode) {
+    case "ITEM": return "物品列表加载失败";
+    case "LOT": return "批次列表加载失败";
+    case "LOCATION": return "位置列表加载失败";
+  }
 }
 
 function queryString(value: unknown): string {

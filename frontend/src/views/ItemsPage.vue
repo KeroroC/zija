@@ -180,7 +180,10 @@
             <span class="summary-num zj-num">{{ lotCount }}</span>
             <span class="summary-label">批次数</span>
           </div>
-          <el-button type="primary" size="small" @click="goToInbound">入库</el-button>
+          <div class="inventory-summary-actions">
+            <el-button type="primary" size="small" @click="goToInbound">入库</el-button>
+            <el-button size="small" @click="goToQa">问这个</el-button>
+          </div>
         </div>
 
         <div class="detail-actions">
@@ -673,6 +676,18 @@ function goToInbound() {
   router.push({ name: 'inventory', query: { action: 'inbound', itemId: selectedItem.value.id } })
 }
 
+function goToQa() {
+  if (!selectedItem.value) return
+  router.push({
+    name: 'qa',
+    query: {
+      contextType: 'ITEM',
+      contextId: selectedItem.value.id,
+      contextLabel: selectedItem.value.name,
+    },
+  })
+}
+
 async function archiveItem(item: CatalogItem) {
   await ElMessageBox.confirm('确定归档此物品？', '确认')
   await apiArchiveItem(item.id, item.version)
@@ -886,8 +901,10 @@ async function openHighlightedItem(itemId: string) {
   color: var(--zj-ink-400);
 }
 
-.inventory-summary .el-button {
+.inventory-summary-actions {
   margin-left: auto;
+  display: flex;
+  gap: var(--zj-space-2);
 }
 
 .detail-actions {

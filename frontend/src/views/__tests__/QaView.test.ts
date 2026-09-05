@@ -16,6 +16,10 @@ vi.mock("../../api/inventory", () => ({
   fetchLots: vi.fn(),
 }));
 
+vi.mock("../../api/location", () => ({
+  fetchLocationTree: vi.fn(),
+}));
+
 const pushMock = vi.fn();
 const routeQuery: Record<string, string> = {};
 vi.mock("vue-router", () => ({
@@ -27,6 +31,7 @@ import QaView from "../QaView.vue";
 import { askHouseholdQuestion, fetchAiStatus, fetchKnowledgeSources } from "../../api/ai";
 import { fetchItems } from "../../api/catalog";
 import { fetchLots } from "../../api/inventory";
+import { fetchLocationTree } from "../../api/location";
 import { ApiError } from "../../api/http";
 import type { AiStatus, KnowledgeSourceInfo } from "../../types/ai";
 
@@ -35,6 +40,7 @@ const mockFetchAiStatus = vi.mocked(fetchAiStatus);
 const mockFetchKnowledgeSources = vi.mocked(fetchKnowledgeSources);
 const mockFetchItems = vi.mocked(fetchItems);
 const mockFetchLots = vi.mocked(fetchLots);
+const mockFetchLocationTree = vi.mocked(fetchLocationTree);
 
 const availableStatusFixture: AiStatus = {
   available: true,
@@ -226,11 +232,13 @@ describe("QaView", () => {
     mockFetchKnowledgeSources.mockReset();
     mockFetchItems.mockReset();
     mockFetchLots.mockReset();
+    mockFetchLocationTree.mockReset();
     mockFetchAiStatus.mockResolvedValue(availableStatusFixture);
     mockFetchKnowledgeSources.mockResolvedValue([]);
     for (const key of Object.keys(routeQuery)) delete routeQuery[key];
     mockFetchItems.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
     mockFetchLots.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
+    mockFetchLocationTree.mockResolvedValue({ roots: [] });
   });
 
   afterEach(() => {
@@ -806,13 +814,75 @@ describe("QaView", () => {
 
     await wrapper.find("textarea").setValue("这个物品怎么清洁？");
     expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("知识来源");
-    expect(wrapper.text()).toContain("咖啡机");
+    expect(wrapper.text()).toContain("当前页面 · 咖啡机");
     await wrapper.find(".qa-composer-footer .el-button").trigger("click");
     await flushPromises();
 
     expect(mockAsk).toHaveBeenCalledWith("这个物品怎么清洁？", {
       answerScope: "AUTO",
       pageContext: { type: "ITEM", id: "item-1", label: "咖啡机" },
+    });
+  });
+
+  it("asks household facts about a composer-selected location", async () => {
+    mockFetchLocationTree.mockResolvedValue({
+      roots: [
+        {
+          id: "loc-kitchen",
+          parentId: null,
+          name: "厨房",
+          sortOrder: 0,
+          everReferenced: false,
+          version: 1,
+          children: [
+            {
+              id: "loc-1",
+              parentId: "loc-kitchen",
+              name: "柜子",
+              sortOrder: 0,
+              everReferenced: false,
+              version: 1,
+              children: [],
+            },
+          ],
+        },
+      ],
+    });
+    mockAsk.mockResolvedValue(answerFixture);
+    const wrapper = mountV();
+
+    wrapper.get('[data-testid="qa-answer-scope"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "HOUSEHOLD_FACT");
+    wrapper.get('[data-testid="qa-target-type"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "LOCATION");
+    await flushPromises();
+    wrapper.findComponent({ name: "ElSelect" }).vm.$emit("update:modelValue", "loc-1");
+    await wrapper.find("textarea").setValue("这个位置还有什么？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(mockFetchLocationTree).toHaveBeenCalledOnce();
+    expect(mockAsk).toHaveBeenCalledWith("这个位置还有什么？", {
+      answerScope: "HOUSEHOLD_FACT",
+      scope: { type: "LOCATION", id: "loc-1", label: "厨房 / 柜子" },
+    });
+  });
+
+  it("uses a labeled location page context when asking from a location page", async () => {
+    routeQuery.contextType = "LOCATION";
+    routeQuery.contextId = "loc-1";
+    routeQuery.contextLabel = "厨房 / 柜子";
+    mockAsk.mockResolvedValue(answerFixture);
+    const wrapper = mountV();
+
+    expect(wrapper.text()).toContain("当前页面 · 厨房 / 柜子");
+    await wrapper.find("textarea").setValue("这个位置还有什么？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenCalledWith("这个位置还有什么？", {
+      answerScope: "AUTO",
+      pageContext: { type: "LOCATION", id: "loc-1", label: "厨房 / 柜子" },
     });
   });
 

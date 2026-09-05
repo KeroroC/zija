@@ -140,6 +140,41 @@ describe("AppShell", () => {
     });
   });
 
+  it("keeps the current Q&A context label in the sidebar route", async () => {
+    const session = useSessionStore();
+    session.session = { authenticated: true, accountId: "a1", username: "admin", displayName: "Admin" };
+    session.currentMember = {
+      householdId: "h1",
+      memberId: "m1",
+      accountId: "a1",
+      username: "admin",
+      displayName: "Admin",
+      role: "ADMIN",
+      status: "ACTIVE",
+      householdName: "测试家庭"
+    };
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/qa", component: { render: () => h("div", "家庭问答") } }
+      ]
+    });
+    await router.push({
+      path: "/qa",
+      query: { contextType: "ITEM", contextId: "item-1", contextLabel: "咖啡机" }
+    });
+    await router.isReady();
+    wrapper = mount(AppShell, { global: { plugins: [router, ElementPlus] } });
+
+    const qaItem = wrapper.findAllComponents({ name: "ElMenuItem" })
+      .find((item) => item.text().includes("家庭问答"));
+    expect(qaItem).toBeDefined();
+    expect(qaItem!.props("route")).toEqual({
+      path: "/qa",
+      query: { contextType: "ITEM", contextId: "item-1", contextLabel: "咖啡机" }
+    });
+  });
+
   it("shows the initialized household name right after login, without requiring a page refresh", async () => {
     const session = useSessionStore();
     const router = createRouter({

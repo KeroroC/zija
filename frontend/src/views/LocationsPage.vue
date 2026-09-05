@@ -80,6 +80,7 @@
           <div class="inventory-actions">
             <el-button size="small" type="primary" @click="goToLocationInventory">查看库存</el-button>
             <el-button size="small" @click="goToStocktake">发起盘点</el-button>
+            <el-button size="small" @click="goToQa">问这个</el-button>
           </div>
         </template>
 
@@ -303,6 +304,18 @@ function goToLocationInventory() {
 function goToStocktake() {
   if (!selectedLocation.value) return
   router.push({ name: 'inventory', query: { action: 'stocktake', locationId: selectedLocation.value.id } })
+}
+
+function goToQa() {
+  if (!selectedLocation.value) return
+  router.push({
+    name: 'qa',
+    query: {
+      contextType: 'LOCATION',
+      contextId: selectedLocation.value.id,
+      contextLabel: ancestorPath.value || selectedLocation.value.name,
+    },
+  })
 }
 
 function openCreate(parentId: string | null = null) {
