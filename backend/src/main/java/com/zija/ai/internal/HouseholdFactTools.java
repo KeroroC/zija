@@ -230,7 +230,7 @@ final class HouseholdFactTools {
                         String.valueOf(lot.itemId()), String.valueOf(lot.lotId()), null));
             });
             if (!lots.isEmpty()) {
-                collector.addJump(new Jump("REMINDER", "查看临期提醒", null, null, null));
+                collector.addJump(new Jump("REMINDER", "查看临期提醒", null, null, null, null, "EXPIRY"));
             }
             return Map.of("expiringLots", lots.stream().map(lot -> Map.of(
                     "itemName", lot.itemName(),
@@ -273,7 +273,7 @@ final class HouseholdFactTools {
                         String.valueOf(lot.itemId()), String.valueOf(lot.lotId()), null));
             });
             if (!lots.isEmpty()) {
-                collector.addJump(new Jump("REMINDER", "查看过期提醒", null, null, null));
+                collector.addJump(new Jump("REMINDER", "查看过期提醒", null, null, null, null, "EXPIRY"));
             }
             return Map.of("expiredLots", lots.stream().map(lot -> Map.of(
                     "itemName", lot.itemName(),
@@ -309,7 +309,7 @@ final class HouseholdFactTools {
             items.forEach(item -> collector.addJump(
                     new Jump("ITEM", item.itemName(), String.valueOf(item.itemId()), null, null)));
             if (!items.isEmpty()) {
-                collector.addJump(new Jump("REMINDER", "查看低库存提醒", null, null, null));
+                collector.addJump(new Jump("REMINDER", "查看低库存提醒", null, null, null, null, "LOW_STOCK"));
             }
             return Map.of("lowStock", items.stream().map(item -> Map.of(
                     "itemName", item.itemName(),
@@ -387,7 +387,7 @@ final class HouseholdFactTools {
             collector.addResult(new StructuredResult("MOVEMENTS", "「" + itemName + "」最近流水", rows));
             collector.addJump(new Jump("ITEM", itemName, authorizedItemId.toString(), null, null));
             if (!rows.isEmpty()) {
-                collector.addJump(new Jump("MOVEMENT", "查看流水", itemId, null, null));
+                collector.addJump(new Jump("MOVEMENT", "查看流水", authorizedItemId.toString(), null, null));
             }
             return Map.of("movements", movements.stream().map(m -> Map.of(
                     "type", m.type(),

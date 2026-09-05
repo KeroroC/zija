@@ -80,6 +80,12 @@ class QaScopePlannerTest {
         String recommended = planner.previewRecommendedScope(HOUSEHOLD_ID, "这个呢？", pageTarget);
 
         assertThat(recommended).isEqualTo("BOTH");
+        assertThat(catalogApi.listActiveItemsCalls).isZero();
+        assertThat(catalogApi.findActiveItemsNamedInQuestionCalls).isZero();
+        assertThat(catalogApi.findActiveItemsMatchingBrandOrTagInQuestionCalls).isZero();
+        assertThat(inventoryApi.lotsOfItemCalls).isZero();
+        assertThat(inventoryApi.findLotsMatchingQuestionCalls).isZero();
+        assertThat(locationApi.treeCalls).isZero();
     }
 
     @Test
@@ -90,6 +96,9 @@ class QaScopePlannerTest {
         String recommended = planner.previewRecommendedScope(HOUSEHOLD_ID, "这个呢？", pageTarget);
 
         assertThat(recommended).isEqualTo("HOUSEHOLD_FACT");
+        assertThat(catalogApi.listActiveItemsCalls).isZero();
+        assertThat(catalogApi.findActiveItemsNamedInQuestionCalls).isZero();
+        assertThat(catalogApi.findActiveItemsMatchingBrandOrTagInQuestionCalls).isZero();
     }
 
     @Test
@@ -103,6 +112,8 @@ class QaScopePlannerTest {
         assertThat(plan.needsConfirmation()).isFalse();
         assertThat(plan.candidates()).isEmpty();
         assertThat(plan.target()).isNull();
+        assertThat(catalogApi.listActiveItemsCalls).isZero();
+        assertThat(inventoryApi.lotsOfItemCalls).isZero();
     }
 
     @Test
@@ -164,6 +175,9 @@ class QaScopePlannerTest {
         assertThat(plan.target()).isNotNull();
         assertThat(plan.target().type()).isEqualTo("LOT");
         assertThat(plan.target().id()).isEqualTo(LOT_A);
+        assertThat(catalogApi.listActiveItemsCalls).isZero();
+        assertThat(inventoryApi.lotsOfItemCalls).isZero();
+        assertThat(inventoryApi.findLotsMatchingQuestionCalls).isEqualTo(1);
     }
 
     @Test
@@ -200,6 +214,92 @@ class QaScopePlannerTest {
         assertThat(plan.candidates()).hasSize(2);
         assertThat(plan.candidates()).allMatch(candidate -> "ITEM".equals(candidate.type()));
         assertThat(plan.knowledgeTarget()).isNull();
+        assertThat(catalogApi.listActiveItemsCalls).isZero();
+        assertThat(catalogApi.findActiveItemsNamedInQuestionCalls).isGreaterThan(0);
+    }
+
+    @Test
+    void brandNameInQuestionResolvesToTheMatchingActiveItem() {
+        catalogApi.items = List.of(item("酸奶"));
+        catalogApi.itemNames = Map.of(ITEM_ID, "酸奶");
+        catalogApi.brandOrTagMatches = List.of(brandMatch(ITEM_ID, "酸奶", "伊利"));
+
+        var plan = planner.plan(HOUSEHOLD_ID, request("伊利还有多少？", "HOUSEHOLD_FACT"));
+
+        assertThat(plan.needsConfirmation()).isFalse();
+        assertThat(plan.target()).isNotNull();
+        assertThat(plan.target().type()).isEqualTo("ITEM");
+        assertThat(plan.target().id()).isEqualTo(ITEM_ID);
+        assertThat(plan.target().label()).isEqualTo("酸奶");
+        assertThat(catalogApi.findActiveItemsMatchingBrandOrTagInQuestionCalls).isGreaterThan(0);
+    }
+
+    @Test
+    void multipleItemsWithTheSameBrandRequireConfirmation() {
+        UUID secondItemId = UUID.fromString("00000000-0000-0000-0000-000000000011");
+        catalogApi.items = List.of(item("酸奶"), item(secondItemId, "纯牛奶"));
+        catalogApi.itemNames = Map.of(ITEM_ID, "酸奶", secondItemId, "纯牛奶");
+        catalogApi.brandOrTagMatches = List.of(
+                brandMatch(ITEM_ID, "酸奶", "伊利"),
+                brandMatch(secondItemId, "纯牛奶", "伊利"));
+
+        var plan = planner.plan(HOUSEHOLD_ID, request("伊利还有多少？", "HOUSEHOLD_FACT"));
+
+        assertThat(plan.needsConfirmation()).isTrue();
+        assertThat(plan.candidates()).hasSize(2);
+        assertThat(plan.candidates()).allMatch(candidate -> "ITEM".equals(candidate.type()));
+        assertThat(plan.candidates()).allMatch(candidate -> candidate.detail().contains("品牌 · 伊利"));
+        assertThat(plan.target()).isNull();
+    }
+
+    @Test
+    void tagNameInQuestionResolvesToTheMatchingActiveItem() {
+        catalogApi.items = List.of(item("洗衣液"));
+        catalogApi.itemNames = Map.of(ITEM_ID, "洗衣液");
+        catalogApi.brandOrTagMatches = List.of(tagMatch(ITEM_ID, "洗衣液", "日用品"));
+
+        var plan = planner.plan(HOUSEHOLD_ID, request("日用品放在哪？", "HOUSEHOLD_FACT"));
+
+        assertThat(plan.needsConfirmation()).isFalse();
+        assertThat(plan.target()).isNotNull();
+        assertThat(plan.target().type()).isEqualTo("ITEM");
+        assertThat(plan.target().id()).isEqualTo(ITEM_ID);
+    }
+
+    @Test
+    void multipleItemsWithTheSameTagRequireConfirmation() {
+        UUID secondItemId = UUID.fromString("00000000-0000-0000-0000-000000000011");
+        catalogApi.items = List.of(item("酸奶"), item(secondItemId, "纯牛奶"));
+        catalogApi.itemNames = Map.of(ITEM_ID, "酸奶", secondItemId, "纯牛奶");
+        catalogApi.brandOrTagMatches = List.of(
+                tagMatch(ITEM_ID, "酸奶", "乳制品"),
+                tagMatch(secondItemId, "纯牛奶", "乳制品"));
+
+        var plan = planner.plan(HOUSEHOLD_ID, request("乳制品还有多少？", "HOUSEHOLD_FACT"));
+
+        assertThat(plan.needsConfirmation()).isTrue();
+        assertThat(plan.candidates()).hasSize(2);
+        assertThat(plan.candidates()).allMatch(candidate -> candidate.detail().contains("标签 · 乳制品"));
+    }
+
+    @Test
+    void brandMatchDoesNotDuplicateAnItemAlreadyMatchedByName() {
+        catalogApi.brandOrTagMatches = List.of(brandMatch(ITEM_ID, "牛奶", "伊利"));
+
+        var plan = planner.plan(HOUSEHOLD_ID, request("伊利牛奶还有多少？", "HOUSEHOLD_FACT"));
+
+        assertThat(plan.needsConfirmation()).isFalse();
+        assertThat(plan.target()).isNotNull();
+        assertThat(plan.target().id()).isEqualTo(ITEM_ID);
+        assertThat(plan.candidates()).isEmpty();
+    }
+
+    private static CatalogApi.ItemBrandOrTagMatch brandMatch(UUID itemId, String itemName, String brandName) {
+        return new CatalogApi.ItemBrandOrTagMatch(itemId, itemName, brandName, null);
+    }
+
+    private static CatalogApi.ItemBrandOrTagMatch tagMatch(UUID itemId, String itemName, String tagName) {
+        return new CatalogApi.ItemBrandOrTagMatch(itemId, itemName, null, tagName);
     }
 
     private static CatalogApi.ItemInfo item(String name) {

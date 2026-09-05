@@ -222,14 +222,10 @@ function mountV() {
   return mount(QaView, { global: { plugins: [ElementPlus] } });
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
+function jumpByLabel(wrapper: ReturnType<typeof mountV>, label: string) {
+  const jump = wrapper.findAll(".qa-jump").find((btn) => btn.text().includes(label));
+  expect(jump, `missing jump "${label}"`).toBeTruthy();
+  return jump!;
 }
 
 async function typeQuestion(wrapper: ReturnType<typeof mountV>, value: string) {
@@ -239,6 +235,16 @@ async function typeQuestion(wrapper: ReturnType<typeof mountV>, value: string) {
 async function awaitScopePreview() {
   await vi.advanceTimersByTimeAsync(300);
   await flushPromises();
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 describe("QaView", () => {
@@ -263,6 +269,7 @@ describe("QaView", () => {
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
     vi.useRealTimers();
   });
 
@@ -307,7 +314,7 @@ describe("QaView", () => {
 
     const prep = wrapper.get('[data-testid="qa-knowledge-prep"]');
     expect(prep.text()).toContain("知识准备状态");
-    expect(prep.text()).toContain("处理中 1");
+    expect(prep.text()).toContain("处理中 2");
     expect(prep.text()).toContain("可用 1");
     expect(prep.text()).toContain("失败 1");
     expect(prep.text()).not.toContain("已停用");
@@ -363,6 +370,7 @@ describe("QaView", () => {
       pageSize: 100,
     });
     mockFetchKnowledgeSources
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         knowledgeSource("f1", "PROCESSING", { mountType: "ITEM", mountId: "item-1" }),
       ])
@@ -371,6 +379,7 @@ describe("QaView", () => {
         knowledgeSource("f3", "FAILED", { mountType: "ITEM", mountId: "item-2" }),
       ]);
     const wrapper = mountV();
+    await flushPromises();
     wrapper.get('[data-testid="qa-target-type"]')
       .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "ITEM");
     await flushPromises();
@@ -384,7 +393,7 @@ describe("QaView", () => {
 
     expect(wrapper.get('[data-testid="qa-knowledge-prep"]').text()).toContain("可用 1");
     expect(wrapper.get('[data-testid="qa-knowledge-prep"]').text()).toContain("失败 1");
-    expect(mockFetchKnowledgeSources).toHaveBeenCalledTimes(2);
+    expect(mockFetchKnowledgeSources).toHaveBeenCalledTimes(3);
   });
 
   it("renders empty state with composer", () => {
@@ -394,6 +403,24 @@ describe("QaView", () => {
     expect(wrapper.find("textarea").exists()).toBe(true);
     expect(wrapper.find(".qa-page").classes()).toContain("page-container");
     expect(wrapper.find(".qa-shell > .qa-composer").exists()).toBe(true);
+  });
+
+  it.each([
+    ["牛奶还有多少？", "HOUSEHOLD_FACT", "家庭事实"],
+    ["滤网怎么清洁？", "KNOWLEDGE_SOURCE", "知识来源"],
+    ["过期了怎么处理", "BOTH", "两者"],
+    ["这个呢？", "HOUSEHOLD_FACT", "家庭事实"],
+  ] as const)("uses the preview API to recommend %s as %s", async (question, scope, label) => {
+    mockPreview.mockResolvedValue({ recommendedAnswerScope: scope });
+    const wrapper = mountV();
+
+    await typeQuestion(wrapper, question);
+    expect(mockPreview).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("家庭事实");
+
+    await awaitScopePreview();
+    expect(mockPreview).toHaveBeenCalledWith(question, undefined, expect.any(AbortSignal));
+    expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain(label);
   });
 
   it("does not call the preview API for an empty question", async () => {
@@ -455,7 +482,6 @@ describe("QaView", () => {
   });
 
   it("shows a waiting card instead of a blank thread while the first question is in flight", async () => {
-    vi.useFakeTimers();
     const ask = deferred<typeof answerFixture>();
     mockAsk.mockReturnValue(ask.promise);
     const wrapper = mountV();
@@ -613,6 +639,9 @@ describe("QaView", () => {
     expect(wrapper.text()).toContain("LOT-001");
     // 跳转
     expect(wrapper.findAll(".qa-jump").length).toBe(3);
+    expect(wrapper.find('[data-jump-type="ITEM"] .qa-jump-group-title').text()).toBe("物品");
+    expect(wrapper.find('[data-jump-type="LOT"] .qa-jump-group-title').text()).toBe("批次");
+    expect(wrapper.find('[data-jump-type="LOCATION"] .qa-jump-group-title').text()).toBe("位置");
     expect(mockAsk).toHaveBeenCalledWith("牛奶还有多少、放在哪里？", {
       answerScope: "AUTO",
     }, expect.any(AbortSignal));
@@ -626,15 +655,70 @@ describe("QaView", () => {
     await wrapper.find(".qa-composer-footer .el-button").trigger("click");
     await flushPromises();
 
-    const jumps = wrapper.findAll(".qa-jump");
-    await jumps[0].trigger("click");
+    await jumpByLabel(wrapper, "牛奶").trigger("click");
     expect(pushMock).toHaveBeenCalledWith({ path: "/items", query: { highlight: "item-1" } });
 
-    await jumps[1].trigger("click");
+    await jumpByLabel(wrapper, "LOT-001").trigger("click");
     expect(pushMock).toHaveBeenCalledWith({ name: "inventory", query: { lotId: "lot-1" } });
 
-    await jumps[2].trigger("click");
+    await jumpByLabel(wrapper, "厨房").trigger("click");
     expect(pushMock).toHaveBeenCalledWith({ path: "/locations", query: { highlight: "loc-1" } });
+  });
+
+  it("groups extra jumps behind an expand control", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      jumps: [
+        { type: "ITEM", label: "牛奶", itemId: "item-1" },
+        { type: "ITEM", label: "酸奶", itemId: "item-2" },
+        { type: "ITEM", label: "纯牛奶", itemId: "item-3" },
+        { type: "ITEM", label: "奶酪", itemId: "item-4" },
+        { type: "MOVEMENT", label: "查看流水", itemId: "item-1" },
+        { type: "REMINDER", label: "查看临期提醒", kind: "EXPIRY" },
+      ],
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("伊利还有多少？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    const itemGroup = wrapper.find('[data-jump-type="ITEM"]');
+    expect(itemGroup.findAll(".qa-jump")).toHaveLength(3);
+    expect(itemGroup.text()).toContain("展开其余 1 项");
+    expect(itemGroup.text()).not.toContain("奶酪");
+
+    await itemGroup.find(".qa-jump-expand").trigger("click");
+    expect(itemGroup.findAll(".qa-jump")).toHaveLength(4);
+    expect(itemGroup.text()).toContain("奶酪");
+    expect(itemGroup.text()).toContain("收起");
+  });
+
+  it("movement and reminder jumps include locating query params", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      jumps: [
+        { type: "MOVEMENT", label: "查看流水", itemId: "item-1" },
+        { type: "REMINDER", label: "查看临期提醒", kind: "EXPIRY" },
+      ],
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("牛奶最近流水和临期？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    await jumpByLabel(wrapper, "查看流水").trigger("click");
+    expect(pushMock).toHaveBeenCalledWith({
+      name: "report-movements",
+      query: { itemId: "item-1" },
+    });
+
+    await jumpByLabel(wrapper, "查看临期提醒").trigger("click");
+    expect(pushMock).toHaveBeenCalledWith({
+      name: "reminders",
+      query: { kind: "EXPIRY" },
+    });
   });
 
   it("renders pending reminder tasks and jumps to the reminder center", async () => {
@@ -951,6 +1035,7 @@ describe("QaView", () => {
   });
 
   it("recommends a mixed range and lets the user override the actual answer scope", async () => {
+    mockPreview.mockResolvedValue({ recommendedAnswerScope: "BOTH" });
     mockAsk.mockResolvedValue({
       ...answerFixture,
       question: "咖啡机当前库存和说明书记录一致吗？",
@@ -961,6 +1046,12 @@ describe("QaView", () => {
     const wrapper = mountV();
 
     await wrapper.find("textarea").setValue("咖啡机当前库存和说明书记录一致吗？");
+    await awaitScopePreview();
+    expect(mockPreview).toHaveBeenCalledWith(
+      "咖啡机当前库存和说明书记录一致吗？",
+      undefined,
+      expect.any(AbortSignal),
+    );
     expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("两者");
 
     wrapper.get('[data-testid="qa-answer-scope"]')
@@ -980,10 +1071,17 @@ describe("QaView", () => {
     routeQuery.contextId = "item-1";
     routeQuery.contextLabel = "咖啡机";
     mockAsk.mockResolvedValue(knowledgeFixture);
+    mockPreview.mockResolvedValue({ recommendedAnswerScope: "KNOWLEDGE_SOURCE" });
     const wrapper = mountV();
 
     await wrapper.find("textarea").setValue("这个物品怎么清洁？");
+    await awaitScopePreview();
     expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("知识来源");
+    expect(mockPreview).toHaveBeenCalledWith(
+      "这个物品怎么清洁？",
+      { type: "ITEM", id: "item-1", label: "咖啡机" },
+      expect.any(AbortSignal),
+    );
     expect(wrapper.text()).toContain("当前页面 · 咖啡机");
     await wrapper.find(".qa-composer-footer .el-button").trigger("click");
     await flushPromises();
@@ -1064,10 +1162,17 @@ describe("QaView", () => {
       recommendedAnswerScope: "BOTH",
       usedAnswerScope: "BOTH",
     });
+    mockPreview.mockResolvedValue({ recommendedAnswerScope: "BOTH" });
     const wrapper = mountV();
 
     await wrapper.find("textarea").setValue("这个呢？");
+    await awaitScopePreview();
     expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("两者");
+    expect(mockPreview).toHaveBeenCalledWith(
+      "这个呢？",
+      { type: "ITEM", id: "item-1" },
+      expect.any(AbortSignal),
+    );
     await wrapper.find(".qa-composer-footer .el-button").trigger("click");
     await flushPromises();
 
@@ -1218,9 +1323,8 @@ describe("QaView", () => {
     expect(wrapper.text()).toContain(new Date("2025-01-02T10:00:00Z")
       .toLocaleString("zh-CN", { hour12: false }));
 
-    const jumps = wrapper.findAll(".qa-jump");
-    await jumps[0].trigger("click");
-    await jumps[1].trigger("click");
+    await jumpByLabel(wrapper, "咖啡机").trigger("click");
+    await jumpByLabel(wrapper, "咖啡机说明书.pdf").trigger("click");
     expect(pushMock).toHaveBeenCalledWith({ path: "/items", query: { highlight: "item-1" } });
     expect(pushMock).toHaveBeenCalledWith({ path: "/files", query: { highlight: "file-1" } });
   });

@@ -134,6 +134,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { getReport, buildExportUrl } from '../../api/reporting'
 import { fetchItems } from '../../api/catalog'
 import { fetchLocationTree } from '../../api/location'
@@ -145,6 +146,7 @@ import type { MovementRow } from '../../types/reporting'
 import type { LocationNode } from '../../types/location'
 
 const sessionStore = useSessionStore()
+const route = useRoute()
 const canExport = computed(() => {
   const role = sessionStore.role
   return role === 'OWNER' || role === 'ADMIN'
@@ -157,8 +159,12 @@ const page = ref(1)
 const pageSize = ref(20)
 const dateRange = ref<string[] | null>(null)
 
+function queryString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
 const filters = ref<Record<string, string | undefined>>({
-  itemId: undefined,
+  itemId: queryString(route.query.itemId) || undefined,
   type: undefined,
   locationId: undefined,
   operatorAccountId: undefined,

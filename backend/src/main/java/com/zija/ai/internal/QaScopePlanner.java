@@ -10,10 +10,12 @@ import com.zija.location.LocationApi;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** 只用服务端权威对象和确定性规则推荐、校验并解析问答范围。 */
@@ -177,13 +179,40 @@ class QaScopePlanner {
     ) {
         String normalized = question == null ? "" : question.toLowerCase(Locale.ROOT);
         Map<String, List<ScopeCandidate>> groups = new LinkedHashMap<>();
+        Set<UUID> seenItemIds = new HashSet<>();
         for (var item : catalogApi.findActiveItemsNamedInQuestion(householdId, question, CANDIDATE_LIMIT)) {
             if (questionContainsTerm(normalized, item.name())) {
+                seenItemIds.add(item.id());
                 addCandidate(groups, "ITEM:" + item.name().toLowerCase(Locale.ROOT),
                         new ScopeCandidate("ITEM", item.id(), item.name(),
                                 "物品 · " + ("DURABLE".equals(item.managementType()) ? "耐用品" : "消耗品")
                                         + " · 编号 " + shortId(item.id())));
             }
+        }
+        for (var match : catalogApi.findActiveItemsMatchingBrandOrTagInQuestion(
+                householdId, question, CANDIDATE_LIMIT)) {
+            if (seenItemIds.contains(match.itemId())) {
+                continue;
+            }
+            boolean brandMatches = questionContainsTerm(normalized, match.matchedBrandName());
+            boolean tagMatches = questionContainsTerm(normalized, match.matchedTagName());
+            if (!brandMatches && !tagMatches) {
+                continue;
+            }
+            seenItemIds.add(match.itemId());
+            String label = match.itemName() == null || match.itemName().isBlank() ? "物品" : match.itemName();
+            String groupKey;
+            String detail;
+            if (brandMatches) {
+                groupKey = "ITEM_BRAND:" + match.matchedBrandName().toLowerCase(Locale.ROOT);
+                detail = "品牌 · " + match.matchedBrandName()
+                        + (tagMatches ? " · 标签 · " + match.matchedTagName() : "")
+                        + " · 编号 " + shortId(match.itemId());
+            } else {
+                groupKey = "ITEM_TAG:" + match.matchedTagName().toLowerCase(Locale.ROOT);
+                detail = "标签 · " + match.matchedTagName() + " · 编号 " + shortId(match.itemId());
+            }
+            addCandidate(groups, groupKey, new ScopeCandidate("ITEM", match.itemId(), label, detail));
         }
         for (var lot : inventoryApi.findLotsMatchingQuestion(householdId, question, CANDIDATE_LIMIT)) {
             boolean lotNumberMatches = questionContainsTerm(normalized, lot.lotNumber());

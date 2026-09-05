@@ -182,21 +182,42 @@
               </div>
 
               <!-- 权威页面跳转 -->
-              <div v-if="turn.answer.jumps.length" class="qa-jumps">
-                <el-button
-                  v-for="(jump, j) in turn.answer.jumps"
-                  :key="j"
-                  size="small"
-                  text
-                  class="qa-jump"
-                  @click="goJump(jump)"
+              <div v-if="groupedJumps(turn.answer.jumps).length" class="qa-jumps">
+                <section
+                  v-for="group in groupedJumps(turn.answer.jumps)"
+                  :key="group.type"
+                  class="qa-jump-group"
+                  :data-jump-type="group.type"
                 >
-                  <el-icon class="qa-jump-icon">
-                    <Paperclip v-if="jump.type === 'ATTACHMENT'" />
-                    <Location v-else />
-                  </el-icon>
-                  {{ jump.label }}
-                </el-button>
+                  <h3 class="qa-jump-group-title">{{ group.title }}</h3>
+                  <div class="qa-jump-group-list">
+                    <el-button
+                      v-for="(jump, j) in visibleJumps(group, i)"
+                      :key="`${jump.type}-${j}-${jump.itemId}-${jump.lotId}-${jump.locationId}-${jump.attachmentId}`"
+                      size="small"
+                      text
+                      class="qa-jump"
+                      @click="goJump(jump)"
+                    >
+                      <el-icon class="qa-jump-icon">
+                        <Paperclip v-if="jump.type === 'ATTACHMENT'" />
+                        <Location v-else />
+                      </el-icon>
+                      {{ jump.label }}
+                    </el-button>
+                    <el-button
+                      v-if="group.jumps.length > JUMP_GROUP_PREVIEW"
+                      size="small"
+                      text
+                      class="qa-jump-expand"
+                      @click="toggleJumpGroup(i, group.type)"
+                    >
+                      {{ jumpGroupExpanded(i, group.type)
+                        ? "收起"
+                        : `展开其余 ${group.jumps.length - JUMP_GROUP_PREVIEW} 项` }}
+                    </el-button>
+                  </div>
+                </section>
               </div>
 
               <!-- 结构化结果 -->
@@ -409,6 +430,15 @@ import { AI_REQUEST_LIMITED } from "../types/errorCodes";
 const router = useRouter();
 const route = useRoute();
 const WAITING_ELAPSED_HINT_AFTER = 3;
+const JUMP_GROUP_PREVIEW = 3;
+const JUMP_GROUPS = [
+  { type: "ITEM", title: "物品" },
+  { type: "LOT", title: "批次" },
+  { type: "LOCATION", title: "位置" },
+  { type: "MOVEMENT", title: "流水" },
+  { type: "REMINDER", title: "提醒" },
+  { type: "ATTACHMENT", title: "附件" },
+] as const;
 const exampleQuestions = [
   "牛奶还有多少？",
   "哪些批次快到期了？",
@@ -718,7 +748,11 @@ function isAbortError(error: unknown): boolean {
     && (error as { name: string }).name === "AbortError";
 }
 
-onUnmounted(stopWaiting);
+onUnmounted(() => {
+  stopWaiting();
+  if (previewTimer) clearTimeout(previewTimer);
+  previewAbort?.abort();
+});
 
 async function loadAllScopeOptions<T>(
   fetchPage: (page: number) => Promise<{ items: T[]; total: number }>,
@@ -916,10 +950,16 @@ function goJump(jump: QaJump) {
       router.push({ path: "/locations", query: { highlight: jump.locationId ?? "" } });
       break;
     case "MOVEMENT":
-      router.push({ name: "report-movements" });
+      router.push({
+        name: "report-movements",
+        query: jump.itemId ? { itemId: jump.itemId } : {},
+      });
       break;
     case "REMINDER":
-      router.push({ name: "reminders" });
+      router.push({
+        name: "reminders",
+        query: jump.kind ? { kind: jump.kind } : {},
+      });
       break;
     case "ATTACHMENT":
       router.push({ path: "/files", query: jump.attachmentId ? { highlight: jump.attachmentId } : {} });
@@ -927,6 +967,44 @@ function goJump(jump: QaJump) {
     default:
       break;
   }
+}
+
+type JumpGroup = {
+  type: (typeof JUMP_GROUPS)[number]["type"];
+  title: string;
+  jumps: QaJump[];
+};
+
+function groupedJumps(jumps: QaJump[]): JumpGroup[] {
+  return JUMP_GROUPS
+    .map((group) => ({
+      ...group,
+      jumps: jumps.filter((jump) => jump.type === group.type),
+    }))
+    .filter((group) => group.jumps.length > 0);
+}
+
+const expandedJumpGroups = ref(new Set<string>());
+
+function jumpGroupKey(turnIndex: number, type: string): string {
+  return `${turnIndex}:${type}`;
+}
+
+function jumpGroupExpanded(turnIndex: number, type: string): boolean {
+  return expandedJumpGroups.value.has(jumpGroupKey(turnIndex, type));
+}
+
+function visibleJumps(group: JumpGroup, turnIndex: number): QaJump[] {
+  if (jumpGroupExpanded(turnIndex, group.type)) return group.jumps;
+  return group.jumps.slice(0, JUMP_GROUP_PREVIEW);
+}
+
+function toggleJumpGroup(turnIndex: number, type: string) {
+  const key = jumpGroupKey(turnIndex, type);
+  const next = new Set(expandedJumpGroups.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedJumpGroups.value = next;
 }
 
 function factSources(sources: QaAnswerSource[]): QaAnswerSource[] {
@@ -1495,13 +1573,30 @@ function formatDateTime(iso: string): string {
 
 .qa-jumps {
   display: flex;
+  flex-direction: column;
+  gap: var(--zj-space-3);
+  margin-bottom: var(--zj-space-3);
+}
+
+.qa-jump-group-title {
+  margin: 0 0 var(--zj-space-1);
+  font-size: var(--zj-text-caption);
+  font-weight: 600;
+  color: var(--zj-ink-400);
+}
+
+.qa-jump-group-list {
+  display: flex;
   flex-wrap: wrap;
   gap: var(--zj-space-1);
-  margin-bottom: var(--zj-space-3);
 }
 
 .qa-jump {
   color: var(--zj-pine-600);
+}
+
+.qa-jump-expand {
+  color: var(--zj-ink-600);
 }
 
 .qa-jump-icon {

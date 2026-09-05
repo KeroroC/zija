@@ -484,7 +484,7 @@ class HouseholdFactQaService {
         Map<String, HouseholdFactQaModels.Jump> unique = new LinkedHashMap<>();
         for (var jump : concat(first, second)) {
             String key = String.join("|", jump.type(), value(jump.itemId()), value(jump.lotId()),
-                    value(jump.locationId()), value(jump.attachmentId()));
+                    value(jump.locationId()), value(jump.attachmentId()), value(jump.kind()));
             unique.putIfAbsent(key, jump);
         }
         return List.copyOf(unique.values());
