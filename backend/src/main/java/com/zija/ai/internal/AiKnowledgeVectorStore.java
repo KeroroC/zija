@@ -12,6 +12,7 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -28,13 +29,19 @@ class AiKnowledgeVectorStore {
     private final VectorStore vectorStore;
     private final VectorStore queryVectorStore;
     private final SuppliedQueryEmbeddingModel queryEmbeddingModel;
+    private final double similarityThreshold;
 
     AiKnowledgeVectorStore(
             VectorStore vectorStore,
             JdbcTemplate jdbcTemplate,
-            PgVectorStoreProperties properties
+            PgVectorStoreProperties properties,
+            @Value("${zija.ai.knowledge.similarity-threshold:0.30}") double similarityThreshold
     ) {
+        if (similarityThreshold < 0 || similarityThreshold > 1) {
+            throw new IllegalArgumentException("knowledge similarity threshold must be between 0 and 1");
+        }
         this.vectorStore = vectorStore;
+        this.similarityThreshold = similarityThreshold;
         this.queryEmbeddingModel = new SuppliedQueryEmbeddingModel();
         this.queryVectorStore = PgVectorStore.builder(jdbcTemplate, queryEmbeddingModel)
                 .schemaName(properties.getSchemaName())
@@ -117,6 +124,7 @@ class AiKnowledgeVectorStore {
         var filter = new FilterExpressionBuilder();
         var household = filter.eq("household_id", scope.householdId().toString());
         var available = filter.eq("readiness_status", AVAILABLE);
+        var chunkerVersion = filter.eq("chunker_version", KnowledgeChunkDocumentFactory.CHUNKER_VERSION);
         var attachments = filter.in("attachment_id", scope.attachmentIds().stream()
                 .map(UUID::toString)
                 .map(value -> (Object) value)
@@ -143,13 +151,17 @@ class AiKnowledgeVectorStore {
 
         var expression = filter.and(
                 filter.and(household, available),
-                filter.and(attachments, filter.group(mounts)));
+                filter.and(attachments, filter.and(filter.group(mounts), chunkerVersion)));
         return store.similaritySearch(SearchRequest.builder()
                 .query(query)
                 .topK(topK)
-                .similarityThresholdAll()
+                .similarityThreshold(similarityThreshold)
                 .filterExpression(expression.build())
                 .build());
+    }
+
+    double similarityThreshold() {
+        return similarityThreshold;
     }
 
     void delete(List<String> documentIds) {

@@ -159,6 +159,9 @@ zija:
   # 文件存储根目录（容器内挂载卷路径）
   file:
     storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}
+  ai:
+    knowledge:
+      similarity-threshold: ${ZIJA_AI_KNOWLEDGE_SIMILARITY_THRESHOLD:0.30}
 
   # 登录限流
   login:

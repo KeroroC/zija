@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 
 /**
  * 家庭事实问答编排。
@@ -391,11 +392,38 @@ class HouseholdFactQaService {
             HouseholdFactQaModels.ScopePlan plan,
             AiService.QaSession session
     ) {
-        HouseholdFactQaModels.Answer fact = askFacts(householdId, question, plan.target(), session);
-        HouseholdFactQaModels.Answer knowledge = knowledgeQaService
-                .ask(householdId, question, plan.knowledgeTarget(), session);
-
-        return combineMixedAnswer(question, plan, fact, knowledge);
+        var factFuture = executionGuard.supplyAsync(() -> {
+            try {
+                return askFacts(householdId, question, plan.target(), session);
+            } catch (RuntimeException exception) {
+                String reason = exception instanceof AiRequestLimitException limit
+                        ? limit.reasonCode()
+                        : "MODEL_CALL_FAILED";
+                return structuredFactFallback(householdId, question, plan.target(), reason);
+            }
+        });
+        var knowledgeFuture = executionGuard.supplyAsync(() -> {
+            try {
+                return knowledgeQaService.ask(householdId, question, plan.knowledgeTarget(), session);
+            } catch (RuntimeException exception) {
+                return knowledgeQaService.executionUnavailable(
+                        householdId, question, plan.knowledgeTarget());
+            }
+        });
+        try {
+            return combineMixedAnswer(question, plan, factFuture.get(), knowledgeFuture.get());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            factFuture.cancel(true);
+            knowledgeFuture.cancel(true);
+            throw new AiProviderUnavailableException("AI_QA_INTERRUPTED", exception);
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw new AiProviderUnavailableException("AI_QA_FAILED", cause);
+        }
     }
 
     private HouseholdFactQaModels.Answer combineMixedAnswer(

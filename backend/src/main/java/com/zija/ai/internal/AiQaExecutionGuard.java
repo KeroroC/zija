@@ -4,6 +4,7 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,6 +41,10 @@ class AiQaExecutionGuard {
             if (cause instanceof RuntimeException runtime) throw runtime;
             throw new AiProviderUnavailableException("AI_QA_FAILED", cause);
         }
+    }
+
+    <T> CompletableFuture<T> supplyAsync(Supplier<T> call) {
+        return CompletableFuture.supplyAsync(call::get, executor);
     }
 
     void checkContext(AiService.QaSession session, String context) {

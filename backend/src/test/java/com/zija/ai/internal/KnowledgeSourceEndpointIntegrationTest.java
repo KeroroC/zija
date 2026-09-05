@@ -284,7 +284,7 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .contains("\"readiness_status\": \"AVAILABLE\"")
                 .contains("\"page_number\": 1")
                 .contains("\"embedding_dimensions\": 1024")
-                .contains("\"chunker_version\": \"1\"")
+                .contains("\"chunker_version\": \"" + KnowledgeChunkDocumentFactory.CHUNKER_VERSION + "\"")
                 .contains("\"processing_version\": 1");
         assertThat(chunks.get(1).get("metadata").toString()).contains("\"page_number\": 2");
     }

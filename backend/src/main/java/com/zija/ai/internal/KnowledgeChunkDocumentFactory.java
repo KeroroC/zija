@@ -24,7 +24,7 @@ import java.util.UUID;
 class KnowledgeChunkDocumentFactory {
 
     /** 分块算法版本（随算法变更递增；与知识来源 processing_version 区分）。 */
-    static final String CHUNKER_VERSION = "1";
+    static final String CHUNKER_VERSION = "2";
 
     static final String READINESS_PROCESSING = "PROCESSING";
 
