@@ -71,7 +71,9 @@
               </button>
             </div>
             <div v-else-if="!hasDisplayableResults(turn.answer)" class="qa-unavailable">
-              <span class="zj-badge zj-badge-warn">{{ turn.answer.reasonCode }}</span>
+              <span v-if="reasonLabel(turn.answer.reasonCode)" class="zj-badge zj-badge-warn">
+                {{ reasonLabel(turn.answer.reasonCode) }}
+              </span>
               <p class="qa-summary">{{ turn.answer.summary }}</p>
               <el-button
                 v-if="attachmentEntry(turn.answer.jumps)"
@@ -90,7 +92,7 @@
                 class="qa-fallback"
                 data-testid="qa-fallback"
               >
-                <span class="zj-badge zj-badge-warn">模型不可用</span>
+                <span class="zj-badge zj-badge-warn">{{ reasonLabel(turn.answer.reasonCode) }}</span>
                 <p v-if="!turn.answer.answerParts?.length" class="qa-summary">
                   {{ turn.answer.summary }}
                 </p>
@@ -106,7 +108,9 @@
                     <span class="zj-badge" :class="sourceBadgeClass(part.category)">
                       {{ part.label }}
                     </span>
-                    <span v-if="!part.available" class="qa-datetime">{{ part.reasonCode }}</span>
+                    <span v-if="!part.available && reasonLabel(part.reasonCode)" class="qa-datetime">
+                      {{ reasonLabel(part.reasonCode) }}
+                    </span>
                   </header>
                   <p class="qa-summary">{{ part.summary }}</p>
                 </article>
@@ -197,7 +201,11 @@
                     :prop="col"
                     :label="col"
                     min-width="96"
-                  />
+                  >
+                    <template #default="{ row }">
+                      {{ formatResultCell(col, row[col]) }}
+                    </template>
+                  </el-table-column>
                 </el-table>
                 <p v-else class="qa-result-empty">暂无数据</p>
               </div>
@@ -350,6 +358,7 @@ import { askHouseholdQuestion } from "../api/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
 import { loadQaThread, saveQaThread } from "../utils/qaThread";
+import { movementTypeLabel } from "../utils/movement";
 import type {
   HouseholdFactAnswer,
   QaAnswerScope,
@@ -651,8 +660,27 @@ function columnsOf(rows: Array<Record<string, string>>): string[] {
   return cols;
 }
 
+function formatResultCell(column: string, value: string): string {
+  if (column === "类型") return movementTypeLabel(value);
+  return value;
+}
+
 function hasDisplayableResults(answer: HouseholdFactAnswer): boolean {
   return answer.reasonCode === "ANSWERED" || answer.reasonCode === "STRUCTURED_FACTS_FALLBACK";
+}
+
+/** 用户可见的失败/降级原因；未知码不展示英文原文，回退到 summary。 */
+const QA_REASON_LABELS: Record<string, string> = {
+  NO_AVAILABLE_KNOWLEDGE_SOURCE: "当前范围没有可用的知识来源",
+  KNOWLEDGE_SOURCE_PREPARATION_FAILED: "知识来源准备失败",
+  KNOWLEDGE_MODEL_UNAVAILABLE: "模型暂不可用",
+  MODEL_UNAVAILABLE: "模型暂不可用",
+  AI_QA_TIMEOUT: "模型暂不可用",
+  STRUCTURED_FACTS_FALLBACK: "模型不可用，已返回可核对的家庭事实",
+};
+
+function reasonLabel(reasonCode: string): string | undefined {
+  return QA_REASON_LABELS[reasonCode];
 }
 
 function qaErrorMessage(error: ApiError): string {
@@ -733,9 +761,6 @@ function evidenceLocation(source: QaAnswerSource): string {
   const parts: string[] = [];
   if (source.pageNumber != null) parts.push(`第 ${source.pageNumber} 页`);
   if (source.sectionPath) parts.push(source.sectionPath);
-  if (source.charStart != null && source.charEnd != null) {
-    parts.push(`字符 ${source.charStart}-${source.charEnd}`);
-  }
   return parts.join(" · ");
 }
 

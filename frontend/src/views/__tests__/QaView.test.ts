@@ -149,6 +149,25 @@ const knowledgePreparationFailureFixture = {
   jumps: [{ type: "ATTACHMENT", label: "咖啡机说明书.pdf", attachmentId: "file-1" }],
 };
 
+const movementsFixture = {
+  ...answerFixture,
+  question: "牛奶最近流水？",
+  structuredResults: [
+    {
+      kind: "MOVEMENTS",
+      title: "「牛奶」最近流水",
+      rows: [
+        { 类型: "INBOUND", 数量: "12", 原因: "采购", 操作人: "家长", 时间: "2025-01-01T10:00:00Z", 从: "-", 到: "厨房" },
+        { 类型: "CONSUME", 数量: "2", 原因: "早餐", 操作人: "家长", 时间: "2025-01-02T08:00:00Z", 从: "厨房", 到: "-" },
+        { 类型: "LOSS", 数量: "1", 原因: "过期", 操作人: "家长", 时间: "2025-01-03T08:00:00Z", 从: "厨房", 到: "-" },
+        { 类型: "ADJUSTMENT", 数量: "1", 原因: "盘点", 操作人: "家长", 时间: "2025-01-04T08:00:00Z", 从: "-", 到: "厨房" },
+        { 类型: "TRANSFER", 数量: "3", 原因: "-", 操作人: "家长", 时间: "2025-01-05T08:00:00Z", 从: "厨房", 到: "阳台" },
+        { 类型: "REVERSAL", 数量: "2", 原因: "冲正", 操作人: "家长", 时间: "2025-01-06T08:00:00Z", 从: "-", 到: "厨房" },
+      ],
+    },
+  ],
+};
+
 function mountV() {
   return mount(QaView, { global: { plugins: [ElementPlus] } });
 }
@@ -340,7 +359,7 @@ describe("QaView", () => {
     expect(pushMock).toHaveBeenCalledWith({ path: "/locations", query: { highlight: "loc-1" } });
   });
 
-  it("renders unavailable answer with reason code and no fabricated results", async () => {
+  it("renders unavailable answer with summary fallback and no fabricated results", async () => {
     mockAsk.mockResolvedValue(unavailableFixture);
     const wrapper = mountV();
 
@@ -349,8 +368,8 @@ describe("QaView", () => {
     await flushPromises();
 
     expect(wrapper.find(".qa-unavailable").exists()).toBe(true);
-    expect(wrapper.text()).toContain("AI_DISABLED");
-    expect(wrapper.text()).toContain("暂时无法确认");
+    expect(wrapper.find(".qa-unavailable .zj-badge").exists()).toBe(false);
+    expect(wrapper.find(".qa-unavailable .qa-summary").text()).toContain("暂时无法确认");
     expect(wrapper.find(".qa-result").exists()).toBe(false);
     expect(wrapper.find(".qa-jump").exists()).toBe(false);
   });
@@ -364,6 +383,9 @@ describe("QaView", () => {
     await flushPromises();
 
     expect(wrapper.find("[data-testid='qa-fallback']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='qa-fallback'] .zj-badge").text())
+      .toBe("模型不可用，已返回可核对的家庭事实");
+    expect(wrapper.text()).not.toContain("STRUCTURED_FACTS_FALLBACK");
     expect(wrapper.find(".qa-result-table").exists()).toBe(true);
     expect(wrapper.text()).toContain("AI 模型当前不可用");
     expect(wrapper.findAll(".qa-summary").filter(
@@ -549,13 +571,41 @@ describe("QaView", () => {
     expect(grounding.text()).toContain("第 12 页");
     expect(grounding.text()).toContain("维护/滤网清洁");
     expect(grounding.text()).toContain("清洁时先取下滤网");
+    expect(grounding.text()).not.toContain("字符");
+    expect(grounding.text()).not.toContain("120-148");
+  });
+
+  it("renders movement structured types with the same Chinese labels as the report page", async () => {
+    mockAsk.mockResolvedValue(movementsFixture);
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("牛奶最近流水？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    const table = wrapper.find(".qa-result-table");
+    expect(table.exists()).toBe(true);
+    expect(table.text()).toContain("入库");
+    expect(table.text()).toContain("领用");
+    expect(table.text()).toContain("报损");
+    expect(table.text()).toContain("调整");
+    expect(table.text()).toContain("移位");
+    expect(table.text()).toContain("冲正");
+    expect(table.text()).not.toContain("INBOUND");
+    expect(table.text()).not.toContain("CONSUME");
+    expect(table.text()).not.toContain("LOSS");
+    expect(table.text()).not.toContain("ADJUSTMENT");
+    expect(table.text()).not.toContain("TRANSFER");
+    expect(table.text()).not.toContain("REVERSAL");
   });
 
   it.each([
-    ["no source", noKnowledgeFixture, "NO_AVAILABLE_KNOWLEDGE_SOURCE"],
-    ["preparation failure", knowledgePreparationFailureFixture, "KNOWLEDGE_SOURCE_PREPARATION_FAILED"],
-    ["model failure", knowledgeModelFailureFixture, "KNOWLEDGE_MODEL_UNAVAILABLE"],
-  ])("renders %s as a safe failure with an attachment entry", async (_name, fixture, reason) => {
+    ["no source", noKnowledgeFixture, "NO_AVAILABLE_KNOWLEDGE_SOURCE", "当前范围没有可用的知识来源"],
+    ["preparation failure", knowledgePreparationFailureFixture, "KNOWLEDGE_SOURCE_PREPARATION_FAILED", "知识来源准备失败"],
+    ["model failure", knowledgeModelFailureFixture, "KNOWLEDGE_MODEL_UNAVAILABLE", "模型暂不可用"],
+    ["generic model unavailable", { ...knowledgeModelFailureFixture, reasonCode: "MODEL_UNAVAILABLE" }, "MODEL_UNAVAILABLE", "模型暂不可用"],
+    ["timeout", { ...knowledgeModelFailureFixture, reasonCode: "AI_QA_TIMEOUT" }, "AI_QA_TIMEOUT", "模型暂不可用"],
+  ])("renders %s as a Chinese failure without the English reason code", async (_name, fixture, reason, label) => {
     mockAsk.mockResolvedValue(fixture);
     const wrapper = mountV();
 
@@ -564,7 +614,8 @@ describe("QaView", () => {
     await flushPromises();
 
     expect(wrapper.find(".qa-unavailable").exists()).toBe(true);
-    expect(wrapper.text()).toContain(reason);
+    expect(wrapper.find(".qa-unavailable .zj-badge").text()).toBe(label);
+    expect(wrapper.text()).not.toContain(reason);
     expect(wrapper.find("[data-testid='qa-attachment-entry']").exists()).toBe(true);
     expect(wrapper.find(".qa-grounding").exists()).toBe(false);
   });
