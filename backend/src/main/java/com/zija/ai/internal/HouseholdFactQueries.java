@@ -184,6 +184,45 @@ class HouseholdFactQueries {
         return results;
     }
 
+    /** 不限物品的已过期批次快照（数量 > 0，到期日早于今天）。 */
+    List<ExpiringLot> expiredLots(
+            UUID householdId,
+            int limit,
+            UUID targetItemId,
+            UUID targetLotId
+    ) {
+        var unitNames = unitNameMap(householdId);
+        LocalDate today = LocalDate.now(clock);
+        List<ExpiringLot> results = new ArrayList<>();
+        for (var item : catalogApi.listActiveItems(householdId)) {
+            if (targetItemId != null && !targetItemId.equals(item.id())) {
+                continue;
+            }
+            for (var lot : inventoryApi.lotsOfItem(householdId, item.id())) {
+                if (targetLotId != null && !targetLotId.equals(lot.lotId())) {
+                    continue;
+                }
+                if (lot.expiryDate() == null
+                        || !lot.expiryDate().isBefore(today)
+                        || lot.totalQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                var detail = inventoryApi.findLot(householdId, lot.lotId()).orElse(null);
+                results.add(new ExpiringLot(
+                        lot.lotId(), item.id(), item.name(),
+                        detail != null ? detail.lotNumber() : "",
+                        lot.expiryDate(),
+                        ChronoUnit.DAYS.between(lot.expiryDate(), today),
+                        lot.totalQuantity(),
+                        unitNames.getOrDefault(item.unitId(), "")));
+                if (results.size() >= limit) {
+                    return results;
+                }
+            }
+        }
+        return results;
+    }
+
     /** 低库存物品快照（阈值模式启用且当前总量低于阈值）。 */
     List<LowStockItem> lowStock(UUID householdId, int limit, UUID targetItemId) {
         var unitNames = unitNameMap(householdId);

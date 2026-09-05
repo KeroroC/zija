@@ -277,6 +277,8 @@ class HouseholdFactQaService {
                     () -> collector.markFactSourceUnavailable());
         } else if (asksPendingReminders(normalized)) {
             tools.openReminderTasks(10);
+        } else if (containsAny(normalized, "过期")) {
+            tools.expiredLots(10);
         } else if (containsAny(normalized, "到期", "临期")) {
             tools.expiringLots(30, 10);
         } else if (containsAny(normalized, "低库存", "缺货", "短缺")) {

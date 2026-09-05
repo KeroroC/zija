@@ -190,6 +190,13 @@ const knowledgePreparationFailureFixture = {
   jumps: [{ type: "ATTACHMENT", label: "咖啡机说明书.pdf", attachmentId: "file-1" }],
 };
 
+const knowledgeProcessingFixture = {
+  ...noKnowledgeFixture,
+  reasonCode: "KNOWLEDGE_SOURCE_PROCESSING",
+  summary: "当前范围有 1 份知识来源正在准备中，暂时还不能用来回答。请稍后再问，或到附件管理中查看进度。",
+  jumps: [{ type: "ATTACHMENT", label: "咖啡机说明书.pdf", attachmentId: "file-1" }],
+};
+
 const movementsFixture = {
   ...answerFixture,
   question: "牛奶最近流水？",
@@ -871,6 +878,7 @@ describe("QaView", () => {
 
   it.each([
     ["no source", noKnowledgeFixture, "NO_AVAILABLE_KNOWLEDGE_SOURCE", "当前范围没有可用的知识来源"],
+    ["processing", knowledgeProcessingFixture, "KNOWLEDGE_SOURCE_PROCESSING", "知识来源正在准备"],
     ["preparation failure", knowledgePreparationFailureFixture, "KNOWLEDGE_SOURCE_PREPARATION_FAILED", "知识来源准备失败"],
     ["model failure", knowledgeModelFailureFixture, "KNOWLEDGE_MODEL_UNAVAILABLE", "模型暂不可用"],
     ["generic model unavailable", { ...knowledgeModelFailureFixture, reasonCode: "MODEL_UNAVAILABLE" }, "MODEL_UNAVAILABLE", "模型暂不可用"],

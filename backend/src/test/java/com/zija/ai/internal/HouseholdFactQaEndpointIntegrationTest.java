@@ -32,6 +32,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -67,6 +68,9 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     private static final UUID SECOND_ITEM_ID = UUID.fromString("40000000-0000-0000-0000-000000000002");
     private static final UUID SECOND_LOT_ID = UUID.fromString("50000000-0000-0000-0000-000000000002");
     private static final UUID THIRD_LOT_ID = UUID.fromString("50000000-0000-0000-0000-000000000003");
+    private static final UUID FOURTH_LOT_ID = UUID.fromString("50000000-0000-0000-0000-000000000004");
+    private static final UUID EXPIRED_STOCK_POSITION_ID = UUID.fromString("70000000-0000-0000-0000-000000000002");
+    private static final ZoneId HOUSEHOLD_ZONE = ZoneId.of("Asia/Shanghai");
 
     @Autowired
     private MockMvc mvc;
@@ -671,6 +675,72 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void expiredLotsToolReturnsExpiredStockOutsideTheExpiringWindow() throws Exception {
+        seedExpiredLot();
+        chatModel.script(
+                "expiredLots", "{\"limit\":10}",
+                response -> "有已过期批次。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶过期了吗？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(true))
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRED_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("已过期批次"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-EXPIRED"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].已过期天数").value("3"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("3"))
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("REMINDER")));
+    }
+
+    @Test
+    void modelUnavailableExpiredQuestionReturnsExpiredLotsNotExpiringWindow() throws Exception {
+        seedExpiredLot();
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有没有过期的牛奶？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRED_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("已过期批次"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-EXPIRED"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("3"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRING_LOTS"))));
+    }
+
+    @Test
+    void modelUnavailableExpiringQuestionStillUsesExpiringWindow() throws Exception {
+        seedExpiredLot();
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"哪些批次快到期了？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRING_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRED_LOTS"))));
+    }
+
+    @Test
     void lowStockToolReturnsStructuredFactsAndReminderJump() throws Exception {
         chatModel.script(
                 "lowStock", "{\"limit\":10}",
@@ -1057,6 +1127,18 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 OWNER_ACCOUNT_ID, Timestamp.from(OffsetDateTime.now().toInstant()),
                 Timestamp.from(OffsetDateTime.now().toInstant()),
                 UUID.randomUUID().toString());
+    }
+
+    private void seedExpiredLot() {
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, expiry_date, lot_number, version)
+                VALUES (?, ?, ?, ?, 'LOT-EXPIRED', 1)
+                """, THIRD_LOT_ID, HOUSEHOLD_ID, ITEM_ID,
+                LocalDate.now(HOUSEHOLD_ZONE).minusDays(3));
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '3', 0)
+                """, EXPIRED_STOCK_POSITION_ID, HOUSEHOLD_ID, THIRD_LOT_ID, KITCHEN_ID);
     }
 
     // ==================== Spring AI 假模型 seam ====================

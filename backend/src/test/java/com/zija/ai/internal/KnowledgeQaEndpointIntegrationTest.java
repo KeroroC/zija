@@ -68,6 +68,10 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
     private static final UUID HOUSEHOLD_SOURCE_ID = UUID.fromString("61000000-0000-0000-0000-000000000002");
     private static final UUID LOT_FILE_ID = UUID.fromString("51000000-0000-0000-0000-000000000003");
     private static final UUID LOT_SOURCE_ID = UUID.fromString("61000000-0000-0000-0000-000000000003");
+    private static final UUID PROCESSING_FILE_ID = UUID.fromString("51000000-0000-0000-0000-000000000004");
+    private static final UUID PROCESSING_SOURCE_ID = UUID.fromString("61000000-0000-0000-0000-000000000004");
+    private static final UUID FAILED_FILE_ID = UUID.fromString("51000000-0000-0000-0000-000000000005");
+    private static final UUID FAILED_SOURCE_ID = UUID.fromString("61000000-0000-0000-0000-000000000005");
 
     @Autowired
     private MockMvc mvc;
@@ -231,7 +235,7 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
                                 }
                                 """.formatted(ITEM_ID)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.reasonCode").value("NO_AVAILABLE_KNOWLEDGE_SOURCE"))
+                .andExpect(jsonPath("$.reasonCode").value("KNOWLEDGE_SOURCE_PROCESSING"))
                 .andExpect(jsonPath("$.sources").isEmpty());
 
         chatModel.reset("重建后先取下滤网，用温水冲洗并晾干。");
@@ -1001,6 +1005,72 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
     }
 
     @Test
+    void processingOnlyKnowledgeSourcesRefuseWithDistinctPreparingReason() throws Exception {
+        jdbc.update("""
+                UPDATE ai_knowledge_source
+                SET status = 'PROCESSING', processed_at = NULL
+                WHERE id = ?
+                """, SOURCE_ID);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机怎么清洁？",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("KNOWLEDGE_SOURCE_PROCESSING"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("正在准备")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("没有可用的知识来源"))))
+                .andExpect(jsonPath("$.sources").isEmpty())
+                .andExpect(jsonPath("$.jumps[0].type").value("ATTACHMENT"))
+                .andExpect(jsonPath("$.jumps[0].attachmentId").value(FILE_ID.toString()));
+
+        assertThat(chatModel.callCount()).isZero();
+    }
+
+    @Test
+    void availableKnowledgeAnswerMentionsProcessingAndFailedSiblingCounts() throws Exception {
+        insertProcessingAttachment(PROCESSING_FILE_ID, PROCESSING_SOURCE_ID,
+                "处理中的滤网说明.pdf", "ITEM", ITEM_ID);
+        insertFailedAttachment(FAILED_FILE_ID, FAILED_SOURCE_ID,
+                "失败的保修卡.pdf", "ITEM", ITEM_ID);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "咖啡机滤网怎么清洁？",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString(
+                        "先取下滤网，用温水冲洗，完全晾干后再装回。")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("1 份知识来源仍在准备中")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("1 份准备失败")))
+                .andExpect(jsonPath("$.sources[?(@.available == true)].attachmentId")
+                        .value(org.hamcrest.Matchers.hasItem(FILE_ID.toString())))
+                .andExpect(jsonPath("$.sources[?(@.available == false)].attachmentId",
+                        org.hamcrest.Matchers.containsInAnyOrder(
+                                PROCESSING_FILE_ID.toString(), FAILED_FILE_ID.toString())))
+                .andExpect(jsonPath("$.sources[?(@.attachmentId == '%s')].note".formatted(PROCESSING_FILE_ID))
+                        .value(org.hamcrest.Matchers.hasItem("仍在准备中")))
+                .andExpect(jsonPath("$.sources[?(@.attachmentId == '%s')].note".formatted(FAILED_FILE_ID))
+                        .value(org.hamcrest.Matchers.hasItem("准备失败")));
+
+        assertThat(chatModel.callCount()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
     void modelFailureReturnsAttachmentEntryWithoutUngroundedAnswer() throws Exception {
         chatModel.fail();
 
@@ -1062,6 +1132,37 @@ class KnowledgeQaEndpointIntegrationTest extends AbstractMockMvcIntegrationTest 
                 """, fileId, HOUSEHOLD_ID, "knowledge/" + fileId, name, "a".repeat(64), mountType, mountId,
                 name.toLowerCase());
         insertAvailableKnowledgeSource(fileId, sourceId, mountType, mountId);
+    }
+
+    private void insertProcessingAttachment(
+            UUID fileId,
+            UUID sourceId,
+            String name,
+            String mountType,
+            UUID mountId
+    ) {
+        insertAvailableAttachment(fileId, sourceId, name, mountType, mountId);
+        jdbc.update("""
+                UPDATE ai_knowledge_source
+                SET status = 'PROCESSING', processed_at = NULL
+                WHERE id = ?
+                """, sourceId);
+    }
+
+    private void insertFailedAttachment(
+            UUID fileId,
+            UUID sourceId,
+            String name,
+            String mountType,
+            UUID mountId
+    ) {
+        insertAvailableAttachment(fileId, sourceId, name, mountType, mountId);
+        jdbc.update("""
+                UPDATE ai_knowledge_source
+                SET status = 'FAILED', failure_code = 'PARSE_FAILED',
+                    failure_message = '扫描版 PDF 无法提取文字', processed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, sourceId);
     }
 
     private void insertAvailableKnowledgeSource(

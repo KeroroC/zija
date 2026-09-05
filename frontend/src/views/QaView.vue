@@ -852,6 +852,7 @@ function hasDisplayableResults(answer: HouseholdFactAnswer): boolean {
 /** 用户可见的失败/降级原因；未知码不展示英文原文，回退到 summary。 */
 const QA_REASON_LABELS: Record<string, string> = {
   NO_AVAILABLE_KNOWLEDGE_SOURCE: "当前范围没有可用的知识来源",
+  KNOWLEDGE_SOURCE_PROCESSING: "知识来源正在准备",
   KNOWLEDGE_SOURCE_PREPARATION_FAILED: "知识来源准备失败",
   KNOWLEDGE_MODEL_UNAVAILABLE: "模型暂不可用",
   MODEL_UNAVAILABLE: "模型暂不可用",

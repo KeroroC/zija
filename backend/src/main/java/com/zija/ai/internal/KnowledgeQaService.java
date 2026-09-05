@@ -29,6 +29,7 @@ class KnowledgeQaService {
     static final String CATEGORY_KNOWLEDGE_SOURCE = "KNOWLEDGE_SOURCE";
     static final String REASON_ANSWERED = "ANSWERED";
     static final String REASON_NO_SOURCE = "NO_AVAILABLE_KNOWLEDGE_SOURCE";
+    static final String REASON_PROCESSING = "KNOWLEDGE_SOURCE_PROCESSING";
     static final String REASON_PREPARATION_FAILED = "KNOWLEDGE_SOURCE_PREPARATION_FAILED";
     static final String REASON_MODEL_UNAVAILABLE = "KNOWLEDGE_MODEL_UNAVAILABLE";
     private static final int TOP_K = 8;
@@ -79,6 +80,15 @@ class KnowledgeQaService {
         OffsetDateTime dataTime = OffsetDateTime.now();
 
         if (attachments.isEmpty()) {
+            if (!availability.processing().isEmpty()) {
+                return unavailable(
+                        question,
+                        session.status().available(),
+                        REASON_PROCESSING,
+                        processingSummary(availability.processing().size(), availability.failures().size()),
+                        attachmentJumps(availability.processing()),
+                        dataTime);
+            }
             if (!availability.failures().isEmpty()) {
                 PreparationFailure firstFailure = availability.failures().getFirst();
                 return unavailable(
@@ -146,11 +156,16 @@ class KnowledgeQaService {
                     "AI 模型未能生成有依据的回答，请查看附件。", attachmentJumps(attachments), dataTime);
         }
 
-        List<AnswerSource> sources = groundings.stream()
+        List<AnswerSource> sources = new ArrayList<>(groundings.stream()
                 .map(grounding -> grounding.toAnswerSource(dataTime))
-                .toList();
-        List<Jump> jumps = answerJumps(target, attachments);
-        return new Answer(question, true, REASON_ANSWERED, summary.trim(),
+                .toList());
+        availability.processing().forEach(attachment ->
+                sources.add(unavailableSource(attachment, dataTime, "仍在准备中")));
+        availability.failures().forEach(failure ->
+                sources.add(unavailableSource(failure.attachment(), dataTime, "准备失败")));
+        List<Jump> jumps = answerJumps(target, mentionableAttachments(availability));
+        String disclosed = discloseOtherSources(summary.trim(), availability);
+        return new Answer(question, true, REASON_ANSWERED, disclosed,
                 List.of(), sources, jumps, dataTime);
     }
 
@@ -181,9 +196,11 @@ class KnowledgeQaService {
                         .eq(KnowledgeSourceEntity::getHouseholdId, householdId)
                         .in(KnowledgeSourceEntity::getStatus,
                                 KnowledgeSourceStates.STATUS_AVAILABLE,
-                                KnowledgeSourceStates.STATUS_FAILED));
+                                KnowledgeSourceStates.STATUS_FAILED,
+                                KnowledgeSourceStates.STATUS_PROCESSING));
         List<AvailableAttachment> attachments = new ArrayList<>();
         List<PreparationFailure> failures = new ArrayList<>();
+        List<AvailableAttachment> processing = new ArrayList<>();
         for (KnowledgeSourceEntity source : sources) {
             if (!isWithinTarget(source, householdId, target)) {
                 continue;
@@ -199,12 +216,15 @@ class KnowledgeQaService {
                     mountLabel(householdId, attachment));
             if (KnowledgeSourceStates.STATUS_AVAILABLE.equals(source.getStatus())) {
                 attachments.add(availableAttachment);
+            } else if (KnowledgeSourceStates.STATUS_PROCESSING.equals(source.getStatus())) {
+                processing.add(availableAttachment);
             } else {
                 failures.add(new PreparationFailure(
                         availableAttachment, source.getFailureCode(), source.getFailureMessage()));
             }
         }
-        return new KnowledgeAvailability(List.copyOf(attachments), List.copyOf(failures));
+        return new KnowledgeAvailability(
+                List.copyOf(attachments), List.copyOf(failures), List.copyOf(processing));
     }
 
     private String preparationFailureSummary(PreparationFailure failure, int failureCount) {
@@ -220,6 +240,68 @@ class KnowledgeQaService {
             summary.append("；当前范围另有 ").append(failureCount - 1).append(" 份知识来源准备失败");
         }
         return summary.append("。请到附件管理中处理或重试。").toString();
+    }
+
+    private String processingSummary(int processingCount, int failureCount) {
+        StringBuilder summary = new StringBuilder("当前范围有 ")
+                .append(processingCount)
+                .append(" 份知识来源正在准备中，暂时还不能用来回答");
+        if (failureCount > 0) {
+            summary.append("，另有 ").append(failureCount).append(" 份准备失败");
+        }
+        return summary.append("。请稍后再问，或到附件管理中查看进度。").toString();
+    }
+
+    private String discloseOtherSources(String summary, KnowledgeAvailability availability) {
+        int processingCount = availability.processing().size();
+        int failureCount = availability.failures().size();
+        if (processingCount == 0 && failureCount == 0) {
+            return summary;
+        }
+        StringBuilder disclosure = new StringBuilder(summary).append("另有");
+        if (processingCount > 0) {
+            disclosure.append(" ").append(processingCount).append(" 份知识来源仍在准备中");
+        }
+        if (processingCount > 0 && failureCount > 0) {
+            disclosure.append("、");
+        } else if (failureCount > 0) {
+            disclosure.append(" ");
+        }
+        if (failureCount > 0) {
+            disclosure.append(failureCount).append(" 份准备失败");
+        }
+        return disclosure.append("。").toString();
+    }
+
+    private List<AvailableAttachment> mentionableAttachments(KnowledgeAvailability availability) {
+        List<AvailableAttachment> attachments = new ArrayList<>(availability.available());
+        attachments.addAll(availability.processing());
+        availability.failures().forEach(failure -> attachments.add(failure.attachment()));
+        return List.copyOf(attachments);
+    }
+
+    private AnswerSource unavailableSource(
+            AvailableAttachment attachment,
+            OffsetDateTime dataTime,
+            String note
+    ) {
+        return new AnswerSource(
+                CATEGORY_KNOWLEDGE_SOURCE,
+                attachment.name(),
+                dataTime,
+                false,
+                note,
+                attachment.fileId(),
+                attachment.name(),
+                "/api/v1/files/" + attachment.fileId() + "/content",
+                attachment.mountType(),
+                attachment.mountId(),
+                attachment.mountLabel(),
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 
     private boolean isWithinTarget(KnowledgeSourceEntity source, UUID householdId, Target target) {
@@ -381,7 +463,8 @@ class KnowledgeQaService {
 
     private record KnowledgeAvailability(
             List<AvailableAttachment> available,
-            List<PreparationFailure> failures
+            List<PreparationFailure> failures,
+            List<AvailableAttachment> processing
     ) {
     }
 
