@@ -9,16 +9,54 @@
         <result property="itemId"        column="item_id"/>
         <result property="expiryDate"    column="expiry_date"/>
         <result property="totalQuantity" column="total_qty"/>
+        <result property="lotNumber"     column="lot_number"/>
+        <result property="serialNumber"  column="serial_number"/>
+    </resultMap>
+
+    <resultMap id="lotQuantitySnapshotMap" type="com.zija.inventory.InventoryApi$LotQuantitySnapshot">
+        <constructor>
+            <arg column="lot_id" javaType="java.util.UUID"/>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="item_name" javaType="java.lang.String"/>
+            <arg column="lot_number" javaType="java.lang.String"/>
+            <arg column="expiry_date" javaType="java.time.LocalDate"/>
+            <arg column="quantity" javaType="java.math.BigDecimal"/>
+            <arg column="unit_name" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="lowStockSnapshotMap" type="com.zija.inventory.InventoryApi$LowStockSnapshot">
+        <constructor>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="item_name" javaType="java.lang.String"/>
+            <arg column="unit_name" javaType="java.lang.String"/>
+            <arg column="current_total" javaType="java.math.BigDecimal"/>
+            <arg column="threshold" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="locationStockPositionMap" type="com.zija.inventory.InventoryApi$LocationStockPositionSnapshot">
+        <constructor>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="item_name" javaType="java.lang.String"/>
+            <arg column="unit_name" javaType="java.lang.String"/>
+            <arg column="lot_id" javaType="java.util.UUID"/>
+            <arg column="lot_number" javaType="java.lang.String"/>
+            <arg column="location_id" javaType="java.util.UUID"/>
+            <arg column="quantity" javaType="java.math.BigDecimal"/>
+            <arg column="expiry_date" javaType="java.time.LocalDate"/>
+        </constructor>
     </resultMap>
 
     <select id="lotsOfItem" resultMap="lotAggRow">
         SELECT l.id AS lot_id, l.item_id AS item_id, l.expiry_date AS expiry_date,
+               l.lot_number AS lot_number, l.serial_number AS serial_number,
                COALESCE(SUM(sp.quantity), 0) AS total_qty
         FROM inventory_lot l
         LEFT JOIN inventory_stock_position sp
           ON sp.lot_id = l.id AND sp.household_id = l.household_id
         WHERE l.household_id = #{householdId} AND l.item_id = #{itemId}
-        GROUP BY l.id, l.item_id, l.expiry_date
+        GROUP BY l.id, l.item_id, l.expiry_date, l.lot_number, l.serial_number
     </select>
 
     <select id="totalStockOfItem" resultType="java.math.BigDecimal">
@@ -26,6 +64,93 @@
         FROM inventory_stock_position sp
         JOIN inventory_lot l ON l.id = sp.lot_id AND l.household_id = sp.household_id
         WHERE sp.household_id = #{householdId} AND l.item_id = #{itemId}
+    </select>
+
+    <sql id="lotQuantitySnapshotSelect">
+        SELECT l.id AS lot_id,
+               l.item_id AS item_id,
+               i.name AS item_name,
+               l.lot_number AS lot_number,
+               l.expiry_date AS expiry_date,
+               COALESCE(SUM(sp.quantity), 0) AS quantity,
+               u.name AS unit_name
+        FROM inventory_lot l
+        JOIN catalog_item i ON i.id = l.item_id AND i.household_id = l.household_id
+        JOIN catalog_unit u ON u.id = i.unit_id AND u.household_id = i.household_id
+        LEFT JOIN inventory_stock_position sp
+          ON sp.lot_id = l.id AND sp.household_id = l.household_id
+        WHERE l.household_id = #{householdId}
+          AND i.status = 'ACTIVE'
+          AND l.expiry_date IS NOT NULL
+          <if test="itemId != null">AND l.item_id = #{itemId}</if>
+          <if test="lotId != null">AND l.id = #{lotId}</if>
+    </sql>
+
+    <select id="findExpiringLots" resultMap="lotQuantitySnapshotMap">
+        <include refid="lotQuantitySnapshotSelect"/>
+          AND l.expiry_date &gt;= #{today}
+          AND l.expiry_date &lt;= #{horizon}
+        GROUP BY l.id, l.item_id, i.name, l.lot_number, l.expiry_date, u.name
+        HAVING COALESCE(SUM(sp.quantity), 0) &gt; 0
+        ORDER BY l.expiry_date ASC, l.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findExpiredLots" resultMap="lotQuantitySnapshotMap">
+        <include refid="lotQuantitySnapshotSelect"/>
+          AND l.expiry_date &lt; #{today}
+        GROUP BY l.id, l.item_id, i.name, l.lot_number, l.expiry_date, u.name
+        HAVING COALESCE(SUM(sp.quantity), 0) &gt; 0
+        ORDER BY l.expiry_date ASC, l.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findLowStockItems" resultMap="lowStockSnapshotMap">
+        SELECT i.id AS item_id,
+               i.name AS item_name,
+               u.name AS unit_name,
+               COALESCE(SUM(sp.quantity), 0) AS current_total,
+               i.low_stock_threshold AS threshold
+        FROM catalog_item i
+        JOIN catalog_unit u ON u.id = i.unit_id AND u.household_id = i.household_id
+        LEFT JOIN inventory_lot l ON l.item_id = i.id AND l.household_id = i.household_id
+        LEFT JOIN inventory_stock_position sp ON sp.lot_id = l.id AND sp.household_id = i.household_id
+        WHERE i.household_id = #{householdId}
+          AND i.status = 'ACTIVE'
+          AND i.low_stock_mode = 'CUSTOM'
+          AND i.low_stock_threshold IS NOT NULL
+          <if test="itemId != null">AND i.id = #{itemId}</if>
+        GROUP BY i.id, i.name, u.name, i.low_stock_threshold
+        HAVING COALESCE(SUM(sp.quantity), 0) &lt; i.low_stock_threshold
+        ORDER BY i.name ASC, i.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findStockPositionsInLocations" resultMap="locationStockPositionMap">
+        SELECT i.id AS item_id,
+               i.name AS item_name,
+               u.name AS unit_name,
+               l.id AS lot_id,
+               l.lot_number AS lot_number,
+               sp.location_id AS location_id,
+               sp.quantity AS quantity,
+               l.expiry_date AS expiry_date
+        FROM inventory_stock_position sp
+        JOIN inventory_lot l ON l.id = sp.lot_id AND l.household_id = sp.household_id
+        JOIN catalog_item i ON i.id = l.item_id AND i.household_id = sp.household_id
+        JOIN catalog_unit u ON u.id = i.unit_id AND u.household_id = i.household_id
+        WHERE sp.household_id = #{householdId}
+          AND sp.quantity &gt; 0
+          AND i.status = 'ACTIVE'
+          AND sp.location_id IN
+          <foreach collection="locationIds" item="locationId" open="(" separator="," close=")">
+              #{locationId}
+          </foreach>
+          <if test="itemNameContains != null and itemNameContains != ''">
+              AND i.name ILIKE CONCAT('%', #{itemNameContains}, '%')
+          </if>
+        ORDER BY i.name ASC, l.lot_number ASC, sp.location_id ASC, l.id ASC
+        LIMIT #{limit}
     </select>
 
 </mapper>

@@ -222,7 +222,11 @@ class QaScopePlannerTest {
 
     private static final class StubCatalogApi implements CatalogApi {
         List<ItemInfo> items = List.of();
+        List<ItemBrandOrTagMatch> brandOrTagMatches = List.of();
         Map<UUID, String> itemNames = Map.of();
+        int listActiveItemsCalls;
+        int findActiveItemsNamedInQuestionCalls;
+        int findActiveItemsMatchingBrandOrTagInQuestionCalls;
 
         @Override
         public ItemInfo requireItem(UUID householdId, UUID itemId) {
@@ -246,7 +250,55 @@ class QaScopePlannerTest {
 
         @Override
         public List<ItemInfo> listActiveItems(UUID householdId) {
+            listActiveItemsCalls++;
             return items;
+        }
+
+        @Override
+        public List<ItemInfo> searchActiveItemsByName(
+                UUID householdId, String nameContains, UUID itemId, int limit
+        ) {
+            String needle = nameContains == null ? "" : nameContains.trim().toLowerCase(java.util.Locale.ROOT);
+            return items.stream()
+                    .filter(item -> itemId == null || itemId.equals(item.id()))
+                    .filter(item -> needle.isEmpty()
+                            || (item.name() != null && item.name().toLowerCase(java.util.Locale.ROOT).contains(needle)))
+                    .limit(Math.max(0, limit))
+                    .toList();
+        }
+
+        @Override
+        public List<ItemInfo> findActiveItemsNamedInQuestion(UUID householdId, String question, int limit) {
+            findActiveItemsNamedInQuestionCalls++;
+            String normalized = question == null ? "" : question.toLowerCase(java.util.Locale.ROOT);
+            return items.stream()
+                    .filter(item -> item.name() != null && !item.name().isBlank()
+                            && normalized.contains(item.name().toLowerCase(java.util.Locale.ROOT)))
+                    .limit(Math.max(0, limit))
+                    .toList();
+        }
+
+        @Override
+        public List<ItemBrandOrTagMatch> findActiveItemsMatchingBrandOrTagInQuestion(
+                UUID householdId, String question, int limit
+        ) {
+            findActiveItemsMatchingBrandOrTagInQuestionCalls++;
+            String normalized = question == null ? "" : question.toLowerCase(java.util.Locale.ROOT);
+            return brandOrTagMatches.stream()
+                    .filter(match -> {
+                        boolean brand = match.matchedBrandName() != null && !match.matchedBrandName().isBlank()
+                                && normalized.contains(match.matchedBrandName().toLowerCase(java.util.Locale.ROOT));
+                        boolean tag = match.matchedTagName() != null && !match.matchedTagName().isBlank()
+                                && normalized.contains(match.matchedTagName().toLowerCase(java.util.Locale.ROOT));
+                        return brand || tag;
+                    })
+                    .limit(Math.max(0, limit))
+                    .toList();
+        }
+
+        @Override
+        public Map<UUID, String> unitNames(UUID householdId, Collection<UUID> unitIds) {
+            return Map.of();
         }
 
         @Override
@@ -257,6 +309,8 @@ class QaScopePlannerTest {
 
     private static final class StubInventoryApi implements InventoryApi {
         List<LotFlat> lots = List.of();
+        int lotsOfItemCalls;
+        int findLotsMatchingQuestionCalls;
 
         @Override
         public Optional<StockPositionInfo> findStockPosition(UUID householdId, UUID lotId, UUID locationId) {
@@ -275,8 +329,11 @@ class QaScopePlannerTest {
 
         @Override
         public List<LotInfo> lotsOfItem(UUID householdId, UUID itemId) {
+            lotsOfItemCalls++;
             return lots.stream()
-                    .map(lot -> new LotInfo(lot.lotId(), lot.itemId(), null, BigDecimal.ONE))
+                    .map(lot -> new LotInfo(
+                            lot.lotId(), lot.itemId(), null, BigDecimal.ONE,
+                            lot.lotNumber(), lot.serialNumber()))
                     .toList();
         }
 
@@ -287,6 +344,58 @@ class QaScopePlannerTest {
 
         @Override
         public BigDecimal currentTotalStockOfItem(UUID householdId, UUID itemId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<LotQuestionMatch> findLotsMatchingQuestion(UUID householdId, String question, int limit) {
+            findLotsMatchingQuestionCalls++;
+            String normalized = question == null ? "" : question.toLowerCase(java.util.Locale.ROOT);
+            return lots.stream()
+                    .filter(lot -> {
+                        boolean lotNumberMatches = lot.lotNumber() != null && !lot.lotNumber().isBlank()
+                                && normalized.contains(lot.lotNumber().toLowerCase(java.util.Locale.ROOT));
+                        boolean serialMatches = lot.serialNumber() != null && !lot.serialNumber().isBlank()
+                                && normalized.contains(lot.serialNumber().toLowerCase(java.util.Locale.ROOT));
+                        return lotNumberMatches || serialMatches;
+                    })
+                    .limit(Math.max(0, limit))
+                    .map(lot -> new LotQuestionMatch(
+                            lot.lotId(), lot.itemId(), "牛奶", lot.lotNumber(), lot.serialNumber()))
+                    .toList();
+        }
+
+        @Override
+        public List<LotQuantitySnapshot> findExpiringLots(
+                UUID householdId, java.time.LocalDate today, java.time.LocalDate horizon,
+                UUID itemId, UUID lotId, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<LotQuantitySnapshot> findExpiredLots(
+                UUID householdId, java.time.LocalDate today, UUID itemId, UUID lotId, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<LowStockSnapshot> findLowStockItems(UUID householdId, UUID itemId, int limit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<LocationStockPositionSnapshot> findStockPositionsInLocations(
+                UUID householdId, Collection<UUID> locationIds, String itemNameContains, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<MovementInfo> findRecentMovementsOfItem(
+                UUID householdId, UUID itemId, UUID lotId, UUID locationId, int limit
+        ) {
             throw new UnsupportedOperationException();
         }
 
@@ -303,6 +412,7 @@ class QaScopePlannerTest {
 
     private static final class StubLocationApi implements LocationApi {
         List<LocationNode> roots = List.of();
+        int treeCalls;
 
         @Override
         public LocationInfo requireLocation(UUID householdId, UUID locationId) {
@@ -316,6 +426,7 @@ class QaScopePlannerTest {
 
         @Override
         public LocationTree tree(UUID householdId) {
+            treeCalls++;
             return new LocationTree(roots);
         }
 

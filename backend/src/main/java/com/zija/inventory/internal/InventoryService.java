@@ -6,6 +6,7 @@ import com.zija.inventory.InventoryApi;
 import com.zija.inventory.internal.persistence.LotEntity;
 import com.zija.inventory.internal.persistence.ItemStockAggregateMapper;
 import com.zija.inventory.internal.persistence.LotMapper;
+import com.zija.inventory.internal.persistence.MovementEntity;
 import com.zija.inventory.internal.persistence.MovementMapper;
 import com.zija.inventory.internal.persistence.StockPositionEntity;
 import com.zija.inventory.internal.persistence.StockPositionMapper;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -108,12 +110,7 @@ class InventoryService implements InventoryApi {
     @Override
     public List<MovementInfo> movementsOfLot(UUID householdId, UUID lotId) {
         return movementMapper.findByLot(householdId, lotId).stream()
-                .map(m -> new MovementInfo(
-                        m.getId(), m.getLotId(), m.getItemId(), m.getType(),
-                        m.getQuantity(), m.getFromLocationId(), m.getToLocationId(),
-                        m.getReason(), m.getOperatorAccountId(), m.getBusinessTime(),
-                        m.getCreatedAt(), UUID.fromString(m.getIdempotencyKey()),
-                        m.getReversalOf()))
+                .map(this::toMovementInfo)
                 .toList();
     }
 
@@ -132,7 +129,9 @@ class InventoryService implements InventoryApi {
     @Transactional(readOnly = true)
     public List<LotInfo> lotsOfItem(UUID householdId, UUID itemId) {
         return itemStockAggregateMapper.lotsOfItem(householdId, itemId).stream()
-                .map(r -> new LotInfo(r.getLotId(), r.getItemId(), r.getExpiryDate(), r.getTotalQuantity()))
+                .map(r -> new LotInfo(
+                        r.getLotId(), r.getItemId(), r.getExpiryDate(), r.getTotalQuantity(),
+                        r.getLotNumber(), r.getSerialNumber()))
                 .toList();
     }
 
@@ -141,6 +140,60 @@ class InventoryService implements InventoryApi {
     public BigDecimal currentTotalStockOfItem(UUID householdId, UUID itemId) {
         var v = itemStockAggregateMapper.totalStockOfItem(householdId, itemId);
         return v != null ? v : BigDecimal.ZERO;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LotQuestionMatch> findLotsMatchingQuestion(UUID householdId, String question, int limit) {
+        String q = question == null ? "" : question;
+        return lotMapper.findLotsMatchingQuestion(householdId, q, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LotQuantitySnapshot> findExpiringLots(
+            UUID householdId, LocalDate today, LocalDate horizon, UUID itemId, UUID lotId, int limit
+    ) {
+        return itemStockAggregateMapper.findExpiringLots(
+                householdId, today, horizon, itemId, lotId, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LotQuantitySnapshot> findExpiredLots(
+            UUID householdId, LocalDate today, UUID itemId, UUID lotId, int limit
+    ) {
+        return itemStockAggregateMapper.findExpiredLots(
+                householdId, today, itemId, lotId, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LowStockSnapshot> findLowStockItems(UUID householdId, UUID itemId, int limit) {
+        return itemStockAggregateMapper.findLowStockItems(householdId, itemId, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LocationStockPositionSnapshot> findStockPositionsInLocations(
+            UUID householdId, Collection<UUID> locationIds, String itemNameContains, int limit
+    ) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return List.of();
+        }
+        return itemStockAggregateMapper.findStockPositionsInLocations(
+                householdId, locationIds, itemNameContains, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MovementInfo> findRecentMovementsOfItem(
+            UUID householdId, UUID itemId, UUID lotId, UUID locationId, int limit
+    ) {
+        return movementMapper.findRecentByItem(householdId, itemId, lotId, locationId, sqlLimit(limit))
+                .stream()
+                .map(this::toMovementInfo)
+                .toList();
     }
 
     @Override
@@ -323,5 +376,18 @@ class InventoryService implements InventoryApi {
         if (!householdApi.hasAtLeastRole(accountId, HouseholdApi.MemberRole.ADMIN)) {
             throw new AccessDeniedException("需要管理员权限");
         }
+    }
+
+    private MovementInfo toMovementInfo(MovementEntity m) {
+        return new MovementInfo(
+                m.getId(), m.getLotId(), m.getItemId(), m.getType(),
+                m.getQuantity(), m.getFromLocationId(), m.getToLocationId(),
+                m.getReason(), m.getOperatorAccountId(), m.getBusinessTime(),
+                m.getCreatedAt(), UUID.fromString(m.getIdempotencyKey()),
+                m.getReversalOf());
+    }
+
+    private static int sqlLimit(int limit) {
+        return Math.max(0, limit);
     }
 }

@@ -60,4 +60,36 @@
         ORDER BY l.created_at DESC
     </select>
 
+    <resultMap id="lotQuestionMatchMap" type="com.zija.inventory.InventoryApi$LotQuestionMatch">
+        <constructor>
+            <arg column="lot_id" javaType="java.util.UUID"/>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="item_name" javaType="java.lang.String"/>
+            <arg column="lot_number" javaType="java.lang.String"/>
+            <arg column="serial_number" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findLotsMatchingQuestion" resultMap="lotQuestionMatchMap">
+        SELECT l.id AS lot_id,
+               l.item_id AS item_id,
+               i.name AS item_name,
+               l.lot_number AS lot_number,
+               l.serial_number AS serial_number
+        FROM inventory_lot l
+        JOIN catalog_item i ON i.id = l.item_id AND i.household_id = l.household_id
+        WHERE l.household_id = #{householdId}
+          AND i.status = 'ACTIVE'
+          AND (
+            (btrim(l.lot_number) &lt;&gt; ''
+                AND strpos(lower(#{question}), lower(l.lot_number)) &gt; 0)
+            OR
+            (l.serial_number IS NOT NULL
+                AND btrim(l.serial_number) &lt;&gt; ''
+                AND strpos(lower(#{question}), lower(l.serial_number)) &gt; 0)
+          )
+        ORDER BY i.name ASC, l.lot_number ASC, l.id ASC
+        LIMIT #{limit}
+    </select>
+
 </mapper>

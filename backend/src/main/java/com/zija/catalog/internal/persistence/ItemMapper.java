@@ -3,6 +3,7 @@ package com.zija.catalog.internal.persistence;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.catalog.CatalogApi;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -35,6 +36,25 @@ public interface ItemMapper extends BaseMapper<ItemEntity> {
     );
 
     int countByUnitId(@Param("unitId") UUID unitId);
+
+    List<ItemEntity> searchActiveItemsByName(
+            @Param("householdId") UUID householdId,
+            @Param("nameContains") String nameContains,
+            @Param("itemId") UUID itemId,
+            @Param("limit") int limit
+    );
+
+    List<ItemEntity> findActiveItemsNamedInQuestion(
+            @Param("householdId") UUID householdId,
+            @Param("question") String question,
+            @Param("limit") int limit
+    );
+
+    List<CatalogApi.ItemBrandOrTagMatch> findActiveItemsMatchingBrandOrTagInQuestion(
+            @Param("householdId") UUID householdId,
+            @Param("question") String question,
+            @Param("limit") int limit
+    );
 
     int truncateLowStockThreshold(@Param("unitId") UUID unitId, @Param("newScale") int newScale);
 

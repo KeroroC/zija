@@ -116,6 +116,53 @@ class ItemService implements CatalogApi {
 
     @Override
     @Transactional(readOnly = true)
+    public List<ItemInfo> searchActiveItemsByName(UUID householdId, String nameContains, UUID itemId, int limit) {
+        return itemMapper.searchActiveItemsByName(
+                        householdId, nameContains, itemId, sqlLimit(limit))
+                .stream()
+                .map(this::toInfo)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ItemInfo> findActiveItemsNamedInQuestion(UUID householdId, String question, int limit) {
+        String q = question == null ? "" : question;
+        return itemMapper.findActiveItemsNamedInQuestion(householdId, q, sqlLimit(limit))
+                .stream()
+                .map(this::toInfo)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ItemBrandOrTagMatch> findActiveItemsMatchingBrandOrTagInQuestion(
+            UUID householdId, String question, int limit
+    ) {
+        String q = question == null ? "" : question;
+        return itemMapper.findActiveItemsMatchingBrandOrTagInQuestion(householdId, q, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, String> unitNames(UUID householdId, Collection<UUID> unitIds) {
+        if (unitIds == null || unitIds.isEmpty()) return Map.of();
+        var wrapper = new LambdaQueryWrapper<UnitEntity>()
+                .eq(UnitEntity::getHouseholdId, householdId)
+                .in(UnitEntity::getId, unitIds);
+        Map<UUID, String> result = new HashMap<>();
+        for (var entity : unitMapper.selectList(wrapper)) {
+            result.put(entity.getId(), entity.getName());
+        }
+        return result;
+    }
+
+    private static int sqlLimit(int limit) {
+        return Math.max(0, limit);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Map<UUID, String> itemNames(UUID householdId, Collection<UUID> itemIds) {
         if (itemIds == null || itemIds.isEmpty()) return Map.of();
         var wrapper = new LambdaQueryWrapper<ItemEntity>()

@@ -25,6 +25,8 @@ class QaScopePlanner {
     static final String KNOWLEDGE_SOURCE = "KNOWLEDGE_SOURCE";
     static final String BOTH = "BOTH";
 
+    private static final int CANDIDATE_LIMIT = 50;
+
     private static final List<String> FACT_TERMS = List.of(
             "库存", "还有", "多少", "哪里", "在哪", "位置", "批次", "到期", "临期",
             "低库存", "缺货", "流水", "入库", "领用", "报损", "提醒", "当前", "过期");
@@ -175,29 +177,28 @@ class QaScopePlanner {
     ) {
         String normalized = question == null ? "" : question.toLowerCase(Locale.ROOT);
         Map<String, List<ScopeCandidate>> groups = new LinkedHashMap<>();
-        for (var item : catalogApi.listActiveItems(householdId)) {
+        for (var item : catalogApi.findActiveItemsNamedInQuestion(householdId, question, CANDIDATE_LIMIT)) {
             if (questionContainsTerm(normalized, item.name())) {
                 addCandidate(groups, "ITEM:" + item.name().toLowerCase(Locale.ROOT),
                         new ScopeCandidate("ITEM", item.id(), item.name(),
                                 "物品 · " + ("DURABLE".equals(item.managementType()) ? "耐用品" : "消耗品")
                                         + " · 编号 " + shortId(item.id())));
             }
-            for (var lotInfo : inventoryApi.lotsOfItem(householdId, item.id())) {
-                inventoryApi.findLot(householdId, lotInfo.lotId()).ifPresent(lot -> {
-                    boolean lotNumberMatches = questionContainsTerm(normalized, lot.lotNumber());
-                    boolean serialMatches = questionContainsTerm(normalized, lot.serialNumber());
-                    if (lotNumberMatches || serialMatches) {
-                        String label = lot.lotNumber() == null || lot.lotNumber().isBlank()
-                                ? item.name() + "的批次" : item.name() + " · " + lot.lotNumber();
-                        String detail = (lot.serialNumber() == null || lot.serialNumber().isBlank()
-                                ? "批次 · " + label : "批次 · " + label + " · 序列号 " + lot.serialNumber())
-                                + " · 编号 " + shortId(lot.lotId());
-                        String matchedKey = serialMatches
-                                ? "LOT_SERIAL:" + lot.serialNumber().toLowerCase(Locale.ROOT)
-                                : "LOT_NUMBER:" + lot.lotNumber().toLowerCase(Locale.ROOT);
-                        addCandidate(groups, matchedKey, new ScopeCandidate("LOT", lot.lotId(), label, detail));
-                    }
-                });
+        }
+        for (var lot : inventoryApi.findLotsMatchingQuestion(householdId, question, CANDIDATE_LIMIT)) {
+            boolean lotNumberMatches = questionContainsTerm(normalized, lot.lotNumber());
+            boolean serialMatches = questionContainsTerm(normalized, lot.serialNumber());
+            if (lotNumberMatches || serialMatches) {
+                String itemName = lot.itemName() == null || lot.itemName().isBlank() ? "物品" : lot.itemName();
+                String label = lot.lotNumber() == null || lot.lotNumber().isBlank()
+                        ? itemName + "的批次" : itemName + " · " + lot.lotNumber();
+                String detail = (lot.serialNumber() == null || lot.serialNumber().isBlank()
+                        ? "批次 · " + label : "批次 · " + label + " · 序列号 " + lot.serialNumber())
+                        + " · 编号 " + shortId(lot.lotId());
+                String matchedKey = serialMatches
+                        ? "LOT_SERIAL:" + lot.serialNumber().toLowerCase(Locale.ROOT)
+                        : "LOT_NUMBER:" + lot.lotNumber().toLowerCase(Locale.ROOT);
+                addCandidate(groups, matchedKey, new ScopeCandidate("LOT", lot.lotId(), label, detail));
             }
         }
         collectLocations(locationApi.tree(householdId).roots(), "", normalized, groups);

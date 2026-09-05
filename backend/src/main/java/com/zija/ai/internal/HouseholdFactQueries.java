@@ -14,11 +14,11 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -57,25 +57,20 @@ class HouseholdFactQueries {
 
     /** 按名称关键字搜索活跃物品，返回限量命中；不存在的物品不会出现在结果中。 */
     List<ItemHit> searchItems(UUID householdId, String keyword, int limit, UUID targetItemId) {
-        String needle = keyword == null ? "" : keyword.trim().toLowerCase();
-        var unitNames = unitNameMap(householdId);
+        String needle = keyword == null ? "" : keyword.trim();
+        var items = catalogApi.searchActiveItemsByName(householdId, needle, targetItemId, limit);
+        var unitIds = items.stream()
+                .map(CatalogApi.ItemInfo::unitId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        var unitNames = catalogApi.unitNames(householdId, unitIds);
         List<ItemHit> hits = new ArrayList<>();
-        for (var item : catalogApi.listActiveItems(householdId)) {
-            if (targetItemId != null && !targetItemId.equals(item.id())) {
-                continue;
-            }
-            if (!needle.isEmpty() && !item.name().toLowerCase().contains(needle)) {
-                continue;
-            }
+        for (var item : items) {
             var unit = unitNames.get(item.unitId());
-            var hit = new ItemHit(
+            hits.add(new ItemHit(
                     item.id(), item.name(), unit != null ? unit : "", item.managementType(),
                     item.lowStockMode(), item.lowStockThreshold(),
-                    inventoryApi.currentTotalStockOfItem(householdId, item.id()));
-            hits.add(hit);
-            if (hits.size() >= limit) {
-                break;
-            }
+                    inventoryApi.currentTotalStockOfItem(householdId, item.id())));
         }
         return hits;
     }
@@ -86,23 +81,20 @@ class HouseholdFactQueries {
         var unitName = unitName(householdId, item.unitId());
         var locationPaths = locationPathMap(householdId);
         var lotNumbers = new LinkedHashMap<UUID, String>();
-        var serialNumbers = new LinkedHashMap<UUID, String>();
+        var expiryByLot = new LinkedHashMap<UUID, LocalDate>();
         for (var lot : inventoryApi.lotsOfItem(householdId, itemId)) {
-            inventoryApi.findLot(householdId, lot.lotId()).ifPresent(found -> {
-                lotNumbers.put(found.lotId(), found.lotNumber());
-                serialNumbers.put(found.lotId(), found.serialNumber());
-            });
+            lotNumbers.put(lot.lotId(), lot.lotNumber() == null ? "" : lot.lotNumber());
+            expiryByLot.put(lot.lotId(), lot.expiryDate());
         }
         List<Position> positions = new ArrayList<>();
         for (var position : inventoryApi.stockPositionsOfItem(householdId, itemId)) {
-            var lot = inventoryApi.findLot(householdId, position.lotId()).orElse(null);
             positions.add(new Position(
                     position.lotId(),
                     lotNumbers.getOrDefault(position.lotId(), ""),
                     position.locationId(),
                     locationPaths.getOrDefault(position.locationId(), ""),
                     position.quantity(),
-                    lot != null ? lot.expiryDate() : null));
+                    expiryByLot.get(position.lotId())));
         }
         return new ItemStock(
                 item.id(), item.name(), unitName,
@@ -113,32 +105,22 @@ class HouseholdFactQueries {
     /** 指定位置及其子位置中的当前库存，按物品与批次返回有界快照。 */
     LocationStock locationStock(UUID householdId, UUID locationId, String itemKeyword, int limit) {
         locationApi.requireLocation(householdId, locationId);
-        String itemNeedle = itemKeyword == null ? "" : itemKeyword.trim().toLowerCase();
+        String itemNeedle = itemKeyword == null ? "" : itemKeyword.trim();
         var locationPaths = locationPathMap(householdId);
         var locationScope = new LinkedHashSet<UUID>();
         collectLocationScope(locationApi.tree(householdId).roots(), locationId, false, locationScope);
-        var unitNames = unitNameMap(householdId);
-        List<LocationPosition> positions = new ArrayList<>();
-        for (var item : catalogApi.listActiveItems(householdId)) {
-            if (!itemNeedle.isEmpty() && !item.name().toLowerCase().contains(itemNeedle)) {
-                continue;
-            }
-            for (var position : inventoryApi.stockPositionsOfItem(householdId, item.id())) {
-                if (!locationScope.contains(position.locationId())
-                        || position.quantity().compareTo(BigDecimal.ZERO) <= 0) {
-                    continue;
-                }
-                var lot = inventoryApi.findLot(householdId, position.lotId()).orElse(null);
-                positions.add(new LocationPosition(
-                        item.id(), item.name(), unitNames.getOrDefault(item.unitId(), ""),
-                        position.lotId(), lot != null ? lot.lotNumber() : "",
-                        position.locationId(), locationPaths.getOrDefault(position.locationId(), ""),
-                        position.quantity(), lot != null ? lot.expiryDate() : null));
-                if (positions.size() >= limit) {
-                    return new LocationStock(locationId, locationPaths.getOrDefault(locationId, ""), positions);
-                }
-            }
+        if (locationScope.isEmpty()) {
+            return new LocationStock(locationId, locationPaths.getOrDefault(locationId, ""), List.of());
         }
+        List<LocationPosition> positions = inventoryApi.findStockPositionsInLocations(
+                        householdId, locationScope, itemNeedle, limit)
+                .stream()
+                .map(position -> new LocationPosition(
+                        position.itemId(), position.itemName(), position.unitName(),
+                        position.lotId(), position.lotNumber() == null ? "" : position.lotNumber(),
+                        position.locationId(), locationPaths.getOrDefault(position.locationId(), ""),
+                        position.quantity(), position.expiryDate()))
+                .toList();
         return new LocationStock(locationId, locationPaths.getOrDefault(locationId, ""), positions);
     }
 
@@ -150,38 +132,19 @@ class HouseholdFactQueries {
             UUID targetItemId,
             UUID targetLotId
     ) {
-        var unitNames = unitNameMap(householdId);
         LocalDate today = LocalDate.now(clock);
         LocalDate horizon = today.plusDays(Math.max(0, withinDays));
-        List<ExpiringLot> results = new ArrayList<>();
-        for (var item : catalogApi.listActiveItems(householdId)) {
-            if (targetItemId != null && !targetItemId.equals(item.id())) {
-                continue;
-            }
-            for (var lot : inventoryApi.lotsOfItem(householdId, item.id())) {
-                if (targetLotId != null && !targetLotId.equals(lot.lotId())) {
-                    continue;
-                }
-                if (lot.expiryDate() == null
-                        || lot.expiryDate().isBefore(today)
-                        || lot.expiryDate().isAfter(horizon)
-                        || lot.totalQuantity().compareTo(BigDecimal.ZERO) <= 0) {
-                    continue;
-                }
-                var detail = inventoryApi.findLot(householdId, lot.lotId()).orElse(null);
-                results.add(new ExpiringLot(
-                        lot.lotId(), item.id(), item.name(),
-                        detail != null ? detail.lotNumber() : "",
+        return inventoryApi.findExpiringLots(
+                        householdId, today, horizon, targetItemId, targetLotId, limit)
+                .stream()
+                .map(lot -> new ExpiringLot(
+                        lot.lotId(), lot.itemId(), lot.itemName(),
+                        lot.lotNumber() == null ? "" : lot.lotNumber(),
                         lot.expiryDate(),
                         ChronoUnit.DAYS.between(today, lot.expiryDate()),
-                        lot.totalQuantity(),
-                        unitNames.getOrDefault(item.unitId(), "")));
-                if (results.size() >= limit) {
-                    return results;
-                }
-            }
-        }
-        return results;
+                        lot.quantity(),
+                        lot.unitName() == null ? "" : lot.unitName()))
+                .toList();
     }
 
     /** 不限物品的已过期批次快照（数量 > 0，到期日早于今天）。 */
@@ -191,60 +154,28 @@ class HouseholdFactQueries {
             UUID targetItemId,
             UUID targetLotId
     ) {
-        var unitNames = unitNameMap(householdId);
         LocalDate today = LocalDate.now(clock);
-        List<ExpiringLot> results = new ArrayList<>();
-        for (var item : catalogApi.listActiveItems(householdId)) {
-            if (targetItemId != null && !targetItemId.equals(item.id())) {
-                continue;
-            }
-            for (var lot : inventoryApi.lotsOfItem(householdId, item.id())) {
-                if (targetLotId != null && !targetLotId.equals(lot.lotId())) {
-                    continue;
-                }
-                if (lot.expiryDate() == null
-                        || !lot.expiryDate().isBefore(today)
-                        || lot.totalQuantity().compareTo(BigDecimal.ZERO) <= 0) {
-                    continue;
-                }
-                var detail = inventoryApi.findLot(householdId, lot.lotId()).orElse(null);
-                results.add(new ExpiringLot(
-                        lot.lotId(), item.id(), item.name(),
-                        detail != null ? detail.lotNumber() : "",
+        return inventoryApi.findExpiredLots(householdId, today, targetItemId, targetLotId, limit)
+                .stream()
+                .map(lot -> new ExpiringLot(
+                        lot.lotId(), lot.itemId(), lot.itemName(),
+                        lot.lotNumber() == null ? "" : lot.lotNumber(),
                         lot.expiryDate(),
                         ChronoUnit.DAYS.between(lot.expiryDate(), today),
-                        lot.totalQuantity(),
-                        unitNames.getOrDefault(item.unitId(), "")));
-                if (results.size() >= limit) {
-                    return results;
-                }
-            }
-        }
-        return results;
+                        lot.quantity(),
+                        lot.unitName() == null ? "" : lot.unitName()))
+                .toList();
     }
 
     /** 低库存物品快照（阈值模式启用且当前总量低于阈值）。 */
     List<LowStockItem> lowStock(UUID householdId, int limit, UUID targetItemId) {
-        var unitNames = unitNameMap(householdId);
-        List<LowStockItem> results = new ArrayList<>();
-        for (var item : catalogApi.listActiveItems(householdId)) {
-            if (targetItemId != null && !targetItemId.equals(item.id())) {
-                continue;
-            }
-            if (!"CUSTOM".equals(item.lowStockMode()) || item.lowStockThreshold() == null) {
-                continue;
-            }
-            var current = inventoryApi.currentTotalStockOfItem(householdId, item.id());
-            if (current.compareTo(item.lowStockThreshold()) < 0) {
-                results.add(new LowStockItem(
-                        item.id(), item.name(), unitNames.getOrDefault(item.unitId(), ""),
-                        current, item.lowStockThreshold()));
-                if (results.size() >= limit) {
-                    return results;
-                }
-            }
-        }
-        return results;
+        return inventoryApi.findLowStockItems(householdId, targetItemId, limit)
+                .stream()
+                .map(item -> new LowStockItem(
+                        item.itemId(), item.itemName(),
+                        item.unitName() == null ? "" : item.unitName(),
+                        item.currentTotal(), item.threshold()))
+                .toList();
     }
 
     /** 当前家庭待处理提醒任务快照（OPEN/SNOOZED 优先任务，有界）。 */
@@ -291,31 +222,22 @@ class HouseholdFactQueries {
     ) {
         var item = catalogApi.requireItem(householdId, itemId);
         var locationPaths = locationPathMap(householdId);
-        var operatorNames = collectOperatorNames(householdId, itemId);
-        List<MovementFact> all = new ArrayList<>();
-        for (var lot : inventoryApi.lotsOfItem(householdId, itemId)) {
-            if (targetLotId != null && !targetLotId.equals(lot.lotId())) {
-                continue;
-            }
-            for (var movement : inventoryApi.movementsOfLot(householdId, lot.lotId())) {
-                if (targetLocationId != null
-                        && !targetLocationId.equals(movement.fromLocationId())
-                        && !targetLocationId.equals(movement.toLocationId())) {
-                    continue;
-                }
-                all.add(new MovementFact(
-                        movement.id(), movement.lotId(), item.id(), item.name(),
-                        movement.type(), movement.quantity(),
-                        movement.reason(),
-                        operatorNames.getOrDefault(movement.operatorAccountId(), ""),
-                        movement.businessTime(),
-                        movement.fromLocationId(), movement.toLocationId(),
-                        locationPaths.getOrDefault(movement.fromLocationId(), ""),
-                        locationPaths.getOrDefault(movement.toLocationId(), "")));
-            }
+        var movements = inventoryApi.findRecentMovementsOfItem(
+                householdId, itemId, targetLotId, targetLocationId, limit);
+        var operatorNames = operatorNames(movements);
+        List<MovementFact> facts = new ArrayList<>();
+        for (var movement : movements) {
+            facts.add(new MovementFact(
+                    movement.id(), movement.lotId(), item.id(), item.name(),
+                    movement.type(), movement.quantity(),
+                    movement.reason(),
+                    operatorNames.getOrDefault(movement.operatorAccountId(), ""),
+                    movement.businessTime(),
+                    movement.fromLocationId(), movement.toLocationId(),
+                    locationPaths.getOrDefault(movement.fromLocationId(), ""),
+                    locationPaths.getOrDefault(movement.toLocationId(), "")));
         }
-        all.sort(Comparator.comparing(MovementFact::businessTime).reversed());
-        return all.subList(0, Math.min(all.size(), limit));
+        return facts;
     }
 
     private String unitName(UUID householdId, UUID unitId) {
@@ -323,16 +245,6 @@ class HouseholdFactQueries {
             return "";
         }
         return catalogApi.requireUnit(householdId, unitId).name();
-    }
-
-    private Map<UUID, String> unitNameMap(UUID householdId) {
-        var map = new LinkedHashMap<UUID, String>();
-        for (var item : catalogApi.listActiveItems(householdId)) {
-            if (item.unitId() != null) {
-                map.putIfAbsent(item.unitId(), unitName(householdId, item.unitId()));
-            }
-        }
-        return map;
     }
 
     private Map<UUID, String> locationPathMap(UUID householdId) {
@@ -362,13 +274,16 @@ class HouseholdFactQueries {
         }
     }
 
-    /** 从某物品全部流水中收集操作人账户，再批量解析展示名（按需，避免全局遍历）。 */
-    private Map<UUID, String> collectOperatorNames(UUID householdId, UUID itemId) {
+    /** 从有界流水快照收集操作人账户，再批量解析展示名。 */
+    private Map<UUID, String> operatorNames(List<InventoryApi.MovementInfo> movements) {
         var accountIds = new LinkedHashSet<UUID>();
-        for (var lot : inventoryApi.lotsOfItem(householdId, itemId)) {
-            for (var movement : inventoryApi.movementsOfLot(householdId, lot.lotId())) {
+        for (var movement : movements) {
+            if (movement.operatorAccountId() != null) {
                 accountIds.add(movement.operatorAccountId());
             }
+        }
+        if (accountIds.isEmpty()) {
+            return Map.of();
         }
         var details = identityApi.findByIds(accountIds);
         var map = new LinkedHashMap<UUID, String>();
