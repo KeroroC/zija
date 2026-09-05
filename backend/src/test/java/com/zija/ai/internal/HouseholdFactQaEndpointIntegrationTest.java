@@ -689,6 +689,97 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("REMINDER")));
     }
 
+    @Test
+    void openReminderTasksReturnsPendingTasksWithReminderJump() throws Exception {
+        jdbc.update("""
+                INSERT INTO reminder_task (id, household_id, kind, lot_id, item_id, status, due_at, severity)
+                VALUES (?, ?, 'EXPIRY', ?, ?, 'OPEN', CURRENT_TIMESTAMP + INTERVAL '7 days', 'WARN')
+                """, UUID.randomUUID(), HOUSEHOLD_ID, LOT_ID, ITEM_ID);
+        chatModel.script(
+                "openReminderTasks", "{\"limit\":10}",
+                response -> "有待处理提醒。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些待处理提醒？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("REMINDER_TASKS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("待处理提醒"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].类型").value("临期"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].严重程度").value("警告"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].标题").value(
+                        org.hamcrest.Matchers.containsString("牛奶")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].到期时间").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次").value("LOT-001"))
+                .andExpect(jsonPath("$.jumps[0].type").value("REMINDER"))
+                .andExpect(jsonPath("$.jumps[0].label").value("查看提醒中心"));
+    }
+
+    @Test
+    void openReminderTasksReturnsEmptyRowsWhenNoPendingTasks() throws Exception {
+        chatModel.script(
+                "openReminderTasks", "{\"limit\":10}",
+                response -> "当前没有待处理提醒。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些待处理提醒？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("REMINDER_TASKS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows").isEmpty())
+                .andExpect(jsonPath("$.jumps[0].type").value("REMINDER"))
+                .andExpect(jsonPath("$.jumps[0].label").value("查看提醒中心"));
+    }
+
+    @Test
+    void modelUnavailableReminderQuestionReturnsStructuredTasks() throws Exception {
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+        jdbc.update("""
+                INSERT INTO reminder_task (id, household_id, kind, lot_id, item_id, status, due_at, severity)
+                VALUES (?, ?, 'EXPIRY', ?, ?, 'OPEN', CURRENT_TIMESTAMP + INTERVAL '7 days', 'WARN')
+                """, UUID.randomUUID(), HOUSEHOLD_ID, LOT_ID, ITEM_ID);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些待处理提醒？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("REMINDER_TASKS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].类型").value("临期"))
+                .andExpect(jsonPath("$.jumps[0].type").value("REMINDER"));
+    }
+
+    @Test
+    void modelUnavailableReminderRuleQuestionDoesNotDumpTasks() throws Exception {
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+        jdbc.update("""
+                INSERT INTO reminder_task (id, household_id, kind, lot_id, item_id, status, due_at, severity)
+                VALUES (?, ?, 'EXPIRY', ?, ?, 'OPEN', CURRENT_TIMESTAMP + INTERVAL '7 days', 'WARN')
+                """, UUID.randomUUID(), HOUSEHOLD_ID, LOT_ID, ITEM_ID);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"提醒规则怎么设置？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("REMINDER_TASKS"))));
+    }
+
     /** 最小假模型调用（只要一次工具调用即可完成回答） */
 
     @Test

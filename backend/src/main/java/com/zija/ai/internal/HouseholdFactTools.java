@@ -277,6 +277,42 @@ final class HouseholdFactTools {
         }
     }
 
+    @Tool(description = "查询当前家庭待处理的提醒任务（临期、低库存），返回类型、严重程度、标题、到期时间与关联物品/批次。不回答提醒规则如何配置。")
+    Map<String, Object> openReminderTasks(
+            @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
+    ) {
+        int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("open_reminder_tasks");
+        }
+        try {
+            var tasks = queries.reminderTasks(householdId, n);
+            List<Map<String, String>> rows = tasks.stream()
+                    .map(task -> cellMap(
+                            "类型", localizeReminderKind(task.kind()),
+                            "严重程度", localizeReminderSeverity(task.severity()),
+                            "标题", task.title(),
+                            "到期时间", task.dueAt() != null ? task.dueAt().toString() : "-",
+                            "物品", orDash(task.itemName()),
+                            "批次", orDash(task.lotNumber())))
+                    .toList();
+            collector.addResult(new StructuredResult("REMINDER_TASKS", "待处理提醒", rows));
+            collector.addJump(new Jump("REMINDER", "查看提醒中心", null, null, null));
+            return Map.of("reminderTasks", tasks.stream().map(task -> {
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("kind", localizeReminderKind(task.kind()));
+                body.put("severity", localizeReminderSeverity(task.severity()));
+                body.put("title", task.title());
+                body.put("dueAt", task.dueAt() != null ? task.dueAt().toString() : "");
+                body.put("itemName", orDash(task.itemName()));
+                body.put("lotNumber", orDash(task.lotNumber()));
+                return body;
+            }).toList());
+        } catch (RuntimeException ex) {
+            return unavailable("open_reminder_tasks");
+        }
+    }
+
     @Tool(description = "查询某物品最近发生的库存流水（类型、原因、操作人、时间），作为不可变事实依据")
     Map<String, Object> itemMovements(
             @ToolParam(description = "物品 id") String itemId,
@@ -386,6 +422,25 @@ final class HouseholdFactTools {
         body.put("status", "UNAVAILABLE");
         body.put("detail", "家庭事实来源暂时不可用，无法确认（tool=" + tool + "）");
         return body;
+    }
+
+    private static String localizeReminderKind(String kind) {
+        if ("EXPIRY".equals(kind)) {
+            return "临期";
+        }
+        if ("LOW_STOCK".equals(kind)) {
+            return "低库存";
+        }
+        return orDash(kind);
+    }
+
+    private static String localizeReminderSeverity(String severity) {
+        return switch (severity == null ? "" : severity) {
+            case "URGENT" -> "紧急";
+            case "WARN" -> "警告";
+            case "INFO" -> "提示";
+            default -> orDash(severity);
+        };
     }
 
     private static String orDash(String value) {

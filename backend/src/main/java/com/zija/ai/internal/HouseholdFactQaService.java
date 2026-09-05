@@ -275,6 +275,8 @@ class HouseholdFactQaService {
             fallbackItemId(householdId, target).ifPresentOrElse(
                     itemId -> tools.itemMovements(itemId.toString(), 10),
                     () -> collector.markFactSourceUnavailable());
+        } else if (asksPendingReminders(normalized)) {
+            tools.openReminderTasks(10);
         } else if (containsAny(normalized, "到期", "临期")) {
             tools.expiringLots(30, 10);
         } else if (containsAny(normalized, "低库存", "缺货", "短缺")) {
@@ -321,6 +323,13 @@ class HouseholdFactQaService {
             return inventoryApi.findLot(householdId, target.id()).map(InventoryApi.LotFlat::itemId);
         }
         return java.util.Optional.empty();
+    }
+
+    private static boolean asksPendingReminders(String question) {
+        if (!question.contains("提醒")) {
+            return false;
+        }
+        return !containsAny(question, "提醒规则", "怎么设置", "如何设置", "系统配置");
     }
 
     private static boolean containsAny(String value, String... terms) {

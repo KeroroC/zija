@@ -4,6 +4,7 @@ import com.zija.catalog.CatalogApi;
 import com.zija.identity.IdentityApi;
 import com.zija.inventory.InventoryApi;
 import com.zija.location.LocationApi;
+import com.zija.reminder.ReminderApi;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 家庭事实只读查询契约（受控查询来源）。
@@ -34,6 +36,7 @@ class HouseholdFactQueries {
     private final InventoryApi inventoryApi;
     private final LocationApi locationApi;
     private final IdentityApi identityApi;
+    private final ReminderApi reminderApi;
     private final Clock clock;
 
     HouseholdFactQueries(
@@ -41,12 +44,14 @@ class HouseholdFactQueries {
             InventoryApi inventoryApi,
             LocationApi locationApi,
             IdentityApi identityApi,
+            ReminderApi reminderApi,
             @Qualifier(AiClockConfig.AI_CLOCK) Clock clock
     ) {
         this.catalogApi = catalogApi;
         this.inventoryApi = inventoryApi;
         this.locationApi = locationApi;
         this.identityApi = identityApi;
+        this.reminderApi = reminderApi;
         this.clock = clock;
     }
 
@@ -199,6 +204,40 @@ class HouseholdFactQueries {
                     return results;
                 }
             }
+        }
+        return results;
+    }
+
+    /** 当前家庭待处理提醒任务快照（OPEN/SNOOZED 优先任务，有界）。 */
+    List<ReminderTaskFact> reminderTasks(UUID householdId, int limit) {
+        var tasks = reminderApi.priorityTasks(householdId, limit);
+        var itemIds = tasks.stream()
+                .map(ReminderApi.PriorityTaskInfo::itemId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        var itemNames = itemIds.isEmpty()
+                ? Map.<UUID, String>of()
+                : catalogApi.itemNames(householdId, itemIds);
+        var lotNumbers = new LinkedHashMap<UUID, String>();
+        for (var task : tasks) {
+            if (task.lotId() == null || lotNumbers.containsKey(task.lotId())) {
+                continue;
+            }
+            inventoryApi.findLot(householdId, task.lotId()).ifPresent(lot ->
+                    lotNumbers.put(lot.lotId(), lot.lotNumber()));
+        }
+        List<ReminderTaskFact> results = new ArrayList<>();
+        for (var task : tasks) {
+            results.add(new ReminderTaskFact(
+                    task.taskId(),
+                    task.kind(),
+                    task.severity(),
+                    task.title(),
+                    task.dueAt(),
+                    task.itemId(),
+                    itemNames.getOrDefault(task.itemId(), ""),
+                    task.lotId(),
+                    task.lotId() == null ? "" : lotNumbers.getOrDefault(task.lotId(), "")));
         }
         return results;
     }
@@ -368,6 +407,19 @@ class HouseholdFactQueries {
             String unitName,
             BigDecimal currentTotal,
             BigDecimal threshold
+    ) {
+    }
+
+    record ReminderTaskFact(
+            UUID taskId,
+            String kind,
+            String severity,
+            String title,
+            OffsetDateTime dueAt,
+            UUID itemId,
+            String itemName,
+            UUID lotId,
+            String lotNumber
     ) {
     }
 

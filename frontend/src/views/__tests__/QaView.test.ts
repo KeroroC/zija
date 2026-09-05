@@ -578,6 +578,57 @@ describe("QaView", () => {
     expect(pushMock).toHaveBeenCalledWith({ path: "/locations", query: { highlight: "loc-1" } });
   });
 
+  it("renders pending reminder tasks and jumps to the reminder center", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      question: "有哪些待处理提醒？",
+      summary: "当前有待处理提醒。",
+      structuredResults: [
+        {
+          kind: "REMINDER_TASKS",
+          title: "待处理提醒",
+          rows: [
+            {
+              类型: "临期",
+              严重程度: "警告",
+              标题: "「牛奶」还有 7 天到期",
+              到期时间: "2025-01-08T10:00:00Z",
+              物品: "牛奶",
+              批次: "LOT-001",
+            },
+            {
+              类型: "低库存",
+              严重程度: "紧急",
+              标题: "「牛奶」库存仅剩 2，低于阈值 5",
+              到期时间: "2025-01-01T10:00:00Z",
+              物品: "牛奶",
+              批次: "-",
+            },
+          ],
+        },
+      ],
+      jumps: [{ type: "REMINDER", label: "查看提醒中心" }],
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("有哪些待处理提醒？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    const table = wrapper.find(".qa-result-table");
+    expect(table.exists()).toBe(true);
+    expect(wrapper.text()).toContain("待处理提醒");
+    expect(table.text()).toContain("临期");
+    expect(table.text()).toContain("低库存");
+    expect(table.text()).toContain("警告");
+    expect(table.text()).toContain("紧急");
+    expect(table.text()).toContain("「牛奶」还有 7 天到期");
+    expect(wrapper.find(".qa-jump").text()).toContain("查看提醒中心");
+
+    await wrapper.find(".qa-jump").trigger("click");
+    expect(pushMock).toHaveBeenCalledWith({ name: "reminders", query: {} });
+  });
+
   it("renders unavailable answer with summary fallback and no fabricated results", async () => {
     mockAsk.mockResolvedValue(unavailableFixture);
     const wrapper = mountV();
