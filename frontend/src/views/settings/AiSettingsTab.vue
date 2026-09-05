@@ -11,7 +11,7 @@
       </div>
       <div v-if="status" class="status-line">
         <span :class="['zj-dot', status.available ? 'zj-dot-pine' : 'zj-dot-warn']" aria-hidden="true"></span>
-        <strong>{{ status.available ? "可用" : `不可用（${reasonLabel(status.reasonCode)}）` }}</strong>
+        <strong>{{ status.available ? "可用" : `不可用（${aiStatusReasonLabel(status.reasonCode)}）` }}</strong>
         <span class="status-detail">{{ status.detail }}</span>
       </div>
       <div v-if="status?.chatModel || status?.embeddingModel" class="model-meta">
@@ -83,6 +83,7 @@ import type { AiSettings, AiStatus } from "../../types/ai";
 import { ApiError } from "../../api/http";
 import { AI_CONFIGURATION_VERSION_CONFLICT } from "../../types/errorCodes";
 import { useSessionStore } from "../../stores/session";
+import { aiStatusReasonLabel } from "../../utils/aiStatus";
 
 const session = useSessionStore();
 const canEdit = computed(() => session.role === "OWNER" || session.role === "ADMIN");
@@ -153,20 +154,6 @@ async function save() {
   } finally {
     saving.value = false;
   }
-}
-
-function reasonLabel(reasonCode: string): string {
-  const labels: Record<string, string> = {
-    AI_DISABLED: "已停用",
-    PROVIDER_NOT_FOUND: "提供方不可用",
-    OUTBOUND_DISABLED: "出网已关闭",
-    CREDENTIAL_MISSING: "缺少凭据",
-    CHAT_MODEL_MISSING: "聊天模型不可用",
-    EMBEDDING_MODEL_MISSING: "Embedding 模型不可用",
-    EMBEDDING_DIMENSION_MISMATCH: "Embedding 维度不匹配",
-    PROVIDER_UNREACHABLE: "提供方不可达",
-  };
-  return labels[reasonCode] ?? "不可用";
 }
 
 function showError(error: unknown) {

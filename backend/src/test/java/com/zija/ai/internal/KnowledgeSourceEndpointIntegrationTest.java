@@ -124,7 +124,9 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         mvc.perform(get("/api/v1/ai/knowledge-sources").with(auth(member())).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(1))
-                .andExpect(jsonPath("$.items[0].status").value("PROCESSING"));
+                .andExpect(jsonPath("$.items[0].status").value("PROCESSING"))
+                .andExpect(jsonPath("$.items[0].mountType").value("ITEM"))
+                .andExpect(jsonPath("$.items[0].mountId").value(ITEM_ID.toString()));
 
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM audit_log WHERE action = 'AI_KNOWLEDGE_SOURCE_SELECTED'",

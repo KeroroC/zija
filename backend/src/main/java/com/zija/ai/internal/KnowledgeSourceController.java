@@ -93,6 +93,8 @@ class KnowledgeSourceController {
     private Map<String, Object> toItem(KnowledgeSourceService.KnowledgeSourceView view) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("fileId", view.fileId());
+        item.put("mountType", view.mountType());
+        item.put("mountId", view.mountId());
         item.put("status", view.status());
         if (view.failureCode() != null) {
             item.put("failureCode", view.failureCode());

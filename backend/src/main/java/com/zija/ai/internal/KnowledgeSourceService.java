@@ -258,6 +258,8 @@ class KnowledgeSourceService {
                 : null;
         return new KnowledgeSourceView(
                 entity.getFileId(),
+                entity.getMountType(),
+                entity.getMountId(),
                 entity.getStatus(),
                 entity.getFailureCode(),
                 entity.getFailureMessage(),
@@ -272,6 +274,8 @@ class KnowledgeSourceService {
     /** 知识来源对外视图（不含内部调度字段；nextRetryAt 仅供前端感知待自动重试）。 */
     record KnowledgeSourceView(
             UUID fileId,
+            String mountType,
+            UUID mountId,
             String status,
             String failureCode,
             String failureMessage,

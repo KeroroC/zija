@@ -4,6 +4,8 @@ import ElementPlus, { ElMessage } from "element-plus";
 
 vi.mock("../../api/ai", () => ({
   askHouseholdQuestion: vi.fn(),
+  fetchAiStatus: vi.fn(),
+  fetchKnowledgeSources: vi.fn(),
 }));
 
 vi.mock("../../api/catalog", () => ({
@@ -22,14 +24,47 @@ vi.mock("vue-router", () => ({
 }));
 
 import QaView from "../QaView.vue";
-import { askHouseholdQuestion } from "../../api/ai";
+import { askHouseholdQuestion, fetchAiStatus, fetchKnowledgeSources } from "../../api/ai";
 import { fetchItems } from "../../api/catalog";
 import { fetchLots } from "../../api/inventory";
 import { ApiError } from "../../api/http";
+import type { AiStatus, KnowledgeSourceInfo } from "../../types/ai";
 
 const mockAsk = vi.mocked(askHouseholdQuestion);
+const mockFetchAiStatus = vi.mocked(fetchAiStatus);
+const mockFetchKnowledgeSources = vi.mocked(fetchKnowledgeSources);
 const mockFetchItems = vi.mocked(fetchItems);
 const mockFetchLots = vi.mocked(fetchLots);
+
+const availableStatusFixture: AiStatus = {
+  available: true,
+  reasonCode: "AVAILABLE",
+  detail: "ready",
+  providerId: "ollama",
+  chatModel: "qwen",
+  embeddingModel: "nomic",
+  outboundEnabled: false,
+  requestsPerMinute: 20,
+  memberRequestsPerMinute: 10,
+  maxContextTokens: 8192,
+  maxConcurrentRequests: 2,
+  requestTimeoutSeconds: 30,
+};
+
+function knowledgeSource(
+  fileId: string,
+  status: KnowledgeSourceInfo["status"],
+  extra: Partial<KnowledgeSourceInfo> = {},
+): KnowledgeSourceInfo {
+  return {
+    fileId,
+    status,
+    processingVersion: status === "AVAILABLE" ? 1 : 0,
+    selectedAt: "2026-09-05T10:00:00Z",
+    updatedAt: "2026-09-05T10:00:00Z",
+    ...extra,
+  };
+}
 
 const answerFixture = {
   question: "牛奶还有多少、放在哪里？",
@@ -187,8 +222,12 @@ describe("QaView", () => {
     sessionStorage.clear();
     pushMock.mockReset();
     mockAsk.mockReset();
+    mockFetchAiStatus.mockReset();
+    mockFetchKnowledgeSources.mockReset();
     mockFetchItems.mockReset();
     mockFetchLots.mockReset();
+    mockFetchAiStatus.mockResolvedValue(availableStatusFixture);
+    mockFetchKnowledgeSources.mockResolvedValue([]);
     for (const key of Object.keys(routeQuery)) delete routeQuery[key];
     mockFetchItems.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
     mockFetchLots.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
@@ -196,6 +235,119 @@ describe("QaView", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("shows Chinese AI unavailability on enter without asking first", async () => {
+    mockFetchAiStatus.mockResolvedValue({
+      ...availableStatusFixture,
+      available: false,
+      reasonCode: "AI_DISABLED",
+      detail: "AI is disabled",
+    });
+    const wrapper = mountV();
+    await flushPromises();
+
+    const status = wrapper.get('[data-testid="qa-ai-status"]');
+    expect(status.text()).toContain("不可用");
+    expect(status.text()).toContain("已停用");
+    expect(status.text()).not.toContain("AI_DISABLED");
+    expect(wrapper.text()).toContain("知识问答不可用");
+    expect(wrapper.text()).toContain("家庭事实兜底");
+    expect(mockAsk).not.toHaveBeenCalled();
+
+    mockAsk.mockResolvedValue(structuredFallbackFixture);
+    await wrapper.find("textarea").setValue("牛奶还有多少？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+    expect(mockAsk).toHaveBeenCalled();
+  });
+
+  it("summarizes in-range knowledge preparation when opened with item context", async () => {
+    routeQuery.contextType = "ITEM";
+    routeQuery.contextId = "item-1";
+    mockFetchKnowledgeSources.mockResolvedValue([
+      knowledgeSource("f1", "PROCESSING", { mountType: "ITEM", mountId: "item-1" }),
+      knowledgeSource("f2", "AVAILABLE", { mountType: "ITEM", mountId: "item-1" }),
+      knowledgeSource("f3", "FAILED", { mountType: "ITEM", mountId: "item-1" }),
+      knowledgeSource("f4", "AVAILABLE", { mountType: "ITEM", mountId: "item-other" }),
+      knowledgeSource("f5", "PROCESSING", { mountType: "HOUSEHOLD", mountId: "hh-1" }),
+      knowledgeSource("f6", "DISABLED", { mountType: "ITEM", mountId: "item-1" }),
+    ]);
+    const wrapper = mountV();
+    await flushPromises();
+
+    const prep = wrapper.get('[data-testid="qa-knowledge-prep"]');
+    expect(prep.text()).toContain("知识准备状态");
+    expect(prep.text()).toContain("处理中 1");
+    expect(prep.text()).toContain("可用 1");
+    expect(prep.text()).toContain("失败 1");
+    expect(prep.text()).not.toContain("已停用");
+    expect(mockFetchKnowledgeSources).toHaveBeenCalledOnce();
+  });
+
+  it("asks to confirm an item or lot before summarizing knowledge sources", async () => {
+    const wrapper = mountV();
+    await flushPromises();
+
+    expect(mockFetchKnowledgeSources).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="qa-knowledge-prep"]').text())
+      .toContain("知识问答需先确认物品、批次或使用家庭附件");
+  });
+
+  it("still allows household-fact questions when status APIs fail", async () => {
+    routeQuery.contextType = "ITEM";
+    routeQuery.contextId = "item-1";
+    mockFetchAiStatus.mockRejectedValue(new ApiError("status down", "INTERNAL", 500));
+    mockFetchKnowledgeSources.mockRejectedValue(new ApiError("ks down", "INTERNAL", 500));
+    mockAsk.mockResolvedValue(answerFixture);
+    const wrapper = mountV();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="qa-ai-status"]').exists()).toBe(false);
+    await wrapper.find("textarea").setValue("牛奶还有多少、放在哪里？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenCalledWith("牛奶还有多少、放在哪里？", {
+      answerScope: "AUTO",
+      pageContext: { type: "ITEM", id: "item-1" },
+    });
+    expect(wrapper.text()).toContain("牛奶当前库存 5 瓶，放在厨房。");
+  });
+
+  it("refreshes knowledge preparation when the selected target changes", async () => {
+    mockFetchItems.mockResolvedValue({
+      items: [
+        { id: "item-1", name: "咖啡机" } as never,
+        { id: "item-2", name: "牛奶" } as never,
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 100,
+    });
+    mockFetchKnowledgeSources
+      .mockResolvedValueOnce([
+        knowledgeSource("f1", "PROCESSING", { mountType: "ITEM", mountId: "item-1" }),
+      ])
+      .mockResolvedValueOnce([
+        knowledgeSource("f2", "AVAILABLE", { mountType: "ITEM", mountId: "item-2" }),
+        knowledgeSource("f3", "FAILED", { mountType: "ITEM", mountId: "item-2" }),
+      ]);
+    const wrapper = mountV();
+    wrapper.get('[data-testid="qa-target-type"]')
+      .findComponent({ name: "ElSegmented" }).vm.$emit("update:modelValue", "ITEM");
+    await flushPromises();
+    wrapper.findComponent({ name: "ElSelect" }).vm.$emit("update:modelValue", "item-1");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="qa-knowledge-prep"]').text()).toContain("处理中 1");
+
+    wrapper.findComponent({ name: "ElSelect" }).vm.$emit("update:modelValue", "item-2");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="qa-knowledge-prep"]').text()).toContain("可用 1");
+    expect(wrapper.get('[data-testid="qa-knowledge-prep"]').text()).toContain("失败 1");
+    expect(mockFetchKnowledgeSources).toHaveBeenCalledTimes(2);
   });
 
   it("renders empty state with composer", () => {

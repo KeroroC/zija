@@ -5,6 +5,22 @@
         <h1 class="page-title">家庭问答</h1>
         <p class="page-subtitle">用自然语言查询物品、批次、库存位、位置、流水与提醒</p>
       </div>
+      <div class="qa-readiness">
+        <p v-if="aiStatus" class="qa-ai-status" data-testid="qa-ai-status">
+          <span
+            :class="['zj-dot', aiStatus.available ? 'zj-dot-pine' : 'zj-dot-warn']"
+            aria-hidden="true"
+          ></span>
+          <span>{{ aiStatusLine }}</span>
+        </p>
+        <p
+          v-if="knowledgePrepLine"
+          class="qa-knowledge-prep"
+          data-testid="qa-knowledge-prep"
+        >
+          {{ knowledgePrepLine }}
+        </p>
+      </div>
     </header>
 
     <section class="qa-shell">
@@ -350,16 +366,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ChatDotRound, Location, Paperclip, Setting, ArrowDown } from "@element-plus/icons-vue";
-import { askHouseholdQuestion } from "../api/ai";
+import { askHouseholdQuestion, fetchAiStatus, fetchKnowledgeSources } from "../api/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
 import { loadQaThread, saveQaThread } from "../utils/qaThread";
 import { movementTypeLabel } from "../utils/movement";
+import { aiStatusReasonLabel } from "../utils/aiStatus";
 import type {
+  AiStatus,
   HouseholdFactAnswer,
   QaAnswerScope,
   QaAnswerSource,
@@ -367,6 +385,7 @@ import type {
   QaQuestionOptions,
   QaQuestionScope,
   QaScopeCandidate,
+  KnowledgeSourceInfo,
 } from "../types/ai";
 import type { CatalogItem } from "../types/catalog";
 import type { LotSummary } from "../types/inventory";
@@ -402,6 +421,8 @@ const selectedScopeId = ref("");
 const scopeLoading = ref(false);
 const items = ref<CatalogItem[]>([]);
 const lots = ref<LotSummary[]>([]);
+const aiStatus = ref<AiStatus | null>(null);
+const knowledgePrep = ref<{ processing: number; available: number; failed: number } | null>(null);
 const SCOPE_PAGE_SIZE = 100;
 const answerScopeOptions = [
   { label: "自动", value: "AUTO" },
@@ -423,6 +444,28 @@ const pageContext = computed<QaQuestionScope | undefined>(() => {
     id,
     label: queryString(route.query.contextLabel) || undefined,
   };
+});
+
+const knowledgeRange = computed<{ type: "ITEM" | "LOT"; id: string } | undefined>(() => {
+  if (targetType.value && selectedScopeId.value) {
+    return { type: targetType.value, id: selectedScopeId.value };
+  }
+  const ctx = pageContext.value;
+  if (ctx && (ctx.type === "ITEM" || ctx.type === "LOT")) {
+    return { type: ctx.type, id: ctx.id };
+  }
+  return undefined;
+});
+
+const knowledgePrepLine = computed(() => {
+  if (knowledgePrep.value) {
+    const { processing, available, failed } = knowledgePrep.value;
+    return `知识准备状态：处理中 ${processing} · 可用 ${available} · 失败 ${failed}`;
+  }
+  if (!knowledgeRange.value) {
+    return "知识问答需先确认物品、批次或使用家庭附件";
+  }
+  return "";
 });
 
 const scopeChoices = computed(() => {
@@ -458,11 +501,79 @@ const effectiveScope = computed<Exclude<QaAnswerScope, "AUTO">>(
   () => answerScope.value === "AUTO" ? recommendedScope.value : answerScope.value,
 );
 
-const scopeHint = computed(() => `实际将使用 ${answerScopeLabel(effectiveScope.value)}`);
+const scopeHint = computed(() => {
+  if (aiStatus.value && !aiStatus.value.available) {
+    return "知识问答不可用，提问将走家庭事实兜底";
+  }
+  return `实际将使用 ${answerScopeLabel(effectiveScope.value)}`;
+});
 
 const questionPlaceholder = computed(() => effectiveScope.value === "HOUSEHOLD_FACT"
   ? "例如：牛奶还有多少、放在哪里？哪些批次快到期了？"
   : "例如：库存是否与说明书一致？滤网怎么清洁？");
+
+const aiStatusLine = computed(() => {
+  const status = aiStatus.value;
+  if (!status) return "";
+  if (status.available) return "AI 可用";
+  return `AI 不可用（${aiStatusReasonLabel(status.reasonCode)}）`;
+});
+
+onMounted(() => {
+  void loadAiStatus();
+});
+
+watch(
+  () => knowledgeRange.value ? `${knowledgeRange.value.type}:${knowledgeRange.value.id}` : "",
+  async (rangeKey, _previous, onCleanup) => {
+    let active = true;
+    onCleanup(() => {
+      active = false;
+    });
+    if (!rangeKey || !knowledgeRange.value) {
+      knowledgePrep.value = null;
+      return;
+    }
+    const range = knowledgeRange.value;
+    try {
+      const sources = await fetchKnowledgeSources();
+      if (!active) return;
+      knowledgePrep.value = summarizeKnowledgePrep(sources, range);
+    } catch {
+      if (active) knowledgePrep.value = null;
+    }
+  },
+  { immediate: true },
+);
+
+async function loadAiStatus() {
+  try {
+    aiStatus.value = await fetchAiStatus();
+  } catch {
+    aiStatus.value = null;
+  }
+}
+
+function summarizeKnowledgePrep(
+  sources: KnowledgeSourceInfo[],
+  range: { type: "ITEM" | "LOT"; id: string },
+): { processing: number; available: number; failed: number } {
+  const counts = { processing: 0, available: 0, failed: 0 };
+  for (const source of sources) {
+    if (!isKnowledgeSourceInRange(source, range)) continue;
+    if (source.status === "PROCESSING") counts.processing += 1;
+    else if (source.status === "AVAILABLE") counts.available += 1;
+    else if (source.status === "FAILED") counts.failed += 1;
+  }
+  return counts;
+}
+
+function isKnowledgeSourceInRange(
+  source: KnowledgeSourceInfo,
+  range: { type: "ITEM" | "LOT"; id: string },
+): boolean {
+  return source.mountType === range.type && source.mountId === range.id;
+}
 
 watch(targetType, async (mode, _previousMode, onCleanup) => {
   selectedScopeId.value = "";
@@ -796,6 +907,30 @@ function formatDateTime(iso: string): string {
 
 .qa-page .page-header {
   flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: var(--zj-space-3);
+}
+
+.qa-readiness {
+  display: grid;
+  justify-items: end;
+  gap: var(--zj-space-1);
+  min-width: 0;
+}
+
+.qa-ai-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--zj-space-2);
+  margin: 0;
+  color: var(--zj-ink-600);
+  font-size: var(--zj-text-caption);
+}
+
+.qa-knowledge-prep {
+  margin: 0;
+  color: var(--zj-ink-400);
+  font-size: var(--zj-text-caption);
 }
 
 .qa-shell {
@@ -1354,6 +1489,11 @@ function formatDateTime(iso: string): string {
   .qa-composer-scope {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .qa-readiness {
+    justify-items: start;
+    width: 100%;
   }
 
   .qa-scope-bar {

@@ -49,6 +49,8 @@ export type KnowledgeSourceDisabledReason = "CANCELLED" | "RECYCLED";
 /** 知识来源对外视图：按附件 id 与附件列表关联展示。 */
 export interface KnowledgeSourceInfo {
   fileId: string;
+  mountType?: "HOUSEHOLD" | "ITEM" | "LOT";
+  mountId?: string;
   status: KnowledgeSourceStatus;
   failureCode?: string;
   failureMessage?: string;
