@@ -124,6 +124,10 @@ zija:
     storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}
     # 附件回收站保留期（天）：保留期满后由清除任务物理删除
     retention-days: ${ZIJA_FILE_RETENTION_DAYS:30}
+  ai:
+    knowledge:
+      # 知识问答检索的 cosine 相似度下限；低于该值的分块不进入回答依据与 prompt
+      similarity-threshold: ${ZIJA_AI_KNOWLEDGE_SIMILARITY_THRESHOLD:0.30}
 
   # 后台定时任务（时区与 cron；测试环境 cron 置 "-" 禁用）
   schedule:

@@ -186,7 +186,7 @@ class AiService implements AiApi {
         private final AiProviderConfiguration providerConfiguration;
         private final ProviderSelection selection;
         private final AiQaModelProvider qaProvider;
-        private AiStatus cachedStatus;
+        private volatile AiStatus cachedStatus;
 
         private QaSession(
                 AiSettingsService.ProviderConfiguration settings,

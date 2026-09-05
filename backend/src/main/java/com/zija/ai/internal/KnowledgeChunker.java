@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * 知识来源文本分块：把文本单元切成可嵌入、可定位的片段。
  *
- * <p>分块以段落边界优先（尽量在换行处切断），单个超长段落按字符数硬切；
+ * <p>分块以段落边界优先（尽量在换行处切断），单个超长段落按字符数硬切，相邻块保留固定重叠；
  * 每块记录相对所在单元的 {@code charStart/charEnd}，配合页码/章节构成回答依据定位。
  * 算法确定且无随机性，便于测试与恢复重建。</p>
  */
@@ -18,6 +18,9 @@ class KnowledgeChunker {
 
     /** 单块目标字符数。 */
     static final int CHUNK_CHAR_TARGET = 1200;
+
+    /** 相邻块重叠字符数，避免步骤说明被硬切后丢失上下文。 */
+    static final int CHUNK_OVERLAP = 180;
 
     /** 一个可嵌入分块：正文 + 定位信息（页码/章节 + 单元内字符区间）。 */
     record Chunk(String text, Integer pageNumber, String sectionPath, int charStart, int charEnd) {
@@ -41,7 +44,11 @@ class KnowledgeChunker {
                 if (!chunkText.isEmpty()) {
                     chunks.add(new Chunk(chunkText, unit.pageNumber(), unit.sectionPath(), pos, end));
                 }
-                pos = end;
+                if (end >= text.length()) {
+                    break;
+                }
+                int next = end - CHUNK_OVERLAP;
+                pos = Math.max(pos + 1, next);
             }
         }
         return chunks;

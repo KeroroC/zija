@@ -87,6 +87,104 @@
         WHERE unit_id = #{unitId} AND status = 'ACTIVE'
     </select>
 
+    <select id="searchActiveItemsByName" resultMap="itemResultMap">
+        SELECT id, household_id, name, management_type, category_id, brand_id, unit_id,
+               cover_file_id, memo, expiry_reminder_mode, expiry_reminder_days,
+               low_stock_mode, low_stock_threshold, status, archived_at, archived_by,
+               created_at, updated_at, version
+        FROM catalog_item
+        <where>
+            household_id = #{householdId}
+            AND status = 'ACTIVE'
+            <if test="itemId != null">
+                AND id = #{itemId}
+            </if>
+            <if test="nameContains != null and nameContains != ''">
+                AND name ILIKE CONCAT('%', #{nameContains}, '%')
+            </if>
+        </where>
+        ORDER BY name ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findActiveItemsNamedInQuestion" resultMap="itemResultMap">
+        SELECT id, household_id, name, management_type, category_id, brand_id, unit_id,
+               cover_file_id, memo, expiry_reminder_mode, expiry_reminder_days,
+               low_stock_mode, low_stock_threshold, status, archived_at, archived_by,
+               created_at, updated_at, version
+        FROM catalog_item
+        WHERE household_id = #{householdId}
+          AND status = 'ACTIVE'
+          AND name IS NOT NULL
+          AND btrim(name) &lt;&gt; ''
+          AND strpos(lower(#{question}), lower(name)) &gt; 0
+        ORDER BY name ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <resultMap id="brandOrTagMatchMap" type="com.zija.catalog.CatalogApi$ItemBrandOrTagMatch">
+        <constructor>
+            <arg column="item_id" javaType="java.util.UUID"/>
+            <arg column="item_name" javaType="java.lang.String"/>
+            <arg column="matched_brand_name" javaType="java.lang.String"/>
+            <arg column="matched_tag_name" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findActiveItemsMatchingBrandOrTagInQuestion" resultMap="brandOrTagMatchMap">
+        SELECT
+            i.id AS item_id,
+            i.name AS item_name,
+            CASE
+                WHEN b.name IS NOT NULL
+                 AND btrim(b.name) &lt;&gt; ''
+                 AND strpos(lower(#{question}), lower(b.name)) &gt; 0
+                THEN b.name
+                ELSE NULL
+            END AS matched_brand_name,
+            (
+                SELECT t.name
+                FROM catalog_item_tag it
+                INNER JOIN catalog_tag t
+                    ON t.id = it.tag_id
+                   AND t.household_id = it.household_id
+                WHERE it.item_id = i.id
+                  AND it.household_id = i.household_id
+                  AND t.name IS NOT NULL
+                  AND btrim(t.name) &lt;&gt; ''
+                  AND strpos(lower(#{question}), lower(t.name)) &gt; 0
+                ORDER BY char_length(t.name) DESC, t.name ASC
+                LIMIT 1
+            ) AS matched_tag_name
+        FROM catalog_item i
+        LEFT JOIN catalog_brand b
+            ON b.id = i.brand_id
+           AND b.household_id = i.household_id
+        WHERE i.household_id = #{householdId}
+          AND i.status = 'ACTIVE'
+          AND (
+                (
+                    b.name IS NOT NULL
+                    AND btrim(b.name) &lt;&gt; ''
+                    AND strpos(lower(#{question}), lower(b.name)) &gt; 0
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM catalog_item_tag it
+                    INNER JOIN catalog_tag t
+                        ON t.id = it.tag_id
+                       AND t.household_id = it.household_id
+                    WHERE it.item_id = i.id
+                      AND it.household_id = i.household_id
+                      AND t.name IS NOT NULL
+                      AND btrim(t.name) &lt;&gt; ''
+                      AND strpos(lower(#{question}), lower(t.name)) &gt; 0
+                )
+          )
+        ORDER BY i.name ASC, i.id ASC
+        LIMIT #{limit}
+    </select>
+
     <update id="truncateLowStockThreshold">
         UPDATE catalog_item
         SET low_stock_threshold = ROUND(low_stock_threshold, #{newScale})

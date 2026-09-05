@@ -467,4 +467,24 @@ describe("LocationsPage", () => {
     await flushPromises();
     expect(pushMock).toHaveBeenCalledWith({ name: "inventory", query: { action: "stocktake", locationId: "loc-root" } });
   });
+
+  it("routes from the location detail into Q&A with the object name", async () => {
+    wrapper = mount(LocationsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    const treeNodes = wrapper.findAll(".el-tree-node__content");
+    await treeNodes[0].trigger("click");
+    await flushPromises();
+
+    const askBtn = wrapper.findAll(".el-button").find((b) => b.text().includes("问这个"));
+    expect(askBtn).toBeTruthy();
+
+    await askBtn!.trigger("click");
+    await flushPromises();
+
+    expect(pushMock).toHaveBeenCalledWith({
+      name: "qa",
+      query: { contextType: "LOCATION", contextId: "loc-root", contextLabel: "家" },
+    });
+  });
 });

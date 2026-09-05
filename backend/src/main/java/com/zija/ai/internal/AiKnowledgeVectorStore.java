@@ -12,6 +12,7 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -28,13 +29,19 @@ class AiKnowledgeVectorStore {
     private final VectorStore vectorStore;
     private final VectorStore queryVectorStore;
     private final SuppliedQueryEmbeddingModel queryEmbeddingModel;
+    private final double similarityThreshold;
 
     AiKnowledgeVectorStore(
             VectorStore vectorStore,
             JdbcTemplate jdbcTemplate,
-            PgVectorStoreProperties properties
+            PgVectorStoreProperties properties,
+            @Value("${zija.ai.knowledge.similarity-threshold:0.30}") double similarityThreshold
     ) {
+        if (similarityThreshold < 0 || similarityThreshold > 1) {
+            throw new IllegalArgumentException("knowledge similarity threshold must be between 0 and 1");
+        }
         this.vectorStore = vectorStore;
+        this.similarityThreshold = similarityThreshold;
         this.queryEmbeddingModel = new SuppliedQueryEmbeddingModel();
         this.queryVectorStore = PgVectorStore.builder(jdbcTemplate, queryEmbeddingModel)
                 .schemaName(properties.getSchemaName())
@@ -117,6 +124,7 @@ class AiKnowledgeVectorStore {
         var filter = new FilterExpressionBuilder();
         var household = filter.eq("household_id", scope.householdId().toString());
         var available = filter.eq("readiness_status", AVAILABLE);
+        var chunkerVersion = filter.eq("chunker_version", KnowledgeChunkDocumentFactory.CHUNKER_VERSION);
         var attachments = filter.in("attachment_id", scope.attachmentIds().stream()
                 .map(UUID::toString)
                 .map(value -> (Object) value)
@@ -125,28 +133,35 @@ class AiKnowledgeVectorStore {
         var householdMount = filter.and(
                 filter.eq("mount_type", FileApi.MOUNT_HOUSEHOLD),
                 filter.eq("mount_id", scope.householdId().toString()));
-        var itemMount = filter.and(
-                filter.and(filter.eq("mount_type", FileApi.MOUNT_ITEM),
-                        filter.eq("mount_id", scope.itemId().toString())),
-                filter.eq("item_id", scope.itemId().toString()));
-        FilterExpressionBuilder.Op mounts = filter.or(householdMount, itemMount);
-        if (scope.lotId() != null) {
-            var lotMount = filter.and(
-                    filter.and(filter.eq("mount_type", FileApi.MOUNT_LOT),
-                            filter.eq("mount_id", scope.lotId().toString())),
-                    filter.eq("lot_id", scope.lotId().toString()));
-            mounts = filter.or(mounts, lotMount);
+        FilterExpressionBuilder.Op mounts = householdMount;
+        if (scope.itemId() != null) {
+            var itemMount = filter.and(
+                    filter.and(filter.eq("mount_type", FileApi.MOUNT_ITEM),
+                            filter.eq("mount_id", scope.itemId().toString())),
+                    filter.eq("item_id", scope.itemId().toString()));
+            mounts = filter.or(householdMount, itemMount);
+            if (scope.lotId() != null) {
+                var lotMount = filter.and(
+                        filter.and(filter.eq("mount_type", FileApi.MOUNT_LOT),
+                                filter.eq("mount_id", scope.lotId().toString())),
+                        filter.eq("lot_id", scope.lotId().toString()));
+                mounts = filter.or(mounts, lotMount);
+            }
         }
 
         var expression = filter.and(
                 filter.and(household, available),
-                filter.and(attachments, filter.group(mounts)));
+                filter.and(attachments, filter.and(filter.group(mounts), chunkerVersion)));
         return store.similaritySearch(SearchRequest.builder()
                 .query(query)
                 .topK(topK)
-                .similarityThresholdAll()
+                .similarityThreshold(similarityThreshold)
                 .filterExpression(expression.build())
                 .build());
+    }
+
+    double similarityThreshold() {
+        return similarityThreshold;
     }
 
     void delete(List<String> documentIds) {
@@ -174,8 +189,8 @@ class AiKnowledgeVectorStore {
             List<UUID> attachmentIds
     ) {
         KnowledgeSearchScope {
-            if (householdId == null || itemId == null) {
-                throw new IllegalArgumentException("householdId and itemId are required");
+            if (householdId == null) {
+                throw new IllegalArgumentException("householdId is required");
             }
             attachmentIds = attachmentIds == null ? List.of() : List.copyOf(attachmentIds);
         }

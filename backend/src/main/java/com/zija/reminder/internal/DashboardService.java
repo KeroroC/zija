@@ -1,6 +1,7 @@
 package com.zija.reminder.internal;
 
 import com.zija.catalog.CatalogApi;
+import com.zija.reminder.ReminderApi;
 import com.zija.reminder.internal.persistence.TaskEntity;
 import com.zija.reminder.internal.persistence.TaskMapper;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,14 @@ class DashboardService {
         this.taskMapper = taskMapper;
         this.catalogApi = catalogApi;
         this.clock = clock;
+    }
+
+    @Transactional(readOnly = true)
+    List<ReminderApi.PriorityTaskInfo> priorityTasks(UUID householdId, int topN) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        var priority = taskMapper.priorityTasks(householdId, now, Math.max(0, topN));
+        Map<UUID, String> names = loadItemNames(householdId, priority);
+        return priority.stream().map(task -> toPriorityInfo(task, names)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -71,6 +80,13 @@ class DashboardService {
 
     private long countAllPriority(UUID hh) {
         return taskMapper.priorityTasks(hh, OffsetDateTime.now(clock), Integer.MAX_VALUE).size();
+    }
+
+    private ReminderApi.PriorityTaskInfo toPriorityInfo(TaskEntity t, Map<UUID, String> names) {
+        DashboardItem item = toItem(t, names);
+        return new ReminderApi.PriorityTaskInfo(
+                item.taskId(), item.kind(), item.severity(),
+                item.title(), item.dueAt(), item.itemId(), item.lotId());
     }
 
     private DashboardItem toItem(TaskEntity t, Map<UUID, String> names) {

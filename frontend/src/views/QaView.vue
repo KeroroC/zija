@@ -5,6 +5,22 @@
         <h1 class="page-title">家庭问答</h1>
         <p class="page-subtitle">用自然语言查询物品、批次、库存位、位置、流水与提醒</p>
       </div>
+      <div class="qa-readiness">
+        <p v-if="aiStatus" class="qa-ai-status" data-testid="qa-ai-status">
+          <span
+            :class="['zj-dot', aiStatus.available ? 'zj-dot-pine' : 'zj-dot-warn']"
+            aria-hidden="true"
+          ></span>
+          <span>{{ aiStatusLine }}</span>
+        </p>
+        <p
+          v-if="knowledgePrepLine"
+          class="qa-knowledge-prep"
+          data-testid="qa-knowledge-prep"
+        >
+          {{ knowledgePrepLine }}
+        </p>
+      </div>
     </header>
 
     <section class="qa-shell">
@@ -41,6 +57,7 @@
               <p v-if="waitingElapsedSeconds >= WAITING_ELAPSED_HINT_AFTER" class="qa-pending-elapsed">
                 已等待 {{ waitingElapsedSeconds }} 秒
               </p>
+              <el-button class="qa-pending-cancel" data-testid="qa-cancel" @click="cancelAsk">取消</el-button>
             </div>
             <div v-else>
             <div v-if="turn.answer.usedAnswerScope" class="qa-used-scope" data-testid="qa-used-scope">
@@ -165,21 +182,42 @@
               </div>
 
               <!-- 权威页面跳转 -->
-              <div v-if="turn.answer.jumps.length" class="qa-jumps">
-                <el-button
-                  v-for="(jump, j) in turn.answer.jumps"
-                  :key="j"
-                  size="small"
-                  text
-                  class="qa-jump"
-                  @click="goJump(jump)"
+              <div v-if="groupedJumps(turn.answer.jumps).length" class="qa-jumps">
+                <section
+                  v-for="group in groupedJumps(turn.answer.jumps)"
+                  :key="group.type"
+                  class="qa-jump-group"
+                  :data-jump-type="group.type"
                 >
-                  <el-icon class="qa-jump-icon">
-                    <Paperclip v-if="jump.type === 'ATTACHMENT'" />
-                    <Location v-else />
-                  </el-icon>
-                  {{ jump.label }}
-                </el-button>
+                  <h3 class="qa-jump-group-title">{{ group.title }}</h3>
+                  <div class="qa-jump-group-list">
+                    <el-button
+                      v-for="(jump, j) in visibleJumps(group, i)"
+                      :key="`${jump.type}-${j}-${jump.itemId}-${jump.lotId}-${jump.locationId}-${jump.attachmentId}`"
+                      size="small"
+                      text
+                      class="qa-jump"
+                      @click="goJump(jump)"
+                    >
+                      <el-icon class="qa-jump-icon">
+                        <Paperclip v-if="jump.type === 'ATTACHMENT'" />
+                        <Location v-else />
+                      </el-icon>
+                      {{ jump.label }}
+                    </el-button>
+                    <el-button
+                      v-if="group.jumps.length > JUMP_GROUP_PREVIEW"
+                      size="small"
+                      text
+                      class="qa-jump-expand"
+                      @click="toggleJumpGroup(i, group.type)"
+                    >
+                      {{ jumpGroupExpanded(i, group.type)
+                        ? "收起"
+                        : `展开其余 ${group.jumps.length - JUMP_GROUP_PREVIEW} 项` }}
+                    </el-button>
+                  </div>
+                </section>
               </div>
 
               <!-- 结构化结果 -->
@@ -241,6 +279,7 @@
               <p v-if="waitingElapsedSeconds >= WAITING_ELAPSED_HINT_AFTER" class="qa-pending-elapsed">
                 已等待 {{ waitingElapsedSeconds }} 秒
               </p>
+              <el-button class="qa-pending-cancel" data-testid="qa-cancel" @click="cancelAsk">取消</el-button>
             </div>
           </div>
         </div>
@@ -251,10 +290,19 @@
           <el-icon><ChatDotRound /></el-icon>
         </div>
         <p class="qa-empty-title">问问家里的物品与资料</p>
-        <p class="qa-empty-hint">
-          试试「牛奶还有多少？」「哪些批次快到期了？」「看看低库存物品」或
-          「牛奶最近有没有入库？」
-        </p>
+        <p class="qa-empty-hint">试试这些问题，点一下填入输入框</p>
+        <div class="qa-empty-examples">
+          <button
+            v-for="example in exampleQuestions"
+            :key="example"
+            type="button"
+            class="qa-scope-chip"
+            data-testid="qa-example"
+            @click="question = example"
+          >
+            {{ example }}
+          </button>
+        </div>
       </div>
 
       <!-- 输入区：固定吸视口底，settings 面板可折叠。out 当 backdrop, card 内嵌 -->
@@ -306,7 +354,7 @@
                   clearable
                   :loading="scopeLoading"
                   :disabled="submitting"
-                  :placeholder="targetType === 'ITEM' ? '选择物品' : '选择批次'"
+                  :placeholder="scopePlaceholder"
                   class="qa-scope-select"
                 >
                   <el-option
@@ -350,16 +398,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ChatDotRound, Location, Paperclip, Setting, ArrowDown } from "@element-plus/icons-vue";
-import { askHouseholdQuestion } from "../api/ai";
+import { askHouseholdQuestion, fetchAiStatus, fetchKnowledgeSources, previewQaAnswerScope } from "../api/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
+import { fetchLocationTree } from "../api/location";
 import { loadQaThread, saveQaThread } from "../utils/qaThread";
+import { flattenLocationChoices } from "../utils/location";
 import { movementTypeLabel } from "../utils/movement";
+import { aiStatusReasonLabel } from "../utils/aiStatus";
 import type {
+  AiStatus,
   HouseholdFactAnswer,
   QaAnswerScope,
   QaAnswerSource,
@@ -367,15 +419,33 @@ import type {
   QaQuestionOptions,
   QaQuestionScope,
   QaScopeCandidate,
+  KnowledgeSourceInfo,
 } from "../types/ai";
 import type { CatalogItem } from "../types/catalog";
 import type { LotSummary } from "../types/inventory";
+import type { LocationNode } from "../types/location";
 import { ApiError } from "../api/http";
 import { AI_REQUEST_LIMITED } from "../types/errorCodes";
 
 const router = useRouter();
 const route = useRoute();
 const WAITING_ELAPSED_HINT_AFTER = 3;
+const JUMP_GROUP_PREVIEW = 3;
+const JUMP_GROUPS = [
+  { type: "ITEM", title: "物品" },
+  { type: "LOT", title: "批次" },
+  { type: "LOCATION", title: "位置" },
+  { type: "MOVEMENT", title: "流水" },
+  { type: "REMINDER", title: "提醒" },
+  { type: "ATTACHMENT", title: "附件" },
+] as const;
+const exampleQuestions = [
+  "牛奶还有多少？",
+  "哪些批次快到期了？",
+  "看看低库存物品",
+  "牛奶最近有没有入库？",
+  "滤网怎么清洁？",
+];
 
 const restoredThread = loadQaThread();
 const question = ref(restoredThread.draft);
@@ -386,6 +456,7 @@ const waitingElapsedSeconds = ref(0);
 const threadEl = ref<HTMLElement | null>(null);
 let waitingTimer: ReturnType<typeof setInterval> | null = null;
 let waitingStartedAt = 0;
+let askAbort: AbortController | null = null;
 const turns = ref(restoredThread.turns);
 // 范围设置面板：首次默认展开，提问后自动收起；用户后续可手动再展开。
 const settingsOpen = ref(restoredThread.turns.length === 0);
@@ -397,11 +468,14 @@ watch(
 );
 
 const answerScope = ref<QaAnswerScope>("AUTO");
-const targetType = ref<"" | "ITEM" | "LOT">("");
+const targetType = ref<"" | "ITEM" | "LOT" | "LOCATION">("");
 const selectedScopeId = ref("");
 const scopeLoading = ref(false);
 const items = ref<CatalogItem[]>([]);
 const lots = ref<LotSummary[]>([]);
+const locationRoots = ref<LocationNode[]>([]);
+const aiStatus = ref<AiStatus | null>(null);
+const knowledgePrep = ref<{ processing: number; available: number; failed: number } | null>(null);
 const SCOPE_PAGE_SIZE = 100;
 const answerScopeOptions = [
   { label: "自动", value: "AUTO" },
@@ -412,6 +486,7 @@ const answerScopeOptions = [
 const targetTypeOptions = [
   { label: "物品", value: "ITEM" },
   { label: "批次", value: "LOT" },
+  { label: "位置", value: "LOCATION" },
 ];
 
 const pageContext = computed<QaQuestionScope | undefined>(() => {
@@ -425,6 +500,23 @@ const pageContext = computed<QaQuestionScope | undefined>(() => {
   };
 });
 
+const knowledgeRange = computed<{ type: "ITEM" | "LOT"; id: string } | undefined>(() => {
+  if ((targetType.value === "ITEM" || targetType.value === "LOT") && selectedScopeId.value) {
+    return { type: targetType.value, id: selectedScopeId.value };
+  }
+  const ctx = pageContext.value;
+  if (ctx && (ctx.type === "ITEM" || ctx.type === "LOT")) {
+    return { type: ctx.type, id: ctx.id };
+  }
+  return undefined;
+});
+
+const knowledgePrepLine = computed(() => {
+  if (!knowledgePrep.value) return "";
+  const { processing, available, failed } = knowledgePrep.value;
+  return `知识准备状态：处理中 ${processing} · 可用 ${available} · 失败 ${failed}`;
+});
+
 const scopeChoices = computed(() => {
   if (targetType.value === "ITEM") {
     return items.value.map((item) => ({
@@ -435,34 +527,141 @@ const scopeChoices = computed(() => {
   if (targetType.value === "LOT") {
     return lots.value.map((lot) => ({ value: lot.lotId, label: lotLabel(lot) }));
   }
+  if (targetType.value === "LOCATION") {
+    return flattenLocationChoices(locationRoots.value);
+  }
   return [];
+});
+
+const scopePlaceholder = computed(() => {
+  switch (targetType.value) {
+    case "ITEM": return "选择物品";
+    case "LOT": return "选择批次";
+    case "LOCATION": return "选择位置";
+    default: return "";
+  }
 });
 
 const canSubmit = computed(() => Boolean(question.value.trim()) && !submitting.value);
 
-const recommendedScope = computed<Exclude<QaAnswerScope, "AUTO">>(() => {
-  const normalized = question.value.trim().toLowerCase();
-  const fact = ["库存", "还有", "多少", "哪里", "在哪", "位置", "批次", "到期", "临期",
-    "低库存", "缺货", "流水", "入库", "领用", "报损", "提醒", "当前"]
-    .some((term) => normalized.includes(term));
-  const knowledge = ["怎么", "如何", "清洁", "维护", "保养", "使用", "说明", "故障", "注意", "步骤", "资料"]
-    .some((term) => normalized.includes(term));
-  if (fact && knowledge) return "BOTH";
-  if (knowledge) return "KNOWLEDGE_SOURCE";
-  if (fact) return "HOUSEHOLD_FACT";
-  if (pageContext.value && pageContext.value.type !== "LOCATION") return "BOTH";
-  return "HOUSEHOLD_FACT";
-});
+const PREVIEW_DEBOUNCE_MS = 300;
+const recommendedScope = ref<Exclude<QaAnswerScope, "AUTO">>("HOUSEHOLD_FACT");
+let previewTimer: ReturnType<typeof setTimeout> | null = null;
+let previewAbort: AbortController | null = null;
+
+watch([question, pageContext], () => {
+  scheduleScopePreview();
+}, { immediate: true });
+
+function scheduleScopePreview() {
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+    previewTimer = null;
+  }
+  const text = question.value.trim();
+  if (!text) {
+    previewAbort?.abort();
+    previewAbort = null;
+    recommendedScope.value = "HOUSEHOLD_FACT";
+    return;
+  }
+  previewTimer = setTimeout(() => {
+    previewTimer = null;
+    void loadScopePreview(text, pageContext.value);
+  }, PREVIEW_DEBOUNCE_MS);
+}
+
+async function loadScopePreview(text: string, context: QaQuestionScope | undefined) {
+  if (question.value.trim() !== text) return;
+  previewAbort?.abort();
+  const controller = new AbortController();
+  previewAbort = controller;
+  try {
+    const preview = await previewQaAnswerScope(text, context, controller.signal);
+    if (controller.signal.aborted || question.value.trim() !== text) return;
+    recommendedScope.value = preview.recommendedAnswerScope;
+  } catch (error) {
+    if (controller.signal.aborted || isAbortError(error)) return;
+  } finally {
+    if (previewAbort === controller) previewAbort = null;
+  }
+}
 
 const effectiveScope = computed<Exclude<QaAnswerScope, "AUTO">>(
   () => answerScope.value === "AUTO" ? recommendedScope.value : answerScope.value,
 );
 
-const scopeHint = computed(() => `实际将使用 ${answerScopeLabel(effectiveScope.value)}`);
+const scopeHint = computed(() => {
+  if (aiStatus.value && !aiStatus.value.available) {
+    return "知识问答不可用，提问将走家庭事实兜底";
+  }
+  return `实际将使用 ${answerScopeLabel(effectiveScope.value)}`;
+});
 
 const questionPlaceholder = computed(() => effectiveScope.value === "HOUSEHOLD_FACT"
   ? "例如：牛奶还有多少、放在哪里？哪些批次快到期了？"
   : "例如：库存是否与说明书一致？滤网怎么清洁？");
+
+const aiStatusLine = computed(() => {
+  const status = aiStatus.value;
+  if (!status) return "";
+  if (status.available) return "AI 可用";
+  return `AI 不可用（${aiStatusReasonLabel(status.reasonCode)}）`;
+});
+
+onMounted(() => {
+  void loadAiStatus();
+});
+
+watch(
+  () => knowledgeRange.value ? `${knowledgeRange.value.type}:${knowledgeRange.value.id}` : "HOUSEHOLD",
+  async (_rangeKey, _previous, onCleanup) => {
+    let active = true;
+    onCleanup(() => {
+      active = false;
+    });
+    const range = knowledgeRange.value;
+    try {
+      const sources = await fetchKnowledgeSources();
+      if (!active) return;
+      knowledgePrep.value = summarizeKnowledgePrep(sources, range);
+    } catch {
+      if (active) knowledgePrep.value = null;
+    }
+  },
+  { immediate: true },
+);
+
+async function loadAiStatus() {
+  try {
+    aiStatus.value = await fetchAiStatus();
+  } catch {
+    aiStatus.value = null;
+  }
+}
+
+function summarizeKnowledgePrep(
+  sources: KnowledgeSourceInfo[],
+  range: { type: "ITEM" | "LOT"; id: string } | undefined,
+): { processing: number; available: number; failed: number } {
+  const counts = { processing: 0, available: 0, failed: 0 };
+  for (const source of sources) {
+    if (!isKnowledgeSourceInRange(source, range)) continue;
+    if (source.status === "PROCESSING") counts.processing += 1;
+    else if (source.status === "AVAILABLE") counts.available += 1;
+    else if (source.status === "FAILED") counts.failed += 1;
+  }
+  return counts;
+}
+
+function isKnowledgeSourceInRange(
+  source: KnowledgeSourceInfo,
+  range: { type: "ITEM" | "LOT"; id: string } | undefined,
+): boolean {
+  if (source.mountType === "HOUSEHOLD") return true;
+  if (!range) return false;
+  return source.mountType === range.type && source.mountId === range.id;
+}
 
 watch(targetType, async (mode, _previousMode, onCleanup) => {
   selectedScopeId.value = "";
@@ -483,9 +682,11 @@ watch(targetType, async (mode, _previousMode, onCleanup) => {
         page,
         pageSize: SCOPE_PAGE_SIZE,
       }));
+    } else if (mode === "LOCATION" && locationRoots.value.length === 0) {
+      locationRoots.value = (await fetchLocationTree()).roots;
     }
   } catch {
-    if (active) ElMessage.error(mode === "ITEM" ? "物品列表加载失败" : "批次列表加载失败");
+    if (active) ElMessage.error(scopeLoadError(mode));
   } finally {
     if (active) scopeLoading.value = false;
   }
@@ -532,9 +733,26 @@ function stopWaiting() {
   pendingQuestion.value = "";
   confirmingIndex.value = null;
   waitingElapsedSeconds.value = 0;
+  askAbort = null;
 }
 
-onUnmounted(stopWaiting);
+/** 客户端停止等待即可；已发出的请求仍可能占服务端并发名额，本票不要求服务端取消模型调用。 */
+function cancelAsk() {
+  askAbort?.abort();
+}
+
+function isAbortError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "name" in error
+    && (error as { name: string }).name === "AbortError";
+}
+
+onUnmounted(() => {
+  stopWaiting();
+  if (previewTimer) clearTimeout(previewTimer);
+  previewAbort?.abort();
+});
 
 async function loadAllScopeOptions<T>(
   fetchPage: (page: number) => Promise<{ items: T[]; total: number }>,
@@ -553,11 +771,18 @@ async function submit() {
   if (!canSubmit.value) return;
   const text = question.value.trim();
   question.value = "";
+  askAbort = new AbortController();
+  const signal = askAbort.signal;
   startWaiting(text, null);
   submitting.value = true;
   try {
     const options = questionOptions();
-    const result = await askHouseholdQuestion(text, options);
+    const result = await askHouseholdQuestion(text, options, signal);
+    if (signal.aborted) {
+      question.value = text;
+      ElMessage.info("已取消");
+      return;
+    }
     turns.value.push({
       question: text,
       answerScope: answerScope.value,
@@ -566,7 +791,9 @@ async function submit() {
     });
   } catch (e) {
     question.value = text;
-    if (e instanceof ApiError) {
+    if (signal.aborted || isAbortError(e)) {
+      ElMessage.info("已取消");
+    } else if (e instanceof ApiError) {
       ElMessage.error(qaErrorMessage(e));
     } else {
       ElMessage.error("提问失败，请稍后重试");
@@ -580,6 +807,8 @@ async function submit() {
 async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
   const turn = turns.value[index];
   if (!turn || submitting.value) return;
+  askAbort = new AbortController();
+  const signal = askAbort.signal;
   startWaiting(turn.question, index);
   submitting.value = true;
   try {
@@ -595,12 +824,21 @@ async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
     if (turn.confirmedScopes.length > 0) {
       options.confirmedScopes = [...turn.confirmedScopes];
     }
-    turn.answer = await askHouseholdQuestion(turn.question, options);
+    const result = await askHouseholdQuestion(turn.question, options, signal);
+    if (signal.aborted) {
+      ElMessage.info("已取消");
+      return;
+    }
+    turn.answer = result;
     if (!turn.confirmedScopes.some((scope) => scope.type === confirmedScope.type && scope.id === confirmedScope.id)) {
       turn.confirmedScopes.push(confirmedScope);
     }
   } catch (e) {
-    ElMessage.error(e instanceof ApiError ? qaErrorMessage(e) : "提问失败，请稍后重试");
+    if (signal.aborted || isAbortError(e)) {
+      ElMessage.info("已取消");
+    } else {
+      ElMessage.error(e instanceof ApiError ? qaErrorMessage(e) : "提问失败，请稍后重试");
+    }
   } finally {
     stopWaiting();
     submitting.value = false;
@@ -610,7 +848,12 @@ async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
 function questionOptions(): QaQuestionOptions {
   const options: QaQuestionOptions = { answerScope: answerScope.value };
   if (targetType.value && selectedScopeId.value) {
-    options.scope = { type: targetType.value, id: selectedScopeId.value };
+    const choice = scopeChoices.value.find((option) => option.value === selectedScopeId.value);
+    options.scope = {
+      type: targetType.value,
+      id: selectedScopeId.value,
+      ...(targetType.value === "LOCATION" && choice?.label ? { label: choice.label } : {}),
+    };
     return options;
   }
   if (pageContext.value) {
@@ -672,6 +915,7 @@ function hasDisplayableResults(answer: HouseholdFactAnswer): boolean {
 /** 用户可见的失败/降级原因；未知码不展示英文原文，回退到 summary。 */
 const QA_REASON_LABELS: Record<string, string> = {
   NO_AVAILABLE_KNOWLEDGE_SOURCE: "当前范围没有可用的知识来源",
+  KNOWLEDGE_SOURCE_PROCESSING: "知识来源正在准备",
   KNOWLEDGE_SOURCE_PREPARATION_FAILED: "知识来源准备失败",
   KNOWLEDGE_MODEL_UNAVAILABLE: "模型暂不可用",
   MODEL_UNAVAILABLE: "模型暂不可用",
@@ -706,10 +950,16 @@ function goJump(jump: QaJump) {
       router.push({ path: "/locations", query: { highlight: jump.locationId ?? "" } });
       break;
     case "MOVEMENT":
-      router.push({ name: "report-movements" });
+      router.push({
+        name: "report-movements",
+        query: jump.itemId ? { itemId: jump.itemId } : {},
+      });
       break;
     case "REMINDER":
-      router.push({ name: "reminders" });
+      router.push({
+        name: "reminders",
+        query: jump.kind ? { kind: jump.kind } : {},
+      });
       break;
     case "ATTACHMENT":
       router.push({ path: "/files", query: jump.attachmentId ? { highlight: jump.attachmentId } : {} });
@@ -717,6 +967,44 @@ function goJump(jump: QaJump) {
     default:
       break;
   }
+}
+
+type JumpGroup = {
+  type: (typeof JUMP_GROUPS)[number]["type"];
+  title: string;
+  jumps: QaJump[];
+};
+
+function groupedJumps(jumps: QaJump[]): JumpGroup[] {
+  return JUMP_GROUPS
+    .map((group) => ({
+      ...group,
+      jumps: jumps.filter((jump) => jump.type === group.type),
+    }))
+    .filter((group) => group.jumps.length > 0);
+}
+
+const expandedJumpGroups = ref(new Set<string>());
+
+function jumpGroupKey(turnIndex: number, type: string): string {
+  return `${turnIndex}:${type}`;
+}
+
+function jumpGroupExpanded(turnIndex: number, type: string): boolean {
+  return expandedJumpGroups.value.has(jumpGroupKey(turnIndex, type));
+}
+
+function visibleJumps(group: JumpGroup, turnIndex: number): QaJump[] {
+  if (jumpGroupExpanded(turnIndex, group.type)) return group.jumps;
+  return group.jumps.slice(0, JUMP_GROUP_PREVIEW);
+}
+
+function toggleJumpGroup(turnIndex: number, type: string) {
+  const key = jumpGroupKey(turnIndex, type);
+  const next = new Set(expandedJumpGroups.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedJumpGroups.value = next;
 }
 
 function factSources(sources: QaAnswerSource[]): QaAnswerSource[] {
@@ -768,6 +1056,14 @@ function lotLabel(lot: LotSummary): string {
   return `${lot.itemName} · ${lot.lotNumber || lot.serialNumber || "未编号批次"}`;
 }
 
+function scopeLoadError(mode: "ITEM" | "LOT" | "LOCATION"): string {
+  switch (mode) {
+    case "ITEM": return "物品列表加载失败";
+    case "LOT": return "批次列表加载失败";
+    case "LOCATION": return "位置列表加载失败";
+  }
+}
+
 function queryString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -796,6 +1092,30 @@ function formatDateTime(iso: string): string {
 
 .qa-page .page-header {
   flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: var(--zj-space-3);
+}
+
+.qa-readiness {
+  display: grid;
+  justify-items: end;
+  gap: var(--zj-space-1);
+  min-width: 0;
+}
+
+.qa-ai-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--zj-space-2);
+  margin: 0;
+  color: var(--zj-ink-600);
+  font-size: var(--zj-text-caption);
+}
+
+.qa-knowledge-prep {
+  margin: 0;
+  color: var(--zj-ink-400);
+  font-size: var(--zj-text-caption);
 }
 
 .qa-shell {
@@ -1072,6 +1392,10 @@ function formatDateTime(iso: string): string {
   color: var(--zj-ink-600);
 }
 
+.qa-pending-cancel {
+  align-self: flex-start;
+}
+
 .qa-pending-elapsed {
   margin: 0;
   font-size: var(--zj-text-caption);
@@ -1249,13 +1573,30 @@ function formatDateTime(iso: string): string {
 
 .qa-jumps {
   display: flex;
+  flex-direction: column;
+  gap: var(--zj-space-3);
+  margin-bottom: var(--zj-space-3);
+}
+
+.qa-jump-group-title {
+  margin: 0 0 var(--zj-space-1);
+  font-size: var(--zj-text-caption);
+  font-weight: 600;
+  color: var(--zj-ink-400);
+}
+
+.qa-jump-group-list {
+  display: flex;
   flex-wrap: wrap;
   gap: var(--zj-space-1);
-  margin-bottom: var(--zj-space-3);
 }
 
 .qa-jump {
   color: var(--zj-pine-600);
+}
+
+.qa-jump-expand {
+  color: var(--zj-ink-600);
 }
 
 .qa-jump-icon {
@@ -1346,6 +1687,15 @@ function formatDateTime(iso: string): string {
   color: var(--zj-ink-400);
 }
 
+.qa-empty-examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--zj-space-2);
+  max-width: 440px;
+  margin: var(--zj-space-4) auto 0;
+}
+
 @media (max-width: 720px) {
   .qa-composer-card {
     padding: var(--zj-space-3);
@@ -1354,6 +1704,11 @@ function formatDateTime(iso: string): string {
   .qa-composer-scope {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .qa-readiness {
+    justify-items: start;
+    width: 100%;
   }
 
   .qa-scope-bar {

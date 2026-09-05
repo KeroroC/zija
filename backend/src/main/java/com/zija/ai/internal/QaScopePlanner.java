@@ -10,10 +10,12 @@ import com.zija.location.LocationApi;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** 只用服务端权威对象和确定性规则推荐、校验并解析问答范围。 */
@@ -25,9 +27,11 @@ class QaScopePlanner {
     static final String KNOWLEDGE_SOURCE = "KNOWLEDGE_SOURCE";
     static final String BOTH = "BOTH";
 
+    private static final int CANDIDATE_LIMIT = 50;
+
     private static final List<String> FACT_TERMS = List.of(
             "库存", "还有", "多少", "哪里", "在哪", "位置", "批次", "到期", "临期",
-            "低库存", "缺货", "流水", "入库", "领用", "报损", "提醒", "当前");
+            "低库存", "缺货", "流水", "入库", "领用", "报损", "提醒", "当前", "过期");
     private static final List<String> KNOWLEDGE_TERMS = List.of(
             "怎么", "如何", "清洁", "维护", "保养", "使用", "说明", "故障", "注意", "步骤", "资料");
 
@@ -104,16 +108,24 @@ class QaScopePlanner {
             }
         }
 
-        if ((KNOWLEDGE_SOURCE.equals(used) || BOTH.equals(used)) && knowledgeTarget == null) {
-            return new ScopePlan(recommended, used,
-                    "知识来源需要先确认物品或批次范围",
-                    target, null, List.of(), true);
-        }
         if (KNOWLEDGE_SOURCE.equals(used)) target = knowledgeTarget;
         return new ScopePlan(recommended, used, reason, target, knowledgeTarget, List.of(), false);
     }
 
-    private String recommend(String question, QaTarget pageTarget) {
+    /** 仅按词表与（已授权的）页面上下文推荐范围，不做候选扫描、不调用模型。 */
+    String previewRecommendedScope(UUID householdId, String question, QaTarget pageContext) {
+        QaTarget pageTarget = null;
+        if (pageContext != null) {
+            try {
+                pageTarget = authorizeAndLabel(householdId, pageContext);
+            } catch (RuntimeException ignored) {
+                pageTarget = null;
+            }
+        }
+        return recommend(question, pageTarget);
+    }
+
+    String recommend(String question, QaTarget pageTarget) {
         String normalized = question == null ? "" : question.toLowerCase(Locale.ROOT);
         boolean fact = containsAny(normalized, FACT_TERMS);
         boolean knowledge = containsAny(normalized, KNOWLEDGE_TERMS);
@@ -167,29 +179,55 @@ class QaScopePlanner {
     ) {
         String normalized = question == null ? "" : question.toLowerCase(Locale.ROOT);
         Map<String, List<ScopeCandidate>> groups = new LinkedHashMap<>();
-        for (var item : catalogApi.listActiveItems(householdId)) {
+        Set<UUID> seenItemIds = new HashSet<>();
+        for (var item : catalogApi.findActiveItemsNamedInQuestion(householdId, question, CANDIDATE_LIMIT)) {
             if (questionContainsTerm(normalized, item.name())) {
+                seenItemIds.add(item.id());
                 addCandidate(groups, "ITEM:" + item.name().toLowerCase(Locale.ROOT),
                         new ScopeCandidate("ITEM", item.id(), item.name(),
                                 "物品 · " + ("DURABLE".equals(item.managementType()) ? "耐用品" : "消耗品")
                                         + " · 编号 " + shortId(item.id())));
             }
-            for (var lotInfo : inventoryApi.lotsOfItem(householdId, item.id())) {
-                inventoryApi.findLot(householdId, lotInfo.lotId()).ifPresent(lot -> {
-                    boolean lotNumberMatches = questionContainsTerm(normalized, lot.lotNumber());
-                    boolean serialMatches = questionContainsTerm(normalized, lot.serialNumber());
-                    if (lotNumberMatches || serialMatches) {
-                        String label = lot.lotNumber() == null || lot.lotNumber().isBlank()
-                                ? item.name() + "的批次" : item.name() + " · " + lot.lotNumber();
-                        String detail = (lot.serialNumber() == null || lot.serialNumber().isBlank()
-                                ? "批次 · " + label : "批次 · " + label + " · 序列号 " + lot.serialNumber())
-                                + " · 编号 " + shortId(lot.lotId());
-                        String matchedKey = serialMatches
-                                ? "LOT_SERIAL:" + lot.serialNumber().toLowerCase(Locale.ROOT)
-                                : "LOT_NUMBER:" + lot.lotNumber().toLowerCase(Locale.ROOT);
-                        addCandidate(groups, matchedKey, new ScopeCandidate("LOT", lot.lotId(), label, detail));
-                    }
-                });
+        }
+        for (var match : catalogApi.findActiveItemsMatchingBrandOrTagInQuestion(
+                householdId, question, CANDIDATE_LIMIT)) {
+            if (seenItemIds.contains(match.itemId())) {
+                continue;
+            }
+            boolean brandMatches = questionContainsTerm(normalized, match.matchedBrandName());
+            boolean tagMatches = questionContainsTerm(normalized, match.matchedTagName());
+            if (!brandMatches && !tagMatches) {
+                continue;
+            }
+            seenItemIds.add(match.itemId());
+            String label = match.itemName() == null || match.itemName().isBlank() ? "物品" : match.itemName();
+            String groupKey;
+            String detail;
+            if (brandMatches) {
+                groupKey = "ITEM_BRAND:" + match.matchedBrandName().toLowerCase(Locale.ROOT);
+                detail = "品牌 · " + match.matchedBrandName()
+                        + (tagMatches ? " · 标签 · " + match.matchedTagName() : "")
+                        + " · 编号 " + shortId(match.itemId());
+            } else {
+                groupKey = "ITEM_TAG:" + match.matchedTagName().toLowerCase(Locale.ROOT);
+                detail = "标签 · " + match.matchedTagName() + " · 编号 " + shortId(match.itemId());
+            }
+            addCandidate(groups, groupKey, new ScopeCandidate("ITEM", match.itemId(), label, detail));
+        }
+        for (var lot : inventoryApi.findLotsMatchingQuestion(householdId, question, CANDIDATE_LIMIT)) {
+            boolean lotNumberMatches = questionContainsTerm(normalized, lot.lotNumber());
+            boolean serialMatches = questionContainsTerm(normalized, lot.serialNumber());
+            if (lotNumberMatches || serialMatches) {
+                String itemName = lot.itemName() == null || lot.itemName().isBlank() ? "物品" : lot.itemName();
+                String label = lot.lotNumber() == null || lot.lotNumber().isBlank()
+                        ? itemName + "的批次" : itemName + " · " + lot.lotNumber();
+                String detail = (lot.serialNumber() == null || lot.serialNumber().isBlank()
+                        ? "批次 · " + label : "批次 · " + label + " · 序列号 " + lot.serialNumber())
+                        + " · 编号 " + shortId(lot.lotId());
+                String matchedKey = serialMatches
+                        ? "LOT_SERIAL:" + lot.serialNumber().toLowerCase(Locale.ROOT)
+                        : "LOT_NUMBER:" + lot.lotNumber().toLowerCase(Locale.ROOT);
+                addCandidate(groups, matchedKey, new ScopeCandidate("LOT", lot.lotId(), label, detail));
             }
         }
         collectLocations(locationApi.tree(householdId).roots(), "", normalized, groups);

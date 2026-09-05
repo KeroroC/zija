@@ -30,13 +30,16 @@ class KnowledgeChunkerTest {
         String unit = (line + "\n\n" + line).repeat(1);
         List<Chunk> chunks = chunker.chunk(List.of(new TextUnit(unit, 1, null)));
 
+        assertThat(KnowledgeChunker.CHUNK_OVERLAP).isBetween(150, 200);
         assertThat(chunks.size()).isGreaterThan(1);
         Chunk previous = null;
         for (Chunk chunk : chunks) {
             assertThat(chunk.text()).isNotEmpty();
             assertThat(chunk.charEnd()).isGreaterThan(chunk.charStart());
+            assertThat(unit.substring(chunk.charStart(), chunk.charEnd()).strip()).isEqualTo(chunk.text());
             if (previous != null) {
-                assertThat(chunk.charStart()).isEqualTo(previous.charEnd());
+                assertThat(chunk.charStart()).isGreaterThan(previous.charStart());
+                assertThat(chunk.charStart()).isLessThan(previous.charEnd());
             }
             previous = chunk;
         }

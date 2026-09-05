@@ -32,6 +32,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -67,6 +68,9 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     private static final UUID SECOND_ITEM_ID = UUID.fromString("40000000-0000-0000-0000-000000000002");
     private static final UUID SECOND_LOT_ID = UUID.fromString("50000000-0000-0000-0000-000000000002");
     private static final UUID THIRD_LOT_ID = UUID.fromString("50000000-0000-0000-0000-000000000003");
+    private static final UUID FOURTH_LOT_ID = UUID.fromString("50000000-0000-0000-0000-000000000004");
+    private static final UUID EXPIRED_STOCK_POSITION_ID = UUID.fromString("70000000-0000-0000-0000-000000000002");
+    private static final ZoneId HOUSEHOLD_ZONE = ZoneId.of("Asia/Shanghai");
 
     @Autowired
     private MockMvc mvc;
@@ -336,6 +340,81 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void ambiguousBrandNameReturnsCandidatesWithoutExecutingTheQuery() throws Exception {
+        UUID brandId = UUID.fromString("90000000-0000-0000-0000-000000000001");
+        jdbc.update("""
+                INSERT INTO catalog_brand(id, household_id, name, name_normalized, status, version)
+                VALUES (?, ?, '伊利', '伊利', 'ACTIVE', 1)
+                """, brandId, HOUSEHOLD_ID);
+        jdbc.update("UPDATE catalog_item SET brand_id = ? WHERE id = ?", brandId, ITEM_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, brand_id, status, version)
+                VALUES (?, ?, '酸奶', 'CONSUMABLE', ?, ?, 'ACTIVE', 1)
+                """, SECOND_ITEM_ID, HOUSEHOLD_ID, UNIT_ID, brandId);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "伊利还有多少？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.candidates[*].type",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("ITEM"))))
+                .andExpect(jsonPath("$.candidates[*].detail",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.containsString("品牌 · 伊利"))))
+                .andExpect(jsonPath("$.structuredResults").isEmpty());
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
+    void ambiguousTagNameReturnsCandidatesWithoutExecutingTheQuery() throws Exception {
+        UUID tagId = UUID.fromString("90000000-0000-0000-0000-000000000002");
+        jdbc.update("""
+                INSERT INTO catalog_tag(id, household_id, name, name_normalized, status, version)
+                VALUES (?, ?, '乳制品', '乳制品', 'ACTIVE', 1)
+                """, tagId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '酸奶', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, SECOND_ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item_tag(household_id, item_id, tag_id)
+                VALUES (?, ?, ?), (?, ?, ?)
+                """, HOUSEHOLD_ID, ITEM_ID, tagId, HOUSEHOLD_ID, SECOND_ITEM_ID, tagId);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "乳制品还有多少？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("AMBIGUOUS_TARGET"))
+                .andExpect(jsonPath("$.candidates.length()").value(2))
+                .andExpect(jsonPath("$.candidates[*].type",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("ITEM"))))
+                .andExpect(jsonPath("$.candidates[*].detail",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.containsString("标签 · 乳制品"))))
+                .andExpect(jsonPath("$.structuredResults").isEmpty());
+
+        assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
     void explicitFactScopeOutsideTheCurrentHouseholdIsRejectedBeforeModelAccess() throws Exception {
         mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
@@ -395,7 +474,7 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 VALUES (?, ?, ?, 'LOT-002', 'SN-SAME', 1),
                        (?, ?, ?, 'LOT-003', 'SN-SAME', 1)
                 """, SECOND_LOT_ID, HOUSEHOLD_ID, ITEM_ID,
-                THIRD_LOT_ID, HOUSEHOLD_ID, ITEM_ID);
+                FOURTH_LOT_ID, HOUSEHOLD_ID, ITEM_ID);
 
         mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
@@ -648,11 +727,14 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].操作人").value("户主"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].时间").isNotEmpty())
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"))
-                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("MOVEMENT")));
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("MOVEMENT")))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'MOVEMENT')].itemId",
+                        org.hamcrest.Matchers.hasItem(ITEM_ID.toString())));
     }
 
     @Test
     void expiringLotsToolReturnsBoundStructuredFacts() throws Exception {
+        seedExpiredLot();
         chatModel.script(
                 "expiringLots", "{\"withinDays\":30,\"limit\":10}",
                 response -> "有临期批次。");
@@ -664,10 +746,82 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                         .content("{\"question\":\"哪些批次快到期了？\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRING_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("临期批次"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].剩余天数").isNotEmpty())
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
-                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("REMINDER")));
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("REMINDER")))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'REMINDER')].kind",
+                        org.hamcrest.Matchers.hasItem("EXPIRY")));
+    }
+
+    @Test
+    void expiredLotsToolReturnsExpiredStockOutsideTheExpiringWindow() throws Exception {
+        seedExpiredLot();
+        chatModel.script(
+                "expiredLots", "{\"limit\":10}",
+                response -> "有已过期批次。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶过期了吗？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(true))
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRED_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("已过期批次"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-EXPIRED"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].已过期天数").value("3"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("3"))
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("REMINDER")))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'REMINDER')].kind",
+                        org.hamcrest.Matchers.hasItem("EXPIRY")));
+    }
+
+    @Test
+    void modelUnavailableExpiredQuestionReturnsExpiredLotsNotExpiringWindow() throws Exception {
+        seedExpiredLot();
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有没有过期的牛奶？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRED_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("已过期批次"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-EXPIRED"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("3"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRING_LOTS"))));
+    }
+
+    @Test
+    void modelUnavailableExpiringQuestionStillUsesExpiringWindow() throws Exception {
+        seedExpiredLot();
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"哪些批次快到期了？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRING_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRED_LOTS"))));
     }
 
     @Test
@@ -686,7 +840,101 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].当前库存").value("5"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].阈值").value("10"))
-                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("REMINDER")));
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("REMINDER")))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'REMINDER')].kind",
+                        org.hamcrest.Matchers.hasItem("LOW_STOCK")));
+    }
+
+    @Test
+    void openReminderTasksReturnsPendingTasksWithReminderJump() throws Exception {
+        jdbc.update("""
+                INSERT INTO reminder_task (id, household_id, kind, lot_id, item_id, status, due_at, severity)
+                VALUES (?, ?, 'EXPIRY', ?, ?, 'OPEN', CURRENT_TIMESTAMP + INTERVAL '7 days', 'WARN')
+                """, UUID.randomUUID(), HOUSEHOLD_ID, LOT_ID, ITEM_ID);
+        chatModel.script(
+                "openReminderTasks", "{\"limit\":10}",
+                response -> "有待处理提醒。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些待处理提醒？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("REMINDER_TASKS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("待处理提醒"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].类型").value("临期"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].严重程度").value("警告"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].标题").value(
+                        org.hamcrest.Matchers.containsString("牛奶")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].到期时间").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次").value("LOT-001"))
+                .andExpect(jsonPath("$.jumps[0].type").value("REMINDER"))
+                .andExpect(jsonPath("$.jumps[0].label").value("查看提醒中心"))
+                .andExpect(jsonPath("$.jumps[0].kind").doesNotExist());
+    }
+
+    @Test
+    void openReminderTasksReturnsEmptyRowsWhenNoPendingTasks() throws Exception {
+        chatModel.script(
+                "openReminderTasks", "{\"limit\":10}",
+                response -> "当前没有待处理提醒。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些待处理提醒？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("REMINDER_TASKS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows").isEmpty())
+                .andExpect(jsonPath("$.jumps[0].type").value("REMINDER"))
+                .andExpect(jsonPath("$.jumps[0].label").value("查看提醒中心"));
+    }
+
+    @Test
+    void modelUnavailableReminderQuestionReturnsStructuredTasks() throws Exception {
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+        jdbc.update("""
+                INSERT INTO reminder_task (id, household_id, kind, lot_id, item_id, status, due_at, severity)
+                VALUES (?, ?, 'EXPIRY', ?, ?, 'OPEN', CURRENT_TIMESTAMP + INTERVAL '7 days', 'WARN')
+                """, UUID.randomUUID(), HOUSEHOLD_ID, LOT_ID, ITEM_ID);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些待处理提醒？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("REMINDER_TASKS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].类型").value("临期"))
+                .andExpect(jsonPath("$.jumps[0].type").value("REMINDER"));
+    }
+
+    @Test
+    void modelUnavailableReminderRuleQuestionDoesNotDumpTasks() throws Exception {
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+        jdbc.update("""
+                INSERT INTO reminder_task (id, household_id, kind, lot_id, item_id, status, due_at, severity)
+                VALUES (?, ?, 'EXPIRY', ?, ?, 'OPEN', CURRENT_TIMESTAMP + INTERVAL '7 days', 'WARN')
+                """, UUID.randomUUID(), HOUSEHOLD_ID, LOT_ID, ITEM_ID);
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"提醒规则怎么设置？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("REMINDER_TASKS"))));
     }
 
     /** 最小假模型调用（只要一次工具调用即可完成回答） */
@@ -966,6 +1214,18 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 OWNER_ACCOUNT_ID, Timestamp.from(OffsetDateTime.now().toInstant()),
                 Timestamp.from(OffsetDateTime.now().toInstant()),
                 UUID.randomUUID().toString());
+    }
+
+    private void seedExpiredLot() {
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, expiry_date, lot_number, version)
+                VALUES (?, ?, ?, ?, 'LOT-EXPIRED', 1)
+                """, THIRD_LOT_ID, HOUSEHOLD_ID, ITEM_ID,
+                LocalDate.now(HOUSEHOLD_ZONE).minusDays(3));
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '3', 0)
+                """, EXPIRED_STOCK_POSITION_ID, HOUSEHOLD_ID, THIRD_LOT_ID, KITCHEN_ID);
     }
 
     // ==================== Spring AI 假模型 seam ====================

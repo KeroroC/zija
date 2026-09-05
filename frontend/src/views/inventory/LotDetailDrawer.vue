@@ -7,6 +7,10 @@
     @update:model-value="$emit('update:modelValue', $event)"
   >
     <template v-if="lot">
+      <div class="drawer-actions">
+        <el-button size="small" @click="goToQa">问这个</el-button>
+      </div>
+
       <!-- Position distribution -->
       <section class="drawer-section">
         <h4 class="section-title">库存分布</h4>
@@ -185,6 +189,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchLot, fetchMovements, updateLotMeta } from '../../api/inventory'
 import {
@@ -210,6 +215,8 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   updated: []
 }>()
+
+const router = useRouter()
 
 const lot = ref<LotSummary | null>(null)
 const loading = ref(false)
@@ -242,6 +249,18 @@ function movementTypeLabel(type: MovementType): string {
 function formatTime(iso: string): string {
   if (!iso) return '-'
   return iso.replace('T', ' ').replace(/\.\d+Z$/, '')
+}
+
+function goToQa() {
+  if (!lot.value) return
+  router.push({
+    name: 'qa',
+    query: {
+      contextType: 'LOT',
+      contextId: lot.value.lotId,
+      contextLabel: `${lot.value.itemName} · ${lot.value.lotNumber || lot.value.serialNumber || '未编号批次'}`,
+    },
+  })
 }
 
 async function loadLot(lotId: string) {
@@ -410,6 +429,9 @@ watch(
 </script>
 
 <style scoped>
+.drawer-actions {
+  margin-bottom: var(--zj-space-4);
+}
 .drawer-section {
   margin-bottom: 24px;
 }

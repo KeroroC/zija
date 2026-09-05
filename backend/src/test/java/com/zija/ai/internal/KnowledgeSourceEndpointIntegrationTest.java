@@ -124,7 +124,9 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         mvc.perform(get("/api/v1/ai/knowledge-sources").with(auth(member())).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(1))
-                .andExpect(jsonPath("$.items[0].status").value("PROCESSING"));
+                .andExpect(jsonPath("$.items[0].status").value("PROCESSING"))
+                .andExpect(jsonPath("$.items[0].mountType").value("ITEM"))
+                .andExpect(jsonPath("$.items[0].mountId").value(ITEM_ID.toString()));
 
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM audit_log WHERE action = 'AI_KNOWLEDGE_SOURCE_SELECTED'",
@@ -282,7 +284,7 @@ class KnowledgeSourceEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .contains("\"readiness_status\": \"AVAILABLE\"")
                 .contains("\"page_number\": 1")
                 .contains("\"embedding_dimensions\": 1024")
-                .contains("\"chunker_version\": \"1\"")
+                .contains("\"chunker_version\": \"" + KnowledgeChunkDocumentFactory.CHUNKER_VERSION + "\"")
                 .contains("\"processing_version\": 1");
         assertThat(chunks.get(1).get("metadata").toString()).contains("\"page_number\": 2");
     }

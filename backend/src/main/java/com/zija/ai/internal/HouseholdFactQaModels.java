@@ -128,6 +128,9 @@ final class HouseholdFactQaModels {
     ) {
     }
 
+    record ScopePreview(String recommendedAnswerScope) {
+    }
+
     /** 一组确定性结构化结果（表格行，行为列名 → 展示值）。 */
     record StructuredResult(String kind, String title, List<Map<String, String>> rows) {
     }
@@ -159,10 +162,14 @@ final class HouseholdFactQaModels {
     }
 
     /** 权威页面跳转。type ∈ ITEM / LOT / LOCATION / MOVEMENT / REMINDER / ATTACHMENT。 */
-    record Jump(String type, String label, String itemId, String lotId, String locationId, String attachmentId) {
+    record Jump(String type, String label, String itemId, String lotId, String locationId, String attachmentId, String kind) {
 
         Jump(String type, String label, String itemId, String lotId, String locationId) {
-            this(type, label, itemId, lotId, locationId, null);
+            this(type, label, itemId, lotId, locationId, null, null);
+        }
+
+        Jump(String type, String label, String itemId, String lotId, String locationId, String attachmentId) {
+            this(type, label, itemId, lotId, locationId, attachmentId, null);
         }
     }
 

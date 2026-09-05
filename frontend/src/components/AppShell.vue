@@ -180,7 +180,10 @@ const qaMenuRoute = computed(() => {
   const existingType = routeQueryString(route.query.contextType);
   const existingId = routeQueryString(route.query.contextId);
   if (existingType && existingId) {
-    return { path: "/qa", query: { contextType: existingType, contextId: existingId } };
+    const query: Record<string, string> = { contextType: existingType, contextId: existingId };
+    const existingLabel = routeQueryString(route.query.contextLabel);
+    if (existingLabel) query.contextLabel = existingLabel;
+    return { path: "/qa", query };
   }
   if (route.path === "/items") {
     return qaRoute("ITEM", route.query.highlight);

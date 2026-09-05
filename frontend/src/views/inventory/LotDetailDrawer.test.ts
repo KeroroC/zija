@@ -26,6 +26,13 @@ vi.mock("../../api/file", () => ({
   remountAttachmentToHousehold: vi.fn(),
 }));
 
+const pushMock = vi.fn();
+
+vi.mock("vue-router", () => ({
+  useRouter: () => ({ push: pushMock }),
+  useRoute: () => ({ query: {} }),
+}));
+
 const fetchLotMock = vi.mocked(fetchLot);
 const fetchMovementsMock = vi.mocked(fetchMovements);
 const listLotAttachmentsMock = vi.mocked(listLotAttachments);
@@ -73,6 +80,7 @@ describe("LotDetailDrawer", () => {
     renameAttachmentMock.mockReset().mockResolvedValue(receipt);
     deleteAttachmentMock.mockReset().mockResolvedValue(receipt);
     remountMock.mockReset().mockResolvedValue(receipt);
+    pushMock.mockReset();
   });
 
   afterEach(() => {
@@ -146,5 +154,21 @@ describe("LotDetailDrawer", () => {
     await flushPromises();
 
     expect(errorSpy).toHaveBeenCalledWith("同一挂载点下附件名字不可重复");
+  });
+
+  it("routes from the lot detail drawer into Q&A with the object name", async () => {
+    const w = mountDrawer();
+    await flushPromises();
+
+    const askBtn = w.findAll(".el-button").find((b) => b.text().includes("问这个"));
+    expect(askBtn).toBeTruthy();
+
+    await askBtn!.trigger("click");
+    await flushPromises();
+
+    expect(pushMock).toHaveBeenCalledWith({
+      name: "qa",
+      query: { contextType: "LOT", contextId: "lot-1", contextLabel: "吸尘器 · B2026-01" },
+    });
   });
 });

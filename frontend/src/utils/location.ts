@@ -14,3 +14,18 @@ export function compareLocationNodes(a: LocationNode, b: LocationNode): number {
   if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
+
+export function flattenLocationChoices(
+  nodes: LocationNode[],
+  prefix = "",
+): Array<{ value: string; label: string }> {
+  const result: Array<{ value: string; label: string }> = []
+  for (const node of nodes) {
+    const label = prefix ? `${prefix} / ${node.name}` : node.name
+    result.push({ value: node.id, label })
+    if (node.children?.length) {
+      result.push(...flattenLocationChoices(node.children, label))
+    }
+  }
+  return result
+}

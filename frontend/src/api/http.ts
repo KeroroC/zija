@@ -97,14 +97,23 @@ export function clearCsrf(): void {
   csrfPromise = null;
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new DOMException("The operation was aborted.", "AbortError");
+}
+
 async function coreRequest<T>(
   method: string,
   path: string,
   body?: unknown,
-  extra?: Record<string, string>
+  extra?: Record<string, string>,
+  signal?: AbortSignal
 ): Promise<T> {
+  throwIfAborted(signal);
   if (method !== "GET") {
     await ensureCsrf();
+    throwIfAborted(signal);
   }
   const headers: Record<string, string> = {
     Accept: "application/json"
@@ -127,7 +136,8 @@ async function coreRequest<T>(
     method,
     credentials: "same-origin",
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal
   });
 
   if (response.status === 204) {
@@ -159,12 +169,12 @@ async function coreRequest<T>(
   );
 }
 
-export async function getJson<T>(path: string): Promise<T> {
-  return coreRequest<T>("GET", path);
+export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return coreRequest<T>("GET", path, undefined, undefined, signal);
 }
 
-export async function postJson<T>(path: string, body?: unknown): Promise<T> {
-  return coreRequest<T>("POST", path, body);
+export async function postJson<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  return coreRequest<T>("POST", path, body, undefined, signal);
 }
 
 export async function postJsonAndRefreshCsrf<T>(

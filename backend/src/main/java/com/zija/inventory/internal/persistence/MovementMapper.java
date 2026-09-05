@@ -34,4 +34,12 @@ public interface MovementMapper extends BaseMapper<MovementEntity> {
     List<InventoryApi.MovementDump> dumpMovements(@Param("householdId") UUID householdId,
                                                    @Param("cursor") OffsetDateTime cursor,
                                                    @Param("limit") int limit);
+
+    List<MovementEntity> findRecentByItem(
+            @Param("householdId") UUID householdId,
+            @Param("itemId") UUID itemId,
+            @Param("lotId") UUID lotId,
+            @Param("locationId") UUID locationId,
+            @Param("limit") int limit
+    );
 }

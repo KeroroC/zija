@@ -28,6 +28,11 @@ vi.mock("../../../stores/session", () => ({
   }),
 }));
 
+const routeQuery: Record<string, string> = {};
+vi.mock("vue-router", () => ({
+  useRoute: () => ({ query: routeQuery }),
+}));
+
 import MovementsView from "../MovementsView.vue";
 import { getReport, buildExportUrl } from "../../../api/reporting";
 import { fetchItems } from "../../../api/catalog";
@@ -90,6 +95,9 @@ describe("MovementsView 数量符号", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    for (const key of Object.keys(routeQuery)) {
+      delete routeQuery[key];
+    }
     defaultMocks();
     openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
   });
@@ -195,5 +203,16 @@ describe("MovementsView 数量符号", () => {
     const data = treeSelect.props("data") as any[];
     expect(data[0].name).toBe("家");
     expect(data[0].children[0].name).toBe("厨房");
+  });
+
+  it("initializes the item filter from route query itemId", async () => {
+    routeQuery.itemId = "i1";
+    wrapper = mountV();
+    await flushPromises();
+
+    expect(mockGetReport).toHaveBeenCalledWith(
+      "movements",
+      expect.objectContaining({ itemId: "i1" }),
+    );
   });
 });

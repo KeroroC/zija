@@ -3,6 +3,7 @@ package com.zija.inventory.internal.persistence;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zija.inventory.InventoryApi;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -37,4 +38,10 @@ public interface LotMapper extends BaseMapper<LotEntity> {
     IPage<LotWithDetails> findPage(Page<LotWithDetails> page,
                                    @Param("householdId") UUID householdId,
                                    @Param("itemId") UUID itemId);
+
+    List<InventoryApi.LotQuestionMatch> findLotsMatchingQuestion(
+            @Param("householdId") UUID householdId,
+            @Param("question") String question,
+            @Param("limit") int limit
+    );
 }

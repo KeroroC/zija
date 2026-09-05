@@ -49,6 +49,8 @@ export type KnowledgeSourceDisabledReason = "CANCELLED" | "RECYCLED";
 /** 知识来源对外视图：按附件 id 与附件列表关联展示。 */
 export interface KnowledgeSourceInfo {
   fileId: string;
+  mountType?: "HOUSEHOLD" | "ITEM" | "LOT";
+  mountId?: string;
   status: KnowledgeSourceStatus;
   failureCode?: string;
   failureMessage?: string;
@@ -97,6 +99,10 @@ export interface QaQuestionOptions {
   confirmedScopes?: QaQuestionScope[];
 }
 
+export interface QaScopePreview {
+  recommendedAnswerScope: Exclude<QaAnswerScope, "AUTO">;
+}
+
 /** 一组确定性结构化结果（行为列名 → 展示值）。 */
 export interface QaStructuredResult {
   kind: string;
@@ -132,6 +138,7 @@ export interface QaJump {
   lotId?: string;
   locationId?: string;
   attachmentId?: string;
+  kind?: string;
 }
 
 export interface QaScopeCandidate {

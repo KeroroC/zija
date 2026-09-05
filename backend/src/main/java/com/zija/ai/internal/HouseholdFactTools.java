@@ -230,7 +230,7 @@ final class HouseholdFactTools {
                         String.valueOf(lot.itemId()), String.valueOf(lot.lotId()), null));
             });
             if (!lots.isEmpty()) {
-                collector.addJump(new Jump("REMINDER", "查看临期提醒", null, null, null));
+                collector.addJump(new Jump("REMINDER", "查看临期提醒", null, null, null, null, "EXPIRY"));
             }
             return Map.of("expiringLots", lots.stream().map(lot -> Map.of(
                     "itemName", lot.itemName(),
@@ -240,6 +240,49 @@ final class HouseholdFactTools {
                     "quantity", str(lot.quantity()))).toList());
         } catch (RuntimeException ex) {
             return unavailable("expiring_lots");
+        }
+    }
+
+    @Tool(description = "查询当前家庭已经过期但仍有库存的批次（含物品、批次号、到期日、已过期天数）。不含尚未到期的临期批次。")
+    Map<String, Object> expiredLots(
+            @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
+    ) {
+        int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("expired_lots");
+        }
+        try {
+            if (isLocationTarget() || isLotTarget() && targetItemId() == null) {
+                return unavailable("expired_lots");
+            }
+            var lots = queries.expiredLots(
+                    householdId, n, targetItemId(), isLotTarget() ? target.id() : null);
+            List<Map<String, String>> rows = lots.stream()
+                    .map(lot -> cellMap("物品", lot.itemName(),
+                            "批次号", lot.lotNumber(),
+                            "到期日", ISO_DATE.format(lot.expiryDate()),
+                            "已过期天数", String.valueOf(lot.daysUntilExpiry()),
+                            "数量", str(lot.quantity()),
+                            "单位", lot.unitName()))
+                    .toList();
+            collector.addResult(new StructuredResult("EXPIRED_LOTS", "已过期批次", rows));
+            lots.forEach(lot -> {
+                collector.addJump(new Jump("LOT", lot.itemName() + " " + lot.lotNumber(),
+                        String.valueOf(lot.itemId()), String.valueOf(lot.lotId()), null));
+                collector.addJump(new Jump("ITEM", lot.itemName(),
+                        String.valueOf(lot.itemId()), String.valueOf(lot.lotId()), null));
+            });
+            if (!lots.isEmpty()) {
+                collector.addJump(new Jump("REMINDER", "查看过期提醒", null, null, null, null, "EXPIRY"));
+            }
+            return Map.of("expiredLots", lots.stream().map(lot -> Map.of(
+                    "itemName", lot.itemName(),
+                    "lotNumber", lot.lotNumber(),
+                    "expiryDate", ISO_DATE.format(lot.expiryDate()),
+                    "daysOverdue", String.valueOf(lot.daysUntilExpiry()),
+                    "quantity", str(lot.quantity()))).toList());
+        } catch (RuntimeException ex) {
+            return unavailable("expired_lots");
         }
     }
 
@@ -266,7 +309,7 @@ final class HouseholdFactTools {
             items.forEach(item -> collector.addJump(
                     new Jump("ITEM", item.itemName(), String.valueOf(item.itemId()), null, null)));
             if (!items.isEmpty()) {
-                collector.addJump(new Jump("REMINDER", "查看低库存提醒", null, null, null));
+                collector.addJump(new Jump("REMINDER", "查看低库存提醒", null, null, null, null, "LOW_STOCK"));
             }
             return Map.of("lowStock", items.stream().map(item -> Map.of(
                     "itemName", item.itemName(),
@@ -274,6 +317,42 @@ final class HouseholdFactTools {
                     "threshold", str(item.threshold()))).toList());
         } catch (RuntimeException ex) {
             return unavailable("low_stock");
+        }
+    }
+
+    @Tool(description = "查询当前家庭待处理的提醒任务（临期、低库存），返回类型、严重程度、标题、到期时间与关联物品/批次。不回答提醒规则如何配置。")
+    Map<String, Object> openReminderTasks(
+            @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
+    ) {
+        int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("open_reminder_tasks");
+        }
+        try {
+            var tasks = queries.reminderTasks(householdId, n);
+            List<Map<String, String>> rows = tasks.stream()
+                    .map(task -> cellMap(
+                            "类型", localizeReminderKind(task.kind()),
+                            "严重程度", localizeReminderSeverity(task.severity()),
+                            "标题", task.title(),
+                            "到期时间", task.dueAt() != null ? task.dueAt().toString() : "-",
+                            "物品", orDash(task.itemName()),
+                            "批次", orDash(task.lotNumber())))
+                    .toList();
+            collector.addResult(new StructuredResult("REMINDER_TASKS", "待处理提醒", rows));
+            collector.addJump(new Jump("REMINDER", "查看提醒中心", null, null, null));
+            return Map.of("reminderTasks", tasks.stream().map(task -> {
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("kind", localizeReminderKind(task.kind()));
+                body.put("severity", localizeReminderSeverity(task.severity()));
+                body.put("title", task.title());
+                body.put("dueAt", task.dueAt() != null ? task.dueAt().toString() : "");
+                body.put("itemName", orDash(task.itemName()));
+                body.put("lotNumber", orDash(task.lotNumber()));
+                return body;
+            }).toList());
+        } catch (RuntimeException ex) {
+            return unavailable("open_reminder_tasks");
         }
     }
 
@@ -308,7 +387,7 @@ final class HouseholdFactTools {
             collector.addResult(new StructuredResult("MOVEMENTS", "「" + itemName + "」最近流水", rows));
             collector.addJump(new Jump("ITEM", itemName, authorizedItemId.toString(), null, null));
             if (!rows.isEmpty()) {
-                collector.addJump(new Jump("MOVEMENT", "查看流水", itemId, null, null));
+                collector.addJump(new Jump("MOVEMENT", "查看流水", authorizedItemId.toString(), null, null));
             }
             return Map.of("movements", movements.stream().map(m -> Map.of(
                     "type", m.type(),
@@ -386,6 +465,25 @@ final class HouseholdFactTools {
         body.put("status", "UNAVAILABLE");
         body.put("detail", "家庭事实来源暂时不可用，无法确认（tool=" + tool + "）");
         return body;
+    }
+
+    private static String localizeReminderKind(String kind) {
+        if ("EXPIRY".equals(kind)) {
+            return "临期";
+        }
+        if ("LOW_STOCK".equals(kind)) {
+            return "低库存";
+        }
+        return orDash(kind);
+    }
+
+    private static String localizeReminderSeverity(String severity) {
+        return switch (severity == null ? "" : severity) {
+            case "URGENT" -> "紧急";
+            case "WARN" -> "警告";
+            case "INFO" -> "提示";
+            default -> orDash(severity);
+        };
     }
 
     private static String orDash(String value) {

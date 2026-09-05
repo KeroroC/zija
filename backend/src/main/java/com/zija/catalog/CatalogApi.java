@@ -30,6 +30,41 @@ public interface CatalogApi {
     /** 列出指定家庭下所有活跃物品（每日扫描等场景使用）。 */
     List<ItemInfo> listActiveItems(UUID householdId);
 
+    /**
+     * 按名称子串搜索活跃物品（{@code ILIKE %nameContains%}）。
+     * {@code nameContains} 为空时返回该家庭前 {@code limit} 条活跃物品；
+     * {@code itemId} 非空时只考虑该物品。不要把 {@link #dumpItems} 当在线查询。
+     */
+    List<ItemInfo> searchActiveItemsByName(UUID householdId, String nameContains, UUID itemId, int limit);
+
+    /**
+     * 活跃物品：其名称作为子串出现在 {@code question} 中（倒置匹配，不是对整句 ILIKE）。
+     * 空白名称不匹配。品牌/标签请用 {@link #findActiveItemsMatchingBrandOrTagInQuestion}。
+     */
+    List<ItemInfo> findActiveItemsNamedInQuestion(UUID householdId, String question, int limit);
+
+    /**
+     * 活跃物品：其品牌名或标签名作为子串出现在 {@code question} 中（倒置匹配，不是对整句 ILIKE）。
+     * 空白品牌/标签不匹配。不要把 {@link #dumpItems} 当在线查询。
+     */
+    List<ItemBrandOrTagMatch> findActiveItemsMatchingBrandOrTagInQuestion(
+            UUID householdId, String question, int limit);
+
+    /** 问答解析用的品牌/标签命中（含物品 id、名称与命中的品牌名和/或标签名）。 */
+    record ItemBrandOrTagMatch(
+            UUID itemId,
+            String itemName,
+            String matchedBrandName,
+            String matchedTagName
+    ) {
+    }
+
+    /**
+     * 批量获取指定家庭下计量单位的名称。不属于该家庭的 id 不出现在结果中；
+     * 返回 map 缺 key 表示找不到，由调用侧兜底。
+     */
+    Map<UUID, String> unitNames(UUID householdId, Collection<UUID> unitIds);
+
     /** 物品基本信息。 */
     record ItemInfo(
             UUID id,

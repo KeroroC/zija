@@ -78,4 +78,33 @@ class HouseholdFactQaController {
                         request.question(), scope, request.answerScope(), pageContext, confirmedScopes),
                 String.valueOf(httpRequest.getAttribute(ZijaRequestIdFilter.ATTRIBUTE)));
     }
+
+    record ScopePreviewRequest(
+            @NotBlank(message = "问题不能为空")
+            @Size(max = 2000, message = "问题过长")
+            String question,
+            @Valid ScopeRequest pageContext
+    ) {
+    }
+
+    record ScopePreviewResponse(String recommendedAnswerScope) {
+    }
+
+    /**
+     * 问答范围预览。只按服务端词表推荐，不启动问答会话、不占用模型并发。
+     */
+    @RequireMember
+    @PostMapping("/qa/scope-preview")
+    ScopePreviewResponse previewScope(
+            @AuthenticationPrincipal ZijaPrincipal principal,
+            @Valid @RequestBody ScopePreviewRequest request
+    ) {
+        HouseholdFactQaModels.QaTargetInput pageContext = request.pageContext() == null
+                ? null
+                : new HouseholdFactQaModels.QaTargetInput(
+                        request.pageContext().type(), request.pageContext().id(), request.pageContext().label());
+        return new ScopePreviewResponse(
+                qaService.previewScope(principal.getAccountId(), request.question(), pageContext)
+                        .recommendedAnswerScope());
+    }
 }

@@ -599,6 +599,27 @@ describe("ItemsPage", () => {
     expect(pushMock).toHaveBeenCalledWith({ name: "inventory", query: { action: "inbound", itemId: "item-1" } });
   });
 
+  it("routes from the item detail drawer into Q&A with the object name", async () => {
+    wrapper = mount(ItemsPage, { global: { plugins: [ElementPlus] } });
+    await flushPromises();
+
+    const firstRow = wrapper.findAll("tbody tr")[0];
+    await firstRow.trigger("click");
+    await flushPromises();
+
+    const drawer = wrapper.findComponent({ name: "ElDrawer" });
+    const askBtn = drawer.findAll(".el-button").find((b) => b.text().includes("问这个"));
+    expect(askBtn).toBeTruthy();
+
+    await askBtn!.trigger("click");
+    await flushPromises();
+
+    expect(pushMock).toHaveBeenCalledWith({
+      name: "qa",
+      query: { contextType: "ITEM", contextId: "item-1", contextLabel: "耳机" },
+    });
+  });
+
   // ==================== 附件与封面指定 ====================
 
   async function openItemDetail() {

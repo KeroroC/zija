@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 
 /**
  * 家庭事实问答编排。
@@ -106,6 +107,22 @@ class HouseholdFactQaService {
         }
         audit(householdId, accountId, requestId, session.providerId(), answer);
         return answer;
+    }
+
+    HouseholdFactQaModels.ScopePreview previewScope(
+            UUID accountId,
+            String question,
+            HouseholdFactQaModels.QaTargetInput pageContext
+    ) {
+        var member = householdApi.requireActiveMember(accountId);
+        HouseholdFactQaModels.QaTarget pageTarget = null;
+        try {
+            pageTarget = toTarget(pageContext);
+        } catch (RuntimeException ignored) {
+            pageTarget = null;
+        }
+        return new HouseholdFactQaModels.ScopePreview(
+                scopePlanner.previewRecommendedScope(member.householdId(), question, pageTarget));
     }
 
     private HouseholdFactQaModels.QaRequest toRequest(HouseholdFactQaModels.QaInput input) {
@@ -275,6 +292,10 @@ class HouseholdFactQaService {
             fallbackItemId(householdId, target).ifPresentOrElse(
                     itemId -> tools.itemMovements(itemId.toString(), 10),
                     () -> collector.markFactSourceUnavailable());
+        } else if (asksPendingReminders(normalized)) {
+            tools.openReminderTasks(10);
+        } else if (containsAny(normalized, "过期")) {
+            tools.expiredLots(10);
         } else if (containsAny(normalized, "到期", "临期")) {
             tools.expiringLots(30, 10);
         } else if (containsAny(normalized, "低库存", "缺货", "短缺")) {
@@ -323,6 +344,13 @@ class HouseholdFactQaService {
         return java.util.Optional.empty();
     }
 
+    private static boolean asksPendingReminders(String question) {
+        if (!question.contains("提醒")) {
+            return false;
+        }
+        return !containsAny(question, "提醒规则", "怎么设置", "如何设置", "系统配置");
+    }
+
     private static boolean containsAny(String value, String... terms) {
         return java.util.Arrays.stream(terms).anyMatch(value::contains);
     }
@@ -364,11 +392,38 @@ class HouseholdFactQaService {
             HouseholdFactQaModels.ScopePlan plan,
             AiService.QaSession session
     ) {
-        HouseholdFactQaModels.Answer fact = askFacts(householdId, question, plan.target(), session);
-        HouseholdFactQaModels.Answer knowledge = knowledgeQaService
-                .ask(householdId, question, plan.knowledgeTarget(), session);
-
-        return combineMixedAnswer(question, plan, fact, knowledge);
+        var factFuture = executionGuard.supplyAsync(() -> {
+            try {
+                return askFacts(householdId, question, plan.target(), session);
+            } catch (RuntimeException exception) {
+                String reason = exception instanceof AiRequestLimitException limit
+                        ? limit.reasonCode()
+                        : "MODEL_CALL_FAILED";
+                return structuredFactFallback(householdId, question, plan.target(), reason);
+            }
+        });
+        var knowledgeFuture = executionGuard.supplyAsync(() -> {
+            try {
+                return knowledgeQaService.ask(householdId, question, plan.knowledgeTarget(), session);
+            } catch (RuntimeException exception) {
+                return knowledgeQaService.executionUnavailable(
+                        householdId, question, plan.knowledgeTarget());
+            }
+        });
+        try {
+            return combineMixedAnswer(question, plan, factFuture.get(), knowledgeFuture.get());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            factFuture.cancel(true);
+            knowledgeFuture.cancel(true);
+            throw new AiProviderUnavailableException("AI_QA_INTERRUPTED", exception);
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw new AiProviderUnavailableException("AI_QA_FAILED", cause);
+        }
     }
 
     private HouseholdFactQaModels.Answer combineMixedAnswer(
@@ -429,7 +484,7 @@ class HouseholdFactQaService {
         Map<String, HouseholdFactQaModels.Jump> unique = new LinkedHashMap<>();
         for (var jump : concat(first, second)) {
             String key = String.join("|", jump.type(), value(jump.itemId()), value(jump.lotId()),
-                    value(jump.locationId()), value(jump.attachmentId()));
+                    value(jump.locationId()), value(jump.attachmentId()), value(jump.kind()));
             unique.putIfAbsent(key, jump);
         }
         return List.copyOf(unique.values());
