@@ -125,17 +125,20 @@ class AiKnowledgeVectorStore {
         var householdMount = filter.and(
                 filter.eq("mount_type", FileApi.MOUNT_HOUSEHOLD),
                 filter.eq("mount_id", scope.householdId().toString()));
-        var itemMount = filter.and(
-                filter.and(filter.eq("mount_type", FileApi.MOUNT_ITEM),
-                        filter.eq("mount_id", scope.itemId().toString())),
-                filter.eq("item_id", scope.itemId().toString()));
-        FilterExpressionBuilder.Op mounts = filter.or(householdMount, itemMount);
-        if (scope.lotId() != null) {
-            var lotMount = filter.and(
-                    filter.and(filter.eq("mount_type", FileApi.MOUNT_LOT),
-                            filter.eq("mount_id", scope.lotId().toString())),
-                    filter.eq("lot_id", scope.lotId().toString()));
-            mounts = filter.or(mounts, lotMount);
+        FilterExpressionBuilder.Op mounts = householdMount;
+        if (scope.itemId() != null) {
+            var itemMount = filter.and(
+                    filter.and(filter.eq("mount_type", FileApi.MOUNT_ITEM),
+                            filter.eq("mount_id", scope.itemId().toString())),
+                    filter.eq("item_id", scope.itemId().toString()));
+            mounts = filter.or(householdMount, itemMount);
+            if (scope.lotId() != null) {
+                var lotMount = filter.and(
+                        filter.and(filter.eq("mount_type", FileApi.MOUNT_LOT),
+                                filter.eq("mount_id", scope.lotId().toString())),
+                        filter.eq("lot_id", scope.lotId().toString()));
+                mounts = filter.or(mounts, lotMount);
+            }
         }
 
         var expression = filter.and(
@@ -174,8 +177,8 @@ class AiKnowledgeVectorStore {
             List<UUID> attachmentIds
     ) {
         KnowledgeSearchScope {
-            if (householdId == null || itemId == null) {
-                throw new IllegalArgumentException("householdId and itemId are required");
+            if (householdId == null) {
+                throw new IllegalArgumentException("householdId is required");
             }
             attachmentIds = attachmentIds == null ? List.of() : List.copyOf(attachmentIds);
         }

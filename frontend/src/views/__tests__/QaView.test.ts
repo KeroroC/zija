@@ -293,13 +293,21 @@ describe("QaView", () => {
     expect(mockFetchKnowledgeSources).toHaveBeenCalledOnce();
   });
 
-  it("asks to confirm an item or lot before summarizing knowledge sources", async () => {
+  it("summarizes household-mounted knowledge sources when no item is selected", async () => {
+    mockFetchKnowledgeSources.mockResolvedValue([
+      knowledgeSource("h1", "AVAILABLE", { mountType: "HOUSEHOLD", mountId: "hh-1" }),
+      knowledgeSource("h2", "PROCESSING", { mountType: "HOUSEHOLD", mountId: "hh-1" }),
+      knowledgeSource("i1", "FAILED", { mountType: "ITEM", mountId: "item-1" }),
+    ]);
     const wrapper = mountV();
     await flushPromises();
 
-    expect(mockFetchKnowledgeSources).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-testid="qa-knowledge-prep"]').text())
-      .toContain("知识问答需先确认物品、批次或使用家庭附件");
+    expect(mockFetchKnowledgeSources).toHaveBeenCalledOnce();
+    const prep = wrapper.get('[data-testid="qa-knowledge-prep"]').text();
+    expect(prep).toContain("知识准备状态");
+    expect(prep).toContain("处理中 1");
+    expect(prep).toContain("可用 1");
+    expect(prep).toContain("失败 0");
   });
 
   it("still allows household-fact questions when status APIs fail", async () => {

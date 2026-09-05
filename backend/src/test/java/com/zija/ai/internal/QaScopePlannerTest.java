@@ -115,9 +115,49 @@ class QaScopePlannerTest {
         assertThat(plan.target().id()).isEqualTo(LOT_A);
     }
 
+    @Test
+    void knowledgeQuestionWithoutItemOrLotUsesHouseholdMountedSourcesWithoutConfirmation() {
+        var plan = planner.plan(HOUSEHOLD_ID, request("家里的维护约定怎么写？", "KNOWLEDGE_SOURCE"));
+
+        assertThat(plan.needsConfirmation()).isFalse();
+        assertThat(plan.usedAnswerScope()).isEqualTo("KNOWLEDGE_SOURCE");
+        assertThat(plan.target()).isNull();
+        assertThat(plan.knowledgeTarget()).isNull();
+        assertThat(plan.candidates()).isEmpty();
+    }
+
+    @Test
+    void mixedQuestionWithoutKnowledgeTargetKeepsHouseholdFactsAndHouseholdKnowledge() {
+        var plan = planner.plan(HOUSEHOLD_ID, request("家里的维护约定怎么写？", "BOTH"));
+
+        assertThat(plan.needsConfirmation()).isFalse();
+        assertThat(plan.usedAnswerScope()).isEqualTo("BOTH");
+        assertThat(plan.target()).isNull();
+        assertThat(plan.knowledgeTarget()).isNull();
+        assertThat(plan.candidates()).isEmpty();
+    }
+
+    @Test
+    void knowledgeQuestionStillConfirmsWhenMultipleSameNameItemsAreEligible() {
+        UUID secondItemId = UUID.fromString("00000000-0000-0000-0000-000000000011");
+        catalogApi.items = List.of(item("牛奶"), item(secondItemId, "牛奶"));
+        catalogApi.itemNames = Map.of(ITEM_ID, "牛奶", secondItemId, "牛奶");
+
+        var plan = planner.plan(HOUSEHOLD_ID, request("牛奶怎么维护？", "KNOWLEDGE_SOURCE"));
+
+        assertThat(plan.needsConfirmation()).isTrue();
+        assertThat(plan.candidates()).hasSize(2);
+        assertThat(plan.candidates()).allMatch(candidate -> "ITEM".equals(candidate.type()));
+        assertThat(plan.knowledgeTarget()).isNull();
+    }
+
     private static CatalogApi.ItemInfo item(String name) {
+        return item(ITEM_ID, name);
+    }
+
+    private static CatalogApi.ItemInfo item(UUID itemId, String name) {
         return new CatalogApi.ItemInfo(
-                ITEM_ID, HOUSEHOLD_ID, name, "CONSUMABLE", null, null, UNIT_ID, null, "ACTIVE",
+                itemId, HOUSEHOLD_ID, name, "CONSUMABLE", null, null, UNIT_ID, null, "ACTIVE",
                 null, null, null, null);
     }
 

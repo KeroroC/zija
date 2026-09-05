@@ -104,11 +104,6 @@ class QaScopePlanner {
             }
         }
 
-        if ((KNOWLEDGE_SOURCE.equals(used) || BOTH.equals(used)) && knowledgeTarget == null) {
-            return new ScopePlan(recommended, used,
-                    "知识来源需要先确认物品或批次范围",
-                    target, null, List.of(), true);
-        }
         if (KNOWLEDGE_SOURCE.equals(used)) target = knowledgeTarget;
         return new ScopePlan(recommended, used, reason, target, knowledgeTarget, List.of(), false);
     }

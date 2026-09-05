@@ -482,14 +482,9 @@ const knowledgeRange = computed<{ type: "ITEM" | "LOT"; id: string } | undefined
 });
 
 const knowledgePrepLine = computed(() => {
-  if (knowledgePrep.value) {
-    const { processing, available, failed } = knowledgePrep.value;
-    return `知识准备状态：处理中 ${processing} · 可用 ${available} · 失败 ${failed}`;
-  }
-  if (!knowledgeRange.value) {
-    return "知识问答需先确认物品、批次或使用家庭附件";
-  }
-  return "";
+  if (!knowledgePrep.value) return "";
+  const { processing, available, failed } = knowledgePrep.value;
+  return `知识准备状态：处理中 ${processing} · 可用 ${available} · 失败 ${failed}`;
 });
 
 const scopeChoices = computed(() => {
@@ -560,16 +555,12 @@ onMounted(() => {
 });
 
 watch(
-  () => knowledgeRange.value ? `${knowledgeRange.value.type}:${knowledgeRange.value.id}` : "",
-  async (rangeKey, _previous, onCleanup) => {
+  () => knowledgeRange.value ? `${knowledgeRange.value.type}:${knowledgeRange.value.id}` : "HOUSEHOLD",
+  async (_rangeKey, _previous, onCleanup) => {
     let active = true;
     onCleanup(() => {
       active = false;
     });
-    if (!rangeKey || !knowledgeRange.value) {
-      knowledgePrep.value = null;
-      return;
-    }
     const range = knowledgeRange.value;
     try {
       const sources = await fetchKnowledgeSources();
@@ -592,7 +583,7 @@ async function loadAiStatus() {
 
 function summarizeKnowledgePrep(
   sources: KnowledgeSourceInfo[],
-  range: { type: "ITEM" | "LOT"; id: string },
+  range: { type: "ITEM" | "LOT"; id: string } | undefined,
 ): { processing: number; available: number; failed: number } {
   const counts = { processing: 0, available: 0, failed: 0 };
   for (const source of sources) {
@@ -606,8 +597,10 @@ function summarizeKnowledgePrep(
 
 function isKnowledgeSourceInRange(
   source: KnowledgeSourceInfo,
-  range: { type: "ITEM" | "LOT"; id: string },
+  range: { type: "ITEM" | "LOT"; id: string } | undefined,
 ): boolean {
+  if (source.mountType === "HOUSEHOLD") return true;
+  if (!range) return false;
   return source.mountType === range.type && source.mountId === range.id;
 }
 

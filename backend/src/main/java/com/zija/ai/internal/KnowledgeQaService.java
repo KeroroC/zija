@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** 物品或批次范围内的知识来源检索、基于证据生成与回答依据映射。 */
+/** 家庭、物品或批次范围内的知识来源检索、基于证据生成与回答依据映射。 */
 @Service
 class KnowledgeQaService {
 
@@ -155,6 +155,9 @@ class KnowledgeQaService {
     }
 
     private Target resolveTarget(UUID householdId, QaTarget scope) {
+        if (scope == null) {
+            return new Target(null, null, null);
+        }
         if ("ITEM".equals(scope.type())) {
             String itemName = catalogApi.itemNames(householdId, List.of(scope.id())).get(scope.id());
             if (itemName == null) {
@@ -222,7 +225,7 @@ class KnowledgeQaService {
     private boolean isWithinTarget(KnowledgeSourceEntity source, UUID householdId, Target target) {
         return switch (source.getMountType()) {
             case FileApi.MOUNT_HOUSEHOLD -> householdId.equals(source.getMountId());
-            case FileApi.MOUNT_ITEM -> target.itemId().equals(source.getMountId());
+            case FileApi.MOUNT_ITEM -> target.itemId() != null && target.itemId().equals(source.getMountId());
             case FileApi.MOUNT_LOT -> target.lotId() != null && target.lotId().equals(source.getMountId());
             default -> false;
         };
@@ -273,9 +276,9 @@ class KnowledgeQaService {
 
     private List<Jump> answerJumps(Target target, List<AvailableAttachment> attachments) {
         List<Jump> jumps = new ArrayList<>();
-        if (target.lotId() == null) {
+        if (target.itemId() != null && target.lotId() == null) {
             jumps.add(new Jump("ITEM", target.label(), target.itemId().toString(), null, null));
-        } else {
+        } else if (target.itemId() != null) {
             jumps.add(new Jump("LOT", target.label(), target.itemId().toString(),
                     target.lotId().toString(), null));
         }
