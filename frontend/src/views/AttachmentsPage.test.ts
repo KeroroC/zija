@@ -214,9 +214,7 @@ describe("AttachmentsPage", () => {
     wrapper = mountPage();
     await flushPromises();
 
-    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
-    await radioGroup.vm.$emit("update:modelValue", "recycled");
-    await radioGroup.vm.$emit("change", "recycled");
+    await wrapper.get('[data-testid="attachment-view-recycled"]').trigger("click");
     await flushPromises();
 
     expect(listMock).toHaveBeenLastCalledWith(
@@ -245,9 +243,7 @@ describe("AttachmentsPage", () => {
     wrapper = mountPage();
     await flushPromises();
 
-    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
-    await radioGroup.vm.$emit("update:modelValue", "recycled");
-    await radioGroup.vm.$emit("change", "recycled");
+    await wrapper.get('[data-testid="attachment-view-recycled"]').trigger("click");
     await flushPromises();
 
     await wrapper.get('[data-testid="attachment-restore"]').trigger("click");
@@ -265,9 +261,7 @@ describe("AttachmentsPage", () => {
 
     wrapper = mountPage();
     await flushPromises();
-    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
-    await radioGroup.vm.$emit("update:modelValue", "recycled");
-    await radioGroup.vm.$emit("change", "recycled");
+    await wrapper.get('[data-testid="attachment-view-recycled"]').trigger("click");
     await flushPromises();
 
     await wrapper.get('[data-testid="attachment-restore"]').trigger("click");
@@ -283,9 +277,7 @@ describe("AttachmentsPage", () => {
     // 「全部」视图不暴露不可逆操作
     expect(wrapper.find('[data-testid="attachment-purge"]').exists()).toBe(false);
 
-    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
-    await radioGroup.vm.$emit("update:modelValue", "recycled");
-    await radioGroup.vm.$emit("change", "recycled");
+    await wrapper.get('[data-testid="attachment-view-recycled"]').trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[data-testid="attachment-purge"]').exists()).toBe(true);
@@ -298,9 +290,7 @@ describe("AttachmentsPage", () => {
 
     wrapper = mountPage();
     await flushPromises();
-    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
-    await radioGroup.vm.$emit("update:modelValue", "recycled");
-    await radioGroup.vm.$emit("change", "recycled");
+    await wrapper.get('[data-testid="attachment-view-recycled"]').trigger("click");
     await flushPromises();
 
     await wrapper.get('[data-testid="attachment-purge"]').trigger("click");
@@ -317,9 +307,7 @@ describe("AttachmentsPage", () => {
 
     wrapper = mountPage();
     await flushPromises();
-    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
-    await radioGroup.vm.$emit("update:modelValue", "recycled");
-    await radioGroup.vm.$emit("change", "recycled");
+    await wrapper.get('[data-testid="attachment-view-recycled"]').trigger("click");
     await flushPromises();
 
     await wrapper.get('[data-testid="attachment-purge"]').trigger("click");
@@ -336,9 +324,7 @@ describe("AttachmentsPage", () => {
 
     wrapper = mountPage();
     await flushPromises();
-    const radioGroup = wrapper.findComponent({ name: "ElRadioGroup" });
-    await radioGroup.vm.$emit("update:modelValue", "recycled");
-    await radioGroup.vm.$emit("change", "recycled");
+    await wrapper.get('[data-testid="attachment-view-recycled"]').trigger("click");
     await flushPromises();
 
     await wrapper.get('[data-testid="attachment-purge"]').trigger("click");
@@ -521,7 +507,7 @@ describe("AttachmentsPage", () => {
 
     expect(wrapper.text()).toContain("可用");
     expect(wrapper.text()).toContain("失败");
-    // 失败行展示失败原因与重试操作
+    // 失败行展示失败原因（图标+tooltip）与重试/取消操作
     expect(wrapper.get('[data-testid="knowledge-status"]').text()).toContain("失败");
     expect(wrapper.find('[data-testid="knowledge-retry"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="knowledge-cancel"]').exists()).toBe(true);
@@ -529,8 +515,9 @@ describe("AttachmentsPage", () => {
       .findAllComponents({ name: "ElTooltip" })
       .find((tooltip) => tooltip.props("content") === "未在文档中提取到文字，可能是扫描件或空文档");
     expect(failureTooltip).toBeDefined();
+    // 失败原因图标可定位；hover 后内容进入 popper
     const failureReason = wrapper.get('[data-testid="knowledge-failure-reason"]');
-    expect(failureReason.text()).toBe("失败原因");
+    expect(failureReason.attributes("aria-label")).toBe("查看失败原因");
     await failureReason.trigger("mouseenter");
     await new Promise((resolve) => setTimeout(resolve, 200));
     await flushPromises();

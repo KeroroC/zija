@@ -71,21 +71,49 @@ body::after {
 
 /* ============ 应用骨架 ============ */
 .app-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .app-sidebar {
   color: var(--zj-on-dark-100);
   background: var(--zj-pine-800);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.app-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  height: 64px;
-  padding: 20px 20px 0;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px 20px;
+  color: inherit;
+  text-decoration: none;
+  transition: opacity var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.brand:hover {
+  opacity: 0.88;
+}
+
+.brand:active {
+  opacity: 0.78;
+}
+
+.brand-lockup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .brand-cn {
@@ -93,13 +121,25 @@ body::after {
   font-size: 24px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  color: #f4f7f3;
+  color: var(--zj-on-dark-100);
+  line-height: 1;
 }
 
 .brand-en {
-  color: var(--zj-on-dark-400);
+  font-family: var(--zj-sans);
   font-size: 11px;
+  font-weight: 500;
   letter-spacing: 0.22em;
+  line-height: 1;
+  color: var(--zj-on-dark-400);
+}
+
+/* 烫金小印：字标与导航之间的装帧细线，不参与字标内部间距 */
+.brand-rule {
+  flex-shrink: 0;
+  width: 36px;
+  height: 1px;
+  background: color-mix(in srgb, var(--zj-on-dark-100) 40%, transparent);
 }
 
 .nav-group-label {
@@ -162,29 +202,89 @@ body::after {
 }
 
 .app-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: 56px;
-  padding: 0 32px;
-  border-bottom: 1px solid var(--zj-line);
+  padding: 0 40px;
   background: var(--zj-surface);
+  border-top: 1px solid var(--zj-line);
+  border-bottom: 1px solid var(--zj-line);
 }
 
+/* 顶栏书脊双线之间夹 1px canvas 凹槽（"中线书脊"） */
+.app-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 1px;
+  height: 1px;
+  background: var(--zj-canvas);
+  pointer-events: none;
+}
+
+/* 顶栏书眉：把「家庭」降为字距拉开的旁注，名称用衬线体当账册题名，
+   中间发丝竖线呼应侧栏 brand-rule，避免「家庭：Name」这种表单标签写法。 */
 .header-context {
-  font-size: 13px;
-  color: var(--zj-ink-600);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+  margin-right: 24px;
+}
+
+.header-kicker {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--zj-ink-400);
+  line-height: 1;
+}
+
+.header-rule {
+  flex-shrink: 0;
+  align-self: center;
+  width: 1px;
+  height: 13px;
+  background: var(--zj-line-strong);
+}
+
+.header-household {
+  min-width: 0;
+  font-family: var(--zj-serif);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--zj-ink-900);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-right {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 16px;
 }
 
 .app-main {
+  min-height: 0;
   padding: 32px 40px;
+  overflow: auto;
   background: var(--zj-canvas);
+}
+
+/* 家庭问答：主区不再滚动，改由对话线程内部滚动，侧栏与顶栏保持可见 */
+.app-main:has(.qa-page) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .app-main h1 {
@@ -292,18 +392,60 @@ body::after {
   color: var(--zj-ink-600);
 }
 
-/* 可点击表格行 */
+/* 可点击表格行：hover 时 3px 左侧松绿指示条 + pine-50 底色叠加 */
 .table-clickable .el-table__row {
   cursor: pointer;
+  transition: background-color var(--zj-dur-fast) var(--zj-ease-out);
 }
 
-/* 通用卡片容器：白底 + 发丝边框 + 小阴影 + 中等圆角。
+.table-clickable .el-table__row:hover {
+  background: var(--zj-pine-50);
+}
+
+/* Element Plus 默认 td.el-table__cell 已是 position: relative，
+   这里的指示条用 absolute 定位到 td 内左缘 */
+.table-clickable .el-table__row:hover > td.el-table__cell:first-child::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  background: var(--zj-pine-500);
+  border-radius: 0 2px 2px 0;
+  pointer-events: none;
+}
+
+/* 通用卡片容器：白底 + 发丝边框 + 分层阴影 + 上下 1px 内阴影（立起来感）+ 中等圆角。
    设计系统要求的「实色暖白卡」基类，所有主从双栏布局的主/侧面板均应使用。 */
 .card {
+  position: relative;
   background: var(--zj-surface);
   border: 1px solid var(--zj-line);
   border-radius: var(--zj-radius-md);
   box-shadow: var(--zj-shadow-sm);
+}
+
+/* 顶部 1px 内顶阴影（松绿墨色 4%）：纸边立起来感 */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  border-radius: var(--zj-radius-md) var(--zj-radius-md) 0 0;
+  box-shadow: inset 0 1px 0 rgba(28, 58, 47, 0.04);
+  pointer-events: none;
+}
+
+/* 底部 1px 内底阴影（墨色 3%）：回压感 */
+.card::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 1px;
+  border-radius: 0 0 var(--zj-radius-md) var(--zj-radius-md);
+  box-shadow: inset 0 -1px 0 rgba(31, 39, 33, 0.03);
+  pointer-events: none;
 }
 
 /* ============ 入口页（登录/初始化/邀请/恢复）共享壳 ============ */
@@ -336,8 +478,30 @@ body::after {
   width: 400px;
   padding: 40px;
   background: var(--zj-canvas);
+  border: 1px solid var(--zj-line);
   border-radius: var(--zj-radius-lg);
-  box-shadow: var(--zj-shadow-lg);
+  box-shadow: var(--zj-shadow-auth);
+}
+
+/* 登录卡上下 1px 内阴影（同 .card），让"沉下来"而不是"漂起来" */
+.auth-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  border-radius: var(--zj-radius-lg) var(--zj-radius-lg) 0 0;
+  box-shadow: inset 0 1px 0 rgba(28, 58, 47, 0.05);
+  pointer-events: none;
+}
+
+.auth-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 1px;
+  border-radius: 0 0 var(--zj-radius-lg) var(--zj-radius-lg);
+  box-shadow: inset 0 -1px 0 rgba(31, 39, 33, 0.04);
+  pointer-events: none;
 }
 
 .auth-card-wide {
@@ -397,7 +561,7 @@ body::after {
 .el-card {
   border: 0;
   border-radius: var(--zj-radius-md);
-  box-shadow: var(--zj-shadow-sm);
+  box-shadow: var(--zj-shadow-md);
 }
 
 .el-drawer,

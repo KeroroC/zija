@@ -78,6 +78,10 @@ describe("AppShell", () => {
     });
 
     expect(wrapper.text()).toContain("知家");
+    expect(wrapper.text()).toContain("ZIJA");
+    const brandLink = wrapper.find("a.brand");
+    expect(brandLink.exists()).toBe(true);
+    expect(brandLink.attributes("href")).toBe("/");
     expect(wrapper.text()).toContain("首页");
     expect(wrapper.text()).toContain("成员管理");
     expect(wrapper.text()).toContain("个人资料");
@@ -171,7 +175,11 @@ describe("AppShell", () => {
     await router.push({ name: "home" });
     await flushPromises();
 
-    expect(wrapper.text()).toContain("测试家庭");
+    const context = wrapper.find(".header-context");
+    expect(context.exists()).toBe(true);
+    expect(context.find(".header-kicker").text()).toBe("家庭");
+    expect(context.find(".header-household").text()).toBe("测试家庭");
+    expect(context.text()).not.toContain("家庭：");
     expect(wrapper.text()).not.toContain("家庭：我的家");
   });
 

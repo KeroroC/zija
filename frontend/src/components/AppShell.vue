@@ -5,10 +5,13 @@
   </template>
   <el-container v-else class="app-shell">
     <el-aside class="app-sidebar" width="224px">
-      <div class="brand">
-        <span class="brand-cn">知家</span>
-        <span class="brand-en">ZIJA</span>
-      </div>
+      <router-link to="/" class="brand" aria-label="知家首页">
+        <span class="brand-lockup">
+          <span class="brand-cn">知家</span>
+          <span class="brand-en">ZIJA</span>
+        </span>
+        <span class="brand-rule" aria-hidden="true"></span>
+      </router-link>
       <el-menu
         router
         class="app-menu"
@@ -75,9 +78,13 @@
       </el-menu>
     </el-aside>
 
-    <el-container>
+    <el-container class="app-body">
       <el-header class="app-header" height="56px">
-        <span class="header-context">家庭：{{ householdName }}</span>
+        <div class="header-context">
+          <span class="header-kicker">家庭</span>
+          <span class="header-rule" aria-hidden="true"></span>
+          <span class="header-household" :title="householdName">{{ householdName }}</span>
+        </div>
         <div class="header-right">
           <el-dropdown trigger="click" @command="onInventoryCommand">
             <el-button size="small" type="primary" plain>

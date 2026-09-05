@@ -6,10 +6,26 @@
         <p class="page-subtitle">保管家庭、物品与批次上的文档和图片</p>
       </div>
       <div class="header-actions">
-        <el-radio-group v-model="view" @change="onViewChange">
-          <el-radio-button value="all">全部</el-radio-button>
-          <el-radio-button value="recycled">回收站</el-radio-button>
-        </el-radio-group>
+        <div class="view-switch" role="tablist" aria-label="附件视图">
+          <button
+            type="button"
+            role="tab"
+            class="view-switch-btn"
+            :class="{ 'is-active': view === 'all' }"
+            :aria-selected="view === 'all'"
+            data-testid="attachment-view-all"
+            @click="onViewChange('all')"
+          >全部</button>
+          <button
+            type="button"
+            role="tab"
+            class="view-switch-btn"
+            :class="{ 'is-active': view === 'recycled' }"
+            :aria-selected="view === 'recycled'"
+            data-testid="attachment-view-recycled"
+            @click="onViewChange('recycled')"
+          >回收站</button>
+        </div>
         <el-button type="primary" :disabled="view === 'recycled'" data-testid="attachment-upload" @click="triggerUpload">
           <el-icon class="el-icon--left"><Upload /></el-icon>上传
         </el-button>
@@ -100,6 +116,7 @@
               <el-link
                 v-else-if="row.mountType === 'ITEM'"
                 type="primary"
+                :class="['file-link', { 'link-muted': view === 'recycled' }]"
                 underline="never"
                 @click="goToItem(row.mountId)"
               >
@@ -108,6 +125,7 @@
               <el-link
                 v-else
                 type="primary"
+                :class="['file-link', { 'link-muted': view === 'recycled' }]"
                 underline="never"
                 @click="goToLot(row.mountId)"
               >
@@ -130,59 +148,60 @@
           <!-- 知识来源状态与操作（仅未删除附件）：处理中/可用/失败/已停用四态均可见 -->
           <div v-if="view === 'all'" class="file-knowledge">
             <template v-if="knowledgeOf(row.id)">
-              <span class="ks-status" data-testid="knowledge-status">
-                <span class="zj-dot" :class="ksMeta(knowledgeOf(row.id)!).dot"></span>
-                {{ ksMeta(knowledgeOf(row.id)!).label }}
-              </span>
-              <el-tooltip
-                v-if="knowledgeOf(row.id)!.status === 'FAILED'"
-                :content="knowledgeOf(row.id)!.failureMessage ?? '处理失败'"
-                placement="top"
-                :show-after="150"
-              >
-                <span
-                  class="ks-hint ks-hint-danger"
-                  data-testid="knowledge-failure-reason"
-                  tabindex="0"
-                >
-                  失败原因
+              <div class="ks-line">
+                <span class="ks-status" data-testid="knowledge-status">
+                  <span class="zj-dot" :class="ksMeta(knowledgeOf(row.id)!).dot"></span>
+                  {{ ksMeta(knowledgeOf(row.id)!).label }}
                 </span>
-              </el-tooltip>
+                <el-tooltip
+                  v-if="knowledgeOf(row.id)!.status === 'FAILED'"
+                  :content="knowledgeOf(row.id)!.failureMessage ?? '处理失败'"
+                  placement="top"
+                  :show-after="150"
+                >
+                  <span
+                    class="ks-hint-icon"
+                    data-testid="knowledge-failure-reason"
+                    aria-label="查看失败原因"
+                    role="img"
+                  >
+                    <el-icon><Warning /></el-icon>
+                  </span>
+                </el-tooltip>
+              </div>
               <span
-                v-else-if="knowledgeOf(row.id)!.status === 'DISABLED'"
+                v-if="knowledgeOf(row.id)!.status === 'DISABLED'"
                 class="ks-hint"
                 :title="disabledReasonText(knowledgeOf(row.id)!)"
               >
                 {{ disabledReasonText(knowledgeOf(row.id)!) }}
               </span>
-              <div class="ks-actions">
-                <el-button
-                  v-if="knowledgeOf(row.id)!.status === 'FAILED'"
-                  text
-                  type="primary"
-                  data-testid="knowledge-retry"
-                  @click="retrySource(row as Attachment)"
-                >
-                  重试
-                </el-button>
-                <el-button
-                  v-if="knowledgeOf(row.id)!.status === 'DISABLED'"
-                  text
-                  type="primary"
-                  data-testid="knowledge-reselect"
-                  @click="selectSource(row as Attachment)"
-                >
-                  重新选择
-                </el-button>
-                <el-button
-                  v-else
-                  text
-                  data-testid="knowledge-cancel"
-                  @click="cancelSource(row as Attachment)"
-                >
-                  取消
-                </el-button>
-              </div>
+              <el-button
+                v-if="knowledgeOf(row.id)!.status === 'FAILED'"
+                text
+                type="primary"
+                data-testid="knowledge-retry"
+                @click="retrySource(row as Attachment)"
+              >
+                重试
+              </el-button>
+              <el-button
+                v-if="knowledgeOf(row.id)!.status === 'DISABLED'"
+                text
+                type="primary"
+                data-testid="knowledge-reselect"
+                @click="selectSource(row as Attachment)"
+              >
+                重新选择
+              </el-button>
+              <el-button
+                v-else-if="knowledgeOf(row.id)!.status !== 'FAILED' && knowledgeOf(row.id)!.status !== 'DISABLED'"
+                text
+                data-testid="knowledge-cancel"
+                @click="cancelSource(row as Attachment)"
+              >
+                取消
+              </el-button>
             </template>
             <el-tooltip
               v-else
@@ -241,7 +260,27 @@
             <el-button v-if="view === 'recycled'" text type="danger" data-testid="attachment-purge" @click="purge(row as Attachment)">
               永久删除
             </el-button>
-            <el-button text @click="download(row as Attachment)">下载</el-button>
+            <el-dropdown
+              trigger="click"
+              :hide-on-click="true"
+              class="file-actions-more"
+              :data-testid="`attachment-more-${row.id}`"
+            >
+              <el-button text :data-testid="`attachment-more-btn-${row.id}`" aria-label="更多操作">
+                更多
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    :data-testid="`attachment-download-${row.id}`"
+                    @click="download(row as Attachment)"
+                  >
+                    下载
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
 
@@ -303,7 +342,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Upload, Search, FolderOpened } from "@element-plus/icons-vue";
+import { Upload, Search, FolderOpened, ArrowDown, Warning } from "@element-plus/icons-vue";
 import {
   listAttachments,
   renameAttachment,
@@ -415,7 +454,8 @@ function onSearchInput() {
   searchTimer = setTimeout(onFilterChange, 300);
 }
 
-function onViewChange() {
+function onViewChange(next?: "all" | "recycled") {
+  if (next) view.value = next;
   pagination.value.page = 1;
   load();
   syncKnowledgePolling();
@@ -763,6 +803,49 @@ function goToLot(lotId: string) {
   gap: 12px;
 }
 
+/* ---------- 视图切换器（segmented）---------- */
+.view-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--zj-line);
+  border-radius: var(--zj-radius-md);
+  background: var(--zj-surface);
+}
+
+.view-switch-btn {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 0 14px;
+  height: 28px;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--zj-sans);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--zj-ink-600);
+  cursor: pointer;
+  transition:
+    background-color var(--zj-dur-fast) var(--zj-ease-out),
+    color var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.view-switch-btn:hover:not(.is-active) {
+  color: var(--zj-ink-900);
+}
+
+.view-switch-btn.is-active {
+  background: var(--zj-pine-50);
+  color: var(--zj-pine-700);
+}
+
+.view-switch-btn:focus-visible {
+  outline: 2px solid rgba(61, 114, 96, 0.55);
+  outline-offset: 1px;
+}
+
 .filters {
   display: flex;
   gap: 12px;
@@ -906,7 +989,7 @@ function goToLot(lotId: string) {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  width: 96px;
+  width: 120px;
   flex-shrink: 0;
 }
 
@@ -922,8 +1005,16 @@ function goToLot(lotId: string) {
   margin-right: 4px;
 }
 
+/* 状态行：圆点 + 状态文字 + 失败图标，全部左对齐横排 */
+.ks-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .ks-hint {
-  max-width: 96px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -936,27 +1027,63 @@ function goToLot(lotId: string) {
   color: var(--zj-danger);
 }
 
-.ks-actions {
-  display: flex;
-  gap: 0;
+/* 失败原因：低饱和警示小图标 + tooltip。视觉上不冒充可点击按钮。 */
+.ks-hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--zj-danger);
+  cursor: help;
+  outline: none;
 }
 
-.ks-actions .el-button {
+.ks-hint-icon .el-icon {
+  font-size: 14px;
+}
+
+/* ---------- 挂载点链接：默认松绿主色；回收站降调为中性 ---------- */
+.file-link {
+  font-size: 13px;
+}
+
+.file-link.link-muted {
+  color: var(--zj-ink-600);
+}
+
+.file-link.link-muted:hover {
+  color: var(--zj-ink-900);
+}
+
+/* 知识来源列内的按钮：缩小、压紧内边距，靠左对齐与列节奏一致 */
+.file-knowledge .el-button {
   margin-left: 0;
   padding: 0 4px;
-  height: 24px;
+  height: 22px;
   font-size: 12px;
 }
 
 /* ---------- 操作 ---------- */
 .file-actions {
   display: flex;
+  align-items: center;
   gap: 2px;
   flex-shrink: 0;
 }
 
 .file-actions .el-button {
   margin-left: 0;
+}
+
+/* 「更多」下拉触发按钮：与其它 text 按钮同节奏，避免视觉突兀 */
+.file-actions-more :deep(.el-button) {
+  font-weight: 500;
+}
+
+.file-actions-more :deep(.el-icon) {
+  font-size: 11px;
+  opacity: 0.75;
 }
 
 /* ---------- 骨架 ---------- */

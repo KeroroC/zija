@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 知家 (zija) is a private-deployment household inventory management system for a single family with multiple members. It tracks durable goods and consumables across batches, locations, and stock positions with immutable movement records as the source of truth.
 
+## Prerequisites
+
+- **Backend:** JDK 25, Maven Wrapper (`./mvnw`), Docker (for postgres via `make dev-db`)
+- **Frontend:** Node **≥ 24.0.0** (enforced in `frontend/package.json` `engines`)
+- **Tooling:** `make`, `docker compose`
+
 ## Common Commands
 
 ```bash
@@ -24,8 +30,14 @@ npm --prefix frontend test -- ItemsPage              # Single frontend test file
 npm --prefix frontend run typecheck                  # vue-tsc only (build runs this first)
 npm --prefix frontend run test:e2e                   # Playwright directly (needs a running stack)
 
+# Lint
+make frontend-lint          # npm --prefix frontend run lint (ESLint + typescript-eslint)
+npm --prefix frontend run lint         # ESLint over frontend/
+npm --prefix frontend run lint:fix     # ESLint with --fix
+
 # Build & verify
 make verify                  # Runs layout check, all tests, production builds, git diff --check
+make backup-restore-contract-test # ./scripts/test-ai-backup-restore-contract.sh (part of `make verify`)
 make backend-build           # cd backend && ./mvnw -q -DskipTests package
 make frontend-build          # npm --prefix frontend run build (includes typecheck)
 
@@ -243,6 +255,14 @@ src/styles/
 - TypeScript/Vue: 2-space indent.
 - LF line endings, UTF-8 charset, final newline, trim trailing whitespace (`.editorconfig` enforced).
 - Commit messages: Chinese body with English technical prefix (e.g., `fix:`, `chore:`, `docs:`).
+
+## Reference docs
+
+- `docs/design/system-design.md` — confirmed product + system design plan
+- `docs/developer/architecture.md` — module-level architecture deep-dive
+- `docs/developer/developers.md` — secondary dev guide (most rules consolidated into this file)
+- `docs/design/redesign-visual-spec.md` — full visual design spec (松间账册)
+- `docs/agents/{issue-tracker,triage-labels,domain}.md` — agent workflows
 
 ## Agent skills
 

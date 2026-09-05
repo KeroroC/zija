@@ -8,65 +8,13 @@
     </header>
 
     <section class="qa-shell">
-      <!-- 输入区 -->
-      <div class="qa-composer">
-        <div class="qa-scope-bar">
-          <div class="qa-scope-control" data-testid="qa-answer-scope">
-            <span class="qa-control-label">回答来源</span>
-            <el-segmented v-model="answerScope" :options="answerScopeOptions" :disabled="submitting" />
-          </div>
-          <div class="qa-scope-control qa-target-control">
-            <span class="qa-control-label">回答对象</span>
-            <div data-testid="qa-target-type">
-              <el-segmented v-model="targetType" :options="targetTypeOptions" :disabled="submitting" />
-            </div>
-            <el-select
-              v-if="targetType"
-              v-model="selectedScopeId"
-              data-testid="qa-scope-select"
-              filterable
-              clearable
-              :loading="scopeLoading"
-              :disabled="submitting"
-              :placeholder="targetType === 'ITEM' ? '选择物品' : '选择批次'"
-              class="qa-scope-select"
-            >
-              <el-option
-                v-for="option in scopeChoices"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
-              />
-            </el-select>
-          </div>
-        </div>
-        <div class="qa-scope-preview" data-testid="qa-scope-recommendation">
-          <span class="zj-badge zj-badge-pine">推荐 {{ answerScopeLabel(recommendedScope) }}</span>
-          <span v-if="pageContext" class="qa-context-label">
-            当前页面 · {{ pageContext.label ?? answerTargetLabel(pageContext.type) }}
-          </span>
-        </div>
-        <el-input
-          v-model="question"
-          type="textarea"
-          :rows="2"
-          resize="none"
-          maxlength="2000"
-          :placeholder="questionPlaceholder"
-          :disabled="submitting"
-          class="qa-input"
-          @keydown.enter.exact.prevent="submit"
-        />
-        <div class="qa-composer-footer">
-          <span class="qa-hint">{{ scopeHint }}</span>
-          <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="submit">
-            提问
-          </el-button>
-        </div>
-      </div>
-
-      <!-- 对话记录（仅当前浏览器会话，不存服务端） -->
-      <div v-if="turns.length" class="qa-thread">
+      <!-- 对话记录（仅当前浏览器会话，不存服务端） / 空状态 -->
+      <div
+        v-if="turns.length || submitting"
+        ref="threadEl"
+        class="qa-thread"
+        data-testid="qa-thread"
+      >
         <div v-for="(turn, i) in turns" :key="i" class="qa-turn">
           <div class="qa-question">
             <span class="qa-question-label">问</span>
@@ -74,6 +22,27 @@
           </div>
 
           <div class="qa-answer">
+            <div
+              v-if="submitting && confirmingIndex === i"
+              class="qa-pending"
+              data-testid="qa-pending"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <el-skeleton animated class="qa-pending-skeleton">
+                <template #template>
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-wide" />
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-mid" />
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-narrow" />
+                </template>
+              </el-skeleton>
+              <p class="qa-pending-copy">正在查阅账册…</p>
+              <p v-if="waitingElapsedSeconds >= WAITING_ELAPSED_HINT_AFTER" class="qa-pending-elapsed">
+                已等待 {{ waitingElapsedSeconds }} 秒
+              </p>
+            </div>
+            <div v-else>
             <div v-if="turn.answer.usedAnswerScope" class="qa-used-scope" data-testid="qa-used-scope">
               <span class="zj-badge zj-badge-ink">
                 实际 {{ answerScopeLabel(turn.answer.usedAnswerScope) }}
@@ -102,7 +71,9 @@
               </button>
             </div>
             <div v-else-if="!hasDisplayableResults(turn.answer)" class="qa-unavailable">
-              <span class="zj-badge zj-badge-warn">{{ turn.answer.reasonCode }}</span>
+              <span v-if="reasonLabel(turn.answer.reasonCode)" class="zj-badge zj-badge-warn">
+                {{ reasonLabel(turn.answer.reasonCode) }}
+              </span>
               <p class="qa-summary">{{ turn.answer.summary }}</p>
               <el-button
                 v-if="attachmentEntry(turn.answer.jumps)"
@@ -121,7 +92,7 @@
                 class="qa-fallback"
                 data-testid="qa-fallback"
               >
-                <span class="zj-badge zj-badge-warn">模型不可用</span>
+                <span class="zj-badge zj-badge-warn">{{ reasonLabel(turn.answer.reasonCode) }}</span>
                 <p v-if="!turn.answer.answerParts?.length" class="qa-summary">
                   {{ turn.answer.summary }}
                 </p>
@@ -137,7 +108,9 @@
                     <span class="zj-badge" :class="sourceBadgeClass(part.category)">
                       {{ part.label }}
                     </span>
-                    <span v-if="!part.available" class="qa-datetime">{{ part.reasonCode }}</span>
+                    <span v-if="!part.available && reasonLabel(part.reasonCode)" class="qa-datetime">
+                      {{ reasonLabel(part.reasonCode) }}
+                    </span>
                   </header>
                   <p class="qa-summary">{{ part.summary }}</p>
                 </article>
@@ -228,16 +201,52 @@
                     :prop="col"
                     :label="col"
                     min-width="96"
-                  />
+                  >
+                    <template #default="{ row }">
+                      {{ formatResultCell(col, row[col]) }}
+                    </template>
+                  </el-table-column>
                 </el-table>
                 <p v-else class="qa-result-empty">暂无数据</p>
               </div>
             </template>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="submitting && confirmingIndex === null"
+          class="qa-turn"
+          data-testid="qa-pending"
+        >
+          <div class="qa-question">
+            <span class="qa-question-label">问</span>
+            <span class="qa-question-text">{{ pendingQuestion }}</span>
+          </div>
+          <div
+            class="qa-answer"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div class="qa-pending">
+              <el-skeleton animated class="qa-pending-skeleton">
+                <template #template>
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-wide" />
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-mid" />
+                  <el-skeleton-item variant="p" class="qa-pending-line qa-pending-line-narrow" />
+                </template>
+              </el-skeleton>
+              <p class="qa-pending-copy">正在查阅账册…</p>
+              <p v-if="waitingElapsedSeconds >= WAITING_ELAPSED_HINT_AFTER" class="qa-pending-elapsed">
+                已等待 {{ waitingElapsedSeconds }} 秒
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      <div v-else-if="!submitting" class="qa-empty">
+      <div v-else class="qa-empty">
         <div class="qa-empty-icon" aria-hidden="true">
           <el-icon><ChatDotRound /></el-icon>
         </div>
@@ -247,18 +256,109 @@
           「牛奶最近有没有入库？」
         </p>
       </div>
+
+      <!-- 输入区：固定吸视口底，settings 面板可折叠。out 当 backdrop, card 内嵌 -->
+      <div class="qa-composer">
+        <div class="qa-composer-card">
+          <div class="qa-composer-scope">
+            <button
+              type="button"
+              class="qa-scope-chip"
+              data-testid="qa-settings-toggle"
+              :aria-expanded="settingsOpen"
+              @click="settingsOpen = !settingsOpen"
+            >
+              <el-icon class="qa-scope-chip-icon"><Setting /></el-icon>
+              <span class="qa-scope-chip-label">{{ settingsOpen ? "收起范围设置" : "范围设置" }}</span>
+              <el-icon class="qa-scope-chip-caret" :class="{ 'is-open': settingsOpen }">
+                <ArrowDown />
+              </el-icon>
+            </button>
+            <span
+              v-if="!settingsOpen"
+              class="zj-badge zj-badge-pine"
+              data-testid="qa-active-scope-chip"
+            >
+              {{ answerScopeLabel(effectiveScope) }}
+            </span>
+            <span v-if="!settingsOpen && pageContext" class="qa-context-label">
+              当前页面 · {{ pageContext.label ?? answerTargetLabel(pageContext.type) }}
+            </span>
+          </div>
+
+          <!-- settings 面板：v-show 保留 DOM，settings 测试选择器稳定 -->
+          <div v-show="settingsOpen" class="qa-settings" data-testid="qa-settings-panel">
+            <div class="qa-scope-bar">
+              <div class="qa-scope-control" data-testid="qa-answer-scope">
+                <span class="qa-control-label">回答来源</span>
+                <el-segmented v-model="answerScope" :options="answerScopeOptions" :disabled="submitting" />
+              </div>
+              <div class="qa-scope-control qa-target-control">
+                <span class="qa-control-label">回答对象</span>
+                <div data-testid="qa-target-type">
+                  <el-segmented v-model="targetType" :options="targetTypeOptions" :disabled="submitting" />
+                </div>
+                <el-select
+                  v-if="targetType"
+                  v-model="selectedScopeId"
+                  data-testid="qa-scope-select"
+                  filterable
+                  clearable
+                  :loading="scopeLoading"
+                  :disabled="submitting"
+                  :placeholder="targetType === 'ITEM' ? '选择物品' : '选择批次'"
+                  class="qa-scope-select"
+                >
+                  <el-option
+                    v-for="option in scopeChoices"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+              </div>
+            </div>
+            <div class="qa-scope-preview" data-testid="qa-scope-recommendation">
+              <span class="zj-badge zj-badge-pine">推荐 {{ answerScopeLabel(recommendedScope) }}</span>
+              <span v-if="pageContext" class="qa-context-label">
+                当前页面 · {{ pageContext.label ?? answerTargetLabel(pageContext.type) }}
+              </span>
+            </div>
+          </div>
+
+          <el-input
+            v-model="question"
+            type="textarea"
+            :rows="2"
+            resize="none"
+            maxlength="2000"
+            :placeholder="questionPlaceholder"
+            :disabled="submitting"
+            class="qa-input"
+            @keydown.enter.exact.prevent="submit"
+          />
+          <div class="qa-composer-footer">
+            <span class="qa-hint">{{ scopeHint }}</span>
+            <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="submit">
+              提问
+            </el-button>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { ChatDotRound, Location, Paperclip } from "@element-plus/icons-vue";
+import { ChatDotRound, Location, Paperclip, Setting, ArrowDown } from "@element-plus/icons-vue";
 import { askHouseholdQuestion } from "../api/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
+import { loadQaThread, saveQaThread } from "../utils/qaThread";
+import { movementTypeLabel } from "../utils/movement";
 import type {
   HouseholdFactAnswer,
   QaAnswerScope,
@@ -275,14 +375,27 @@ import { AI_REQUEST_LIMITED } from "../types/errorCodes";
 
 const router = useRouter();
 const route = useRoute();
-const question = ref("");
+const WAITING_ELAPSED_HINT_AFTER = 3;
+
+const restoredThread = loadQaThread();
+const question = ref(restoredThread.draft);
 const submitting = ref(false);
-const turns = ref<Array<{
-  question: string;
-  answerScope: QaAnswerScope;
-  answer: HouseholdFactAnswer;
-  confirmedScopes: QaQuestionScope[];
-}>>([]);
+const pendingQuestion = ref("");
+const confirmingIndex = ref<number | null>(null);
+const waitingElapsedSeconds = ref(0);
+const threadEl = ref<HTMLElement | null>(null);
+let waitingTimer: ReturnType<typeof setInterval> | null = null;
+let waitingStartedAt = 0;
+const turns = ref(restoredThread.turns);
+// 范围设置面板：首次默认展开，提问后自动收起；用户后续可手动再展开。
+const settingsOpen = ref(restoredThread.turns.length === 0);
+
+watch(
+  [turns, question],
+  () => saveQaThread({ turns: turns.value, draft: question.value }),
+  { deep: true },
+);
+
 const answerScope = ref<QaAnswerScope>("AUTO");
 const targetType = ref<"" | "ITEM" | "LOT">("");
 const selectedScopeId = ref("");
@@ -378,6 +491,51 @@ watch(targetType, async (mode, _previousMode, onCleanup) => {
   }
 });
 
+// 聊过一次后自动收起范围设置，让 composer 回归到聊天输入框的瘦体形态；
+// 用户仍可手动点 chip 再次展开。
+watch(() => turns.value.length, (count) => {
+  if (count > 0 && settingsOpen.value) settingsOpen.value = false;
+  if (count === 0) return;
+  void scrollThreadToLatest();
+});
+
+watch([submitting, confirmingIndex], ([isSubmitting, index]) => {
+  if (!isSubmitting || index !== null) return;
+  void scrollThreadToLatest();
+});
+
+async function scrollThreadToLatest() {
+  await nextTick();
+  const thread = threadEl.value;
+  if (!thread) return;
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function startWaiting(text: string, index: number | null) {
+  pendingQuestion.value = text;
+  confirmingIndex.value = index;
+  waitingStartedAt = Date.now();
+  waitingElapsedSeconds.value = 0;
+  if (waitingTimer !== null) {
+    clearInterval(waitingTimer);
+  }
+  waitingTimer = setInterval(() => {
+    waitingElapsedSeconds.value = Math.floor((Date.now() - waitingStartedAt) / 1000);
+  }, 1000);
+}
+
+function stopWaiting() {
+  if (waitingTimer !== null) {
+    clearInterval(waitingTimer);
+    waitingTimer = null;
+  }
+  pendingQuestion.value = "";
+  confirmingIndex.value = null;
+  waitingElapsedSeconds.value = 0;
+}
+
+onUnmounted(stopWaiting);
+
 async function loadAllScopeOptions<T>(
   fetchPage: (page: number) => Promise<{ items: T[]; total: number }>,
 ): Promise<T[]> {
@@ -394,25 +552,27 @@ async function loadAllScopeOptions<T>(
 async function submit() {
   if (!canSubmit.value) return;
   const text = question.value.trim();
+  question.value = "";
+  startWaiting(text, null);
   submitting.value = true;
   try {
     const options = questionOptions();
     const result = await askHouseholdQuestion(text, options);
-    const initialConfirmedScope = options.scope ?? options.pageContext;
     turns.value.push({
       question: text,
       answerScope: answerScope.value,
       answer: result,
-      confirmedScopes: initialConfirmedScope ? [initialConfirmedScope] : [],
+      confirmedScopes: nextConfirmedScopes(options),
     });
-    question.value = "";
   } catch (e) {
+    question.value = text;
     if (e instanceof ApiError) {
       ElMessage.error(qaErrorMessage(e));
     } else {
       ElMessage.error("提问失败，请稍后重试");
     }
   } finally {
+    stopWaiting();
     submitting.value = false;
   }
 }
@@ -420,6 +580,7 @@ async function submit() {
 async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
   const turn = turns.value[index];
   if (!turn || submitting.value) return;
+  startWaiting(turn.question, index);
   submitting.value = true;
   try {
     const confirmedScope: QaQuestionScope = {
@@ -441,6 +602,7 @@ async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
   } catch (e) {
     ElMessage.error(e instanceof ApiError ? qaErrorMessage(e) : "提问失败，请稍后重试");
   } finally {
+    stopWaiting();
     submitting.value = false;
   }
 }
@@ -449,10 +611,42 @@ function questionOptions(): QaQuestionOptions {
   const options: QaQuestionOptions = { answerScope: answerScope.value };
   if (targetType.value && selectedScopeId.value) {
     options.scope = { type: targetType.value, id: selectedScopeId.value };
-  } else if (pageContext.value) {
+    return options;
+  }
+  if (pageContext.value) {
     options.pageContext = pageContext.value;
   }
+  const confirmedScopes = lastConfirmedScopes();
+  if (confirmedScopes.length > 0) {
+    options.confirmedScopes = confirmedScopes;
+  }
   return options;
+}
+
+const MAX_CONFIRMED_SCOPES = 3;
+
+function lastConfirmedScopes(): QaQuestionScope[] {
+  const last = turns.value.at(-1);
+  if (!last) return [];
+  return uniqueScopes(last.confirmedScopes).slice(-MAX_CONFIRMED_SCOPES);
+}
+
+function nextConfirmedScopes(options: QaQuestionOptions): QaQuestionScope[] {
+  if (options.scope) return uniqueScopes([options.scope]);
+  return uniqueScopes([...(options.confirmedScopes ?? []), options.pageContext])
+    .slice(-MAX_CONFIRMED_SCOPES);
+}
+
+function uniqueScopes(scopes: Array<QaQuestionScope | undefined>): QaQuestionScope[] {
+  const result: QaQuestionScope[] = [];
+  for (const scope of scopes) {
+    if (!scope) continue;
+    if (result.some((existing) => existing.type === scope.type && existing.id === scope.id)) {
+      continue;
+    }
+    result.push(scope);
+  }
+  return result;
 }
 
 /** 从行数据推断列名（保持插入顺序）。 */
@@ -466,8 +660,27 @@ function columnsOf(rows: Array<Record<string, string>>): string[] {
   return cols;
 }
 
+function formatResultCell(column: string, value: string): string {
+  if (column === "类型") return movementTypeLabel(value);
+  return value;
+}
+
 function hasDisplayableResults(answer: HouseholdFactAnswer): boolean {
   return answer.reasonCode === "ANSWERED" || answer.reasonCode === "STRUCTURED_FACTS_FALLBACK";
+}
+
+/** 用户可见的失败/降级原因；未知码不展示英文原文，回退到 summary。 */
+const QA_REASON_LABELS: Record<string, string> = {
+  NO_AVAILABLE_KNOWLEDGE_SOURCE: "当前范围没有可用的知识来源",
+  KNOWLEDGE_SOURCE_PREPARATION_FAILED: "知识来源准备失败",
+  KNOWLEDGE_MODEL_UNAVAILABLE: "模型暂不可用",
+  MODEL_UNAVAILABLE: "模型暂不可用",
+  AI_QA_TIMEOUT: "模型暂不可用",
+  STRUCTURED_FACTS_FALLBACK: "模型不可用，已返回可核对的家庭事实",
+};
+
+function reasonLabel(reasonCode: string): string | undefined {
+  return QA_REASON_LABELS[reasonCode];
 }
 
 function qaErrorMessage(error: ApiError): string {
@@ -548,9 +761,6 @@ function evidenceLocation(source: QaAnswerSource): string {
   const parts: string[] = [];
   if (source.pageNumber != null) parts.push(`第 ${source.pageNumber} 页`);
   if (source.sectionPath) parts.push(source.sectionPath);
-  if (source.charStart != null && source.charEnd != null) {
-    parts.push(`字符 ${source.charStart}-${source.charEnd}`);
-  }
   return parts.join(" · ");
 }
 
@@ -573,33 +783,140 @@ function formatDateTime(iso: string): string {
 
 <style scoped>
 .qa-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   max-width: 1120px;
+  overflow: hidden;
+}
+
+.qa-page .page-header {
+  flex-shrink: 0;
 }
 
 .qa-shell {
   display: flex;
   flex-direction: column;
-  gap: var(--zj-space-5);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  gap: var(--zj-space-4);
 }
 
-/* ---------- 输入区 ---------- */
+/* ---------- 输入区：钉在问答页底部，由对话线程承担滚动 ---------- */
 .qa-composer {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.qa-composer-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--zj-space-3);
+  width: 100%;
   background: var(--zj-surface);
   border: 1px solid var(--zj-line);
   border-radius: var(--zj-radius-md);
   padding: var(--zj-space-4);
-  box-shadow: var(--zj-shadow-sm);
+  /* shadow-md 比 shadow-sm 重一档，让 composer 像"账册底页"压在 thread 上 */
+  box-shadow: var(--zj-shadow-md);
 }
 
-.qa-input :deep(.el-textarea__inner) {
+/* 顶部 1px 内阴影：纸边立起来感，跟 .card 一致 */
+.qa-composer-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  border-radius: var(--zj-radius-md) var(--zj-radius-md) 0 0;
+  box-shadow: inset 0 1px 0 rgba(28, 58, 47, 0.04);
+  pointer-events: none;
+}
+
+/* 默认让 children 上的 margin 失效，由父级 .qa-composer-card 的 gap 统筹间距 */
+.qa-composer-card > .qa-composer-scope,
+.qa-composer-card > .qa-settings,
+.qa-composer-card > .qa-composer-footer {
+  margin: 0;
+}
+
+.qa-composer-scope {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--zj-space-2);
+}
+
+.qa-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--zj-line);
+  border-radius: 999px;
   background: var(--zj-surface);
-  color: var(--zj-ink-900);
+  color: var(--zj-ink-600);
+  font-family: inherit;
+  font-size: var(--zj-text-body-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color var(--zj-dur-fast) var(--zj-ease-out),
+    background-color var(--zj-dur-fast) var(--zj-ease-out),
+    color var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.qa-scope-chip:hover {
+  border-color: var(--zj-pine-500);
+  background: var(--zj-pine-50);
+  color: var(--zj-pine-600);
+}
+
+.qa-scope-chip[aria-expanded="true"] {
+  border-color: var(--zj-pine-600);
+  background: var(--zj-pine-50);
+  color: var(--zj-pine-600);
+}
+
+.qa-scope-chip:active {
+  transform: scale(0.98);
+}
+
+.qa-scope-chip-icon,
+.qa-scope-chip-caret {
+  font-size: 14px;
+}
+
+.qa-scope-chip-caret {
+  transition: transform var(--zj-dur-fast) var(--zj-ease-out);
+}
+
+.qa-scope-chip-caret.is-open {
+  transform: rotate(180deg);
+}
+
+/* settings 面板：折叠时 v-show 隐藏，但仍在 DOM 里供测试与无障碍访问 */
+.qa-settings {
+  border-bottom: 1px solid var(--zj-line);
+  padding-bottom: var(--zj-space-3);
+  margin-bottom: var(--zj-space-3);
 }
 
 .qa-scope-bar {
   display: grid;
   gap: var(--zj-space-3);
-  margin-bottom: var(--zj-space-3);
+}
+
+.qa-input :deep(.el-textarea__inner) {
+  background: var(--zj-surface);
+  color: var(--zj-ink-900);
 }
 
 .qa-scope-control {
@@ -634,12 +951,17 @@ function formatDateTime(iso: string): string {
 }
 
 .qa-scope-preview {
-  margin-bottom: var(--zj-space-3);
+  /* 在 settings 面板内跟 .qa-scope-bar 之间留一拍呼吸 */
+  margin-top: var(--zj-space-3);
 }
 
 .qa-context-label {
   color: var(--zj-ink-400);
   font-size: var(--zj-text-caption);
+}
+
+.qa-composer-scope .qa-context-label {
+  margin-left: 2px;
 }
 
 .qa-composer-footer {
@@ -658,7 +980,14 @@ function formatDateTime(iso: string): string {
 .qa-thread {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
   gap: var(--zj-space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .qa-turn {
@@ -703,6 +1032,51 @@ function formatDateTime(iso: string): string {
   padding: var(--zj-space-4);
   box-shadow: var(--zj-shadow-sm);
   max-width: 90%;
+}
+
+.qa-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--zj-space-3);
+}
+
+.qa-pending-skeleton :deep(.el-skeleton__item) {
+  background: var(--zj-surface-sunken);
+}
+
+.qa-pending-line {
+  display: block;
+  height: 14px;
+  margin-top: 0;
+}
+
+.qa-pending-line + .qa-pending-line {
+  margin-top: var(--zj-space-2);
+}
+
+.qa-pending-line-wide {
+  width: 92%;
+}
+
+.qa-pending-line-mid {
+  width: 72%;
+}
+
+.qa-pending-line-narrow {
+  width: 48%;
+}
+
+.qa-pending-copy {
+  margin: 0;
+  font-size: var(--zj-text-body-sm);
+  color: var(--zj-ink-600);
+}
+
+.qa-pending-elapsed {
+  margin: 0;
+  font-size: var(--zj-text-caption);
+  color: var(--zj-ink-400);
+  font-variant-numeric: tabular-nums;
 }
 
 .qa-used-scope {
@@ -929,7 +1303,15 @@ function formatDateTime(iso: string): string {
 
 /* ---------- 空状态 ---------- */
 .qa-empty {
-  padding: 56px 0 64px;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  padding: 24px 0;
   text-align: center;
 }
 
@@ -965,6 +1347,15 @@ function formatDateTime(iso: string): string {
 }
 
 @media (max-width: 720px) {
+  .qa-composer-card {
+    padding: var(--zj-space-3);
+  }
+
+  .qa-composer-scope {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .qa-scope-bar {
     align-items: stretch;
   }

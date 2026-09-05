@@ -3,6 +3,7 @@ import type { SessionInfo, CurrentMember } from "../types/identity";
 import { authApi } from "../api/auth";
 import { householdApi } from "../api/household";
 import { clearCsrf } from "../api/http";
+import { clearQaThread } from "../utils/qaThread";
 
 interface SessionState {
   initialized: boolean;
@@ -99,6 +100,7 @@ export const useSessionStore = defineStore("session", {
       }
       this.session = null;
       this.currentMember = null;
+      clearQaThread();
     },
 
     async refreshCurrentMember(): Promise<CurrentMember> {
@@ -113,6 +115,7 @@ export const useSessionStore = defineStore("session", {
       this.currentMember = null;
       this.initialized = true;
       clearCsrf();
+      clearQaThread();
     },
 
     isPublicRoute(route: { name: unknown }): boolean {

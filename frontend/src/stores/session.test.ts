@@ -4,6 +4,7 @@ import { authApi } from "../api/auth";
 import { householdApi } from "../api/household";
 import { clearCsrf } from "../api/http";
 import type { CurrentMember, SessionInfo } from "../types/identity";
+import { loadQaThread, saveQaThread } from "../utils/qaThread";
 import { useSessionStore } from "./session";
 
 vi.mock("../api/auth", () => ({
@@ -64,6 +65,7 @@ function deferred<T>() {
 
 describe("session store", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     setActivePinia(createPinia());
     initializeCsrfMock.mockReset().mockResolvedValue(undefined);
     loginMock.mockReset();
@@ -229,5 +231,64 @@ describe("session store", () => {
     expect(store.householdInitialized).toBe(true);
     expect(clearCsrfMock).toHaveBeenCalledOnce();
     expect(logoutMock).not.toHaveBeenCalled();
+  });
+
+  it("clears the household Q&A thread on logout", async () => {
+    saveQaThread({
+      turns: [{
+        question: "牛奶还有多少？",
+        answerScope: "AUTO",
+        answer: { question: "牛奶还有多少？", summary: "5 瓶" } as never,
+        confirmedScopes: [{ type: "ITEM", id: "item-1", label: "牛奶" }],
+      }],
+      draft: "那放在哪？",
+    });
+    const store = useSessionStore();
+    store.session = authenticatedSession;
+    store.currentMember = currentMember;
+
+    await store.logout();
+
+    expect(loadQaThread()).toEqual({ turns: [], draft: "" });
+  });
+
+  it("clears the household Q&A thread when the local session is dropped", () => {
+    saveQaThread({
+      turns: [{
+        question: "牛奶还有多少？",
+        answerScope: "AUTO",
+        answer: { question: "牛奶还有多少？", summary: "5 瓶" } as never,
+        confirmedScopes: [],
+      }],
+      draft: "",
+    });
+    const store = useSessionStore();
+    store.session = authenticatedSession;
+    store.currentMember = currentMember;
+
+    store.clearLocalSession();
+
+    expect(loadQaThread()).toEqual({ turns: [], draft: "" });
+  });
+
+  it("keeps the household Q&A thread when logout fails", async () => {
+    saveQaThread({
+      turns: [{
+        question: "牛奶还有多少？",
+        answerScope: "AUTO",
+        answer: { question: "牛奶还有多少？", summary: "5 瓶" } as never,
+        confirmedScopes: [],
+      }],
+      draft: "追问",
+    });
+    const store = useSessionStore();
+    store.session = authenticatedSession;
+    store.currentMember = currentMember;
+    logoutMock.mockRejectedValue(new Error("logout unavailable"));
+
+    await expect(store.logout()).rejects.toThrow("logout unavailable");
+
+    expect(loadQaThread().draft).toBe("追问");
+    expect(loadQaThread().turns).toHaveLength(1);
   });
 });
