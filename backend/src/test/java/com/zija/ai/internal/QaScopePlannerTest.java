@@ -42,6 +42,57 @@ class QaScopePlannerTest {
     }
 
     @Test
+    void recommendTypicalFactQuestionAsHouseholdFact() {
+        assertThat(planner.recommend("牛奶还有多少？", null)).isEqualTo("HOUSEHOLD_FACT");
+    }
+
+    @Test
+    void recommendTypicalKnowledgeQuestionAsKnowledgeSource() {
+        assertThat(planner.recommend("滤网怎么清洁？", null)).isEqualTo("KNOWLEDGE_SOURCE");
+    }
+
+    @Test
+    void recommendMixedFactAndKnowledgeAsBoth() {
+        assertThat(planner.recommend("过期了怎么处理", null)).isEqualTo("BOTH");
+    }
+
+    @Test
+    void recommendNoHitWithoutPageItemContextAsHouseholdFact() {
+        assertThat(planner.recommend("这个呢？", null)).isEqualTo("HOUSEHOLD_FACT");
+    }
+
+    @Test
+    void recommendNoHitWithItemPageContextAsBoth() {
+        var pageTarget = new HouseholdFactQaModels.QaTarget("ITEM", ITEM_ID, "牛奶");
+        assertThat(planner.recommend("这个呢？", pageTarget)).isEqualTo("BOTH");
+    }
+
+    @Test
+    void recommendNoHitWithLocationPageContextAsHouseholdFact() {
+        UUID locationId = UUID.fromString("00000000-0000-0000-0000-000000000030");
+        var pageTarget = new HouseholdFactQaModels.QaTarget("LOCATION", locationId, "厨房");
+        assertThat(planner.recommend("这个呢？", pageTarget)).isEqualTo("HOUSEHOLD_FACT");
+    }
+
+    @Test
+    void previewDoesNotScanItemsLotsOrLocations() {
+        var pageTarget = new HouseholdFactQaModels.QaTarget("ITEM", ITEM_ID);
+        String recommended = planner.previewRecommendedScope(HOUSEHOLD_ID, "这个呢？", pageTarget);
+
+        assertThat(recommended).isEqualTo("BOTH");
+    }
+
+    @Test
+    void previewTreatsUnauthorizedPageContextAsAbsent() {
+        UUID foreignItem = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        var pageTarget = new HouseholdFactQaModels.QaTarget("ITEM", foreignItem);
+
+        String recommended = planner.previewRecommendedScope(HOUSEHOLD_ID, "这个呢？", pageTarget);
+
+        assertThat(recommended).isEqualTo("HOUSEHOLD_FACT");
+    }
+
+    @Test
     void blankSerialDoesNotMatchUnrelatedQuestion() {
         inventoryApi.lots = List.of(
                 lot(LOT_A, "", "LOT-A"),

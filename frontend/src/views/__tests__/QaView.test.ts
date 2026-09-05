@@ -6,6 +6,7 @@ vi.mock("../../api/ai", () => ({
   askHouseholdQuestion: vi.fn(),
   fetchAiStatus: vi.fn(),
   fetchKnowledgeSources: vi.fn(),
+  previewQaAnswerScope: vi.fn(),
 }));
 
 vi.mock("../../api/catalog", () => ({
@@ -28,7 +29,7 @@ vi.mock("vue-router", () => ({
 }));
 
 import QaView from "../QaView.vue";
-import { askHouseholdQuestion, fetchAiStatus, fetchKnowledgeSources } from "../../api/ai";
+import { askHouseholdQuestion, fetchAiStatus, fetchKnowledgeSources, previewQaAnswerScope } from "../../api/ai";
 import { fetchItems } from "../../api/catalog";
 import { fetchLots } from "../../api/inventory";
 import { fetchLocationTree } from "../../api/location";
@@ -38,6 +39,7 @@ import type { AiStatus, KnowledgeSourceInfo } from "../../types/ai";
 const mockAsk = vi.mocked(askHouseholdQuestion);
 const mockFetchAiStatus = vi.mocked(fetchAiStatus);
 const mockFetchKnowledgeSources = vi.mocked(fetchKnowledgeSources);
+const mockPreview = vi.mocked(previewQaAnswerScope);
 const mockFetchItems = vi.mocked(fetchItems);
 const mockFetchLots = vi.mocked(fetchLots);
 const mockFetchLocationTree = vi.mocked(fetchLocationTree);
@@ -230,18 +232,30 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+async function typeQuestion(wrapper: ReturnType<typeof mountV>, value: string) {
+  await wrapper.find("textarea").setValue(value);
+}
+
+async function awaitScopePreview() {
+  await vi.advanceTimersByTimeAsync(300);
+  await flushPromises();
+}
+
 describe("QaView", () => {
   beforeEach(() => {
     sessionStorage.clear();
+    vi.useFakeTimers();
     pushMock.mockReset();
     mockAsk.mockReset();
     mockFetchAiStatus.mockReset();
     mockFetchKnowledgeSources.mockReset();
+    mockPreview.mockReset();
     mockFetchItems.mockReset();
     mockFetchLots.mockReset();
     mockFetchLocationTree.mockReset();
     mockFetchAiStatus.mockResolvedValue(availableStatusFixture);
     mockFetchKnowledgeSources.mockResolvedValue([]);
+    mockPreview.mockResolvedValue({ recommendedAnswerScope: "HOUSEHOLD_FACT" });
     for (const key of Object.keys(routeQuery)) delete routeQuery[key];
     mockFetchItems.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
     mockFetchLots.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
@@ -380,6 +394,44 @@ describe("QaView", () => {
     expect(wrapper.find("textarea").exists()).toBe(true);
     expect(wrapper.find(".qa-page").classes()).toContain("page-container");
     expect(wrapper.find(".qa-shell > .qa-composer").exists()).toBe(true);
+  });
+
+  it("does not call the preview API for an empty question", async () => {
+    const wrapper = mountV();
+    await typeQuestion(wrapper, "   ");
+    await awaitScopePreview();
+
+    expect(mockPreview).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("家庭事实");
+  });
+
+  it("keeps the last good recommendation when preview fails", async () => {
+    mockPreview
+      .mockResolvedValueOnce({ recommendedAnswerScope: "BOTH" })
+      .mockRejectedValueOnce(new Error("preview down"));
+    const wrapper = mountV();
+
+    await typeQuestion(wrapper, "过期了怎么处理");
+    await awaitScopePreview();
+    expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("两者");
+
+    await typeQuestion(wrapper, "滤网怎么清洁？");
+    await awaitScopePreview();
+    expect(wrapper.get('[data-testid="qa-scope-recommendation"]').text()).toContain("两者");
+    expect(wrapper.find("textarea").exists()).toBe(true);
+  });
+
+  it("still submits AUTO after a preview failure", async () => {
+    mockPreview.mockRejectedValue(new Error("preview down"));
+    mockAsk.mockResolvedValue(answerFixture);
+    const wrapper = mountV();
+
+    await typeQuestion(wrapper, "牛奶还有多少？");
+    await awaitScopePreview();
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(mockAsk).toHaveBeenCalledWith("牛奶还有多少？", { answerScope: "AUTO" }, expect.any(AbortSignal));
   });
 
   it("fills the composer from a clickable empty-state example so the user can ask it", async () => {

@@ -36,6 +36,7 @@ class OpenApiContractTest extends AbstractMockMvcIntegrationTest {
             "/api/v1/system/info",
             "/api/v1/ai/settings",
             "/api/v1/ai/status",
+            "/api/v1/ai/qa/scope-preview",
             // Phase 3: File, Catalog, Location
             "/api/v1/files",
             "/api/v1/files/{fileId}",

@@ -27,7 +27,7 @@ class QaScopePlanner {
 
     private static final List<String> FACT_TERMS = List.of(
             "库存", "还有", "多少", "哪里", "在哪", "位置", "批次", "到期", "临期",
-            "低库存", "缺货", "流水", "入库", "领用", "报损", "提醒", "当前");
+            "低库存", "缺货", "流水", "入库", "领用", "报损", "提醒", "当前", "过期");
     private static final List<String> KNOWLEDGE_TERMS = List.of(
             "怎么", "如何", "清洁", "维护", "保养", "使用", "说明", "故障", "注意", "步骤", "资料");
 
@@ -108,7 +108,20 @@ class QaScopePlanner {
         return new ScopePlan(recommended, used, reason, target, knowledgeTarget, List.of(), false);
     }
 
-    private String recommend(String question, QaTarget pageTarget) {
+    /** 仅按词表与（已授权的）页面上下文推荐范围，不做候选扫描、不调用模型。 */
+    String previewRecommendedScope(UUID householdId, String question, QaTarget pageContext) {
+        QaTarget pageTarget = null;
+        if (pageContext != null) {
+            try {
+                pageTarget = authorizeAndLabel(householdId, pageContext);
+            } catch (RuntimeException ignored) {
+                pageTarget = null;
+            }
+        }
+        return recommend(question, pageTarget);
+    }
+
+    String recommend(String question, QaTarget pageTarget) {
         String normalized = question == null ? "" : question.toLowerCase(Locale.ROOT);
         boolean fact = containsAny(normalized, FACT_TERMS);
         boolean knowledge = containsAny(normalized, KNOWLEDGE_TERMS);

@@ -381,7 +381,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ChatDotRound, Location, Paperclip, Setting, ArrowDown } from "@element-plus/icons-vue";
-import { askHouseholdQuestion, fetchAiStatus, fetchKnowledgeSources } from "../api/ai";
+import { askHouseholdQuestion, fetchAiStatus, fetchKnowledgeSources, previewQaAnswerScope } from "../api/ai";
 import { fetchItems } from "../api/catalog";
 import { fetchLots } from "../api/inventory";
 import { fetchLocationTree } from "../api/location";
@@ -514,19 +514,48 @@ const scopePlaceholder = computed(() => {
 
 const canSubmit = computed(() => Boolean(question.value.trim()) && !submitting.value);
 
-const recommendedScope = computed<Exclude<QaAnswerScope, "AUTO">>(() => {
-  const normalized = question.value.trim().toLowerCase();
-  const fact = ["库存", "还有", "多少", "哪里", "在哪", "位置", "批次", "到期", "临期",
-    "低库存", "缺货", "流水", "入库", "领用", "报损", "提醒", "当前"]
-    .some((term) => normalized.includes(term));
-  const knowledge = ["怎么", "如何", "清洁", "维护", "保养", "使用", "说明", "故障", "注意", "步骤", "资料"]
-    .some((term) => normalized.includes(term));
-  if (fact && knowledge) return "BOTH";
-  if (knowledge) return "KNOWLEDGE_SOURCE";
-  if (fact) return "HOUSEHOLD_FACT";
-  if (pageContext.value && pageContext.value.type !== "LOCATION") return "BOTH";
-  return "HOUSEHOLD_FACT";
-});
+const PREVIEW_DEBOUNCE_MS = 300;
+const recommendedScope = ref<Exclude<QaAnswerScope, "AUTO">>("HOUSEHOLD_FACT");
+let previewTimer: ReturnType<typeof setTimeout> | null = null;
+let previewAbort: AbortController | null = null;
+
+watch([question, pageContext], () => {
+  scheduleScopePreview();
+}, { immediate: true });
+
+function scheduleScopePreview() {
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+    previewTimer = null;
+  }
+  const text = question.value.trim();
+  if (!text) {
+    previewAbort?.abort();
+    previewAbort = null;
+    recommendedScope.value = "HOUSEHOLD_FACT";
+    return;
+  }
+  previewTimer = setTimeout(() => {
+    previewTimer = null;
+    void loadScopePreview(text, pageContext.value);
+  }, PREVIEW_DEBOUNCE_MS);
+}
+
+async function loadScopePreview(text: string, context: QaQuestionScope | undefined) {
+  if (question.value.trim() !== text) return;
+  previewAbort?.abort();
+  const controller = new AbortController();
+  previewAbort = controller;
+  try {
+    const preview = await previewQaAnswerScope(text, context, controller.signal);
+    if (controller.signal.aborted || question.value.trim() !== text) return;
+    recommendedScope.value = preview.recommendedAnswerScope;
+  } catch (error) {
+    if (controller.signal.aborted || isAbortError(error)) return;
+  } finally {
+    if (previewAbort === controller) previewAbort = null;
+  }
+}
 
 const effectiveScope = computed<Exclude<QaAnswerScope, "AUTO">>(
   () => answerScope.value === "AUTO" ? recommendedScope.value : answerScope.value,

@@ -128,6 +128,9 @@ final class HouseholdFactQaModels {
     ) {
     }
 
+    record ScopePreview(String recommendedAnswerScope) {
+    }
+
     /** 一组确定性结构化结果（表格行，行为列名 → 展示值）。 */
     record StructuredResult(String kind, String title, List<Map<String, String>> rows) {
     }

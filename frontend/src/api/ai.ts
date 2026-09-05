@@ -6,6 +6,8 @@ import type {
   HouseholdFactAnswer,
   HouseholdFactQuestion,
   QaQuestionOptions,
+  QaQuestionScope,
+  QaScopePreview,
   KnowledgeSourceInfo
 } from "../types/ai";
 
@@ -39,6 +41,18 @@ export function askHouseholdQuestion(
 ): Promise<HouseholdFactAnswer> {
   const body: HouseholdFactQuestion = { question, ...options };
   return postJson<HouseholdFactAnswer>("/api/v1/ai/qa", body, signal);
+}
+
+/** 问答范围预览：只跑服务端词表，不启动问答、不占用模型并发。 */
+export function previewQaAnswerScope(
+  question: string,
+  pageContext?: QaQuestionScope,
+  signal?: AbortSignal
+): Promise<QaScopePreview> {
+  return postJson<QaScopePreview>("/api/v1/ai/qa/scope-preview", {
+    question,
+    pageContext: pageContext ?? null,
+  }, signal);
 }
 
 /** 列出当前家庭全部知识来源（含处理状态与失败原因）。 */

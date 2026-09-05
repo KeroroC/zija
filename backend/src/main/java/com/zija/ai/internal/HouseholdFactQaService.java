@@ -108,6 +108,22 @@ class HouseholdFactQaService {
         return answer;
     }
 
+    HouseholdFactQaModels.ScopePreview previewScope(
+            UUID accountId,
+            String question,
+            HouseholdFactQaModels.QaTargetInput pageContext
+    ) {
+        var member = householdApi.requireActiveMember(accountId);
+        HouseholdFactQaModels.QaTarget pageTarget = null;
+        try {
+            pageTarget = toTarget(pageContext);
+        } catch (RuntimeException ignored) {
+            pageTarget = null;
+        }
+        return new HouseholdFactQaModels.ScopePreview(
+                scopePlanner.previewRecommendedScope(member.householdId(), question, pageTarget));
+    }
+
     private HouseholdFactQaModels.QaRequest toRequest(HouseholdFactQaModels.QaInput input) {
         return new HouseholdFactQaModels.QaRequest(
                 input.question(),
