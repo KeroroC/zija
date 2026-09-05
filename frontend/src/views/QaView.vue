@@ -57,6 +57,7 @@
               <p v-if="waitingElapsedSeconds >= WAITING_ELAPSED_HINT_AFTER" class="qa-pending-elapsed">
                 已等待 {{ waitingElapsedSeconds }} 秒
               </p>
+              <el-button class="qa-pending-cancel" data-testid="qa-cancel" @click="cancelAsk">取消</el-button>
             </div>
             <div v-else>
             <div v-if="turn.answer.usedAnswerScope" class="qa-used-scope" data-testid="qa-used-scope">
@@ -257,6 +258,7 @@
               <p v-if="waitingElapsedSeconds >= WAITING_ELAPSED_HINT_AFTER" class="qa-pending-elapsed">
                 已等待 {{ waitingElapsedSeconds }} 秒
               </p>
+              <el-button class="qa-pending-cancel" data-testid="qa-cancel" @click="cancelAsk">取消</el-button>
             </div>
           </div>
         </div>
@@ -267,10 +269,19 @@
           <el-icon><ChatDotRound /></el-icon>
         </div>
         <p class="qa-empty-title">问问家里的物品与资料</p>
-        <p class="qa-empty-hint">
-          试试「牛奶还有多少？」「哪些批次快到期了？」「看看低库存物品」或
-          「牛奶最近有没有入库？」
-        </p>
+        <p class="qa-empty-hint">试试这些问题，点一下填入输入框</p>
+        <div class="qa-empty-examples">
+          <button
+            v-for="example in exampleQuestions"
+            :key="example"
+            type="button"
+            class="qa-scope-chip"
+            data-testid="qa-example"
+            @click="question = example"
+          >
+            {{ example }}
+          </button>
+        </div>
       </div>
 
       <!-- 输入区：固定吸视口底，settings 面板可折叠。out 当 backdrop, card 内嵌 -->
@@ -398,6 +409,13 @@ import { AI_REQUEST_LIMITED } from "../types/errorCodes";
 const router = useRouter();
 const route = useRoute();
 const WAITING_ELAPSED_HINT_AFTER = 3;
+const exampleQuestions = [
+  "牛奶还有多少？",
+  "哪些批次快到期了？",
+  "看看低库存物品",
+  "牛奶最近有没有入库？",
+  "滤网怎么清洁？",
+];
 
 const restoredThread = loadQaThread();
 const question = ref(restoredThread.draft);
@@ -408,6 +426,7 @@ const waitingElapsedSeconds = ref(0);
 const threadEl = ref<HTMLElement | null>(null);
 let waitingTimer: ReturnType<typeof setInterval> | null = null;
 let waitingStartedAt = 0;
+let askAbort: AbortController | null = null;
 const turns = ref(restoredThread.turns);
 // 范围设置面板：首次默认展开，提问后自动收起；用户后续可手动再展开。
 const settingsOpen = ref(restoredThread.turns.length === 0);
@@ -662,6 +681,19 @@ function stopWaiting() {
   pendingQuestion.value = "";
   confirmingIndex.value = null;
   waitingElapsedSeconds.value = 0;
+  askAbort = null;
+}
+
+/** 客户端停止等待即可；已发出的请求仍可能占服务端并发名额，本票不要求服务端取消模型调用。 */
+function cancelAsk() {
+  askAbort?.abort();
+}
+
+function isAbortError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "name" in error
+    && (error as { name: string }).name === "AbortError";
 }
 
 onUnmounted(stopWaiting);
@@ -683,11 +715,18 @@ async function submit() {
   if (!canSubmit.value) return;
   const text = question.value.trim();
   question.value = "";
+  askAbort = new AbortController();
+  const signal = askAbort.signal;
   startWaiting(text, null);
   submitting.value = true;
   try {
     const options = questionOptions();
-    const result = await askHouseholdQuestion(text, options);
+    const result = await askHouseholdQuestion(text, options, signal);
+    if (signal.aborted) {
+      question.value = text;
+      ElMessage.info("已取消");
+      return;
+    }
     turns.value.push({
       question: text,
       answerScope: answerScope.value,
@@ -696,7 +735,9 @@ async function submit() {
     });
   } catch (e) {
     question.value = text;
-    if (e instanceof ApiError) {
+    if (signal.aborted || isAbortError(e)) {
+      ElMessage.info("已取消");
+    } else if (e instanceof ApiError) {
       ElMessage.error(qaErrorMessage(e));
     } else {
       ElMessage.error("提问失败，请稍后重试");
@@ -710,6 +751,8 @@ async function submit() {
 async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
   const turn = turns.value[index];
   if (!turn || submitting.value) return;
+  askAbort = new AbortController();
+  const signal = askAbort.signal;
   startWaiting(turn.question, index);
   submitting.value = true;
   try {
@@ -725,12 +768,21 @@ async function confirmCandidate(index: number, candidate: QaScopeCandidate) {
     if (turn.confirmedScopes.length > 0) {
       options.confirmedScopes = [...turn.confirmedScopes];
     }
-    turn.answer = await askHouseholdQuestion(turn.question, options);
+    const result = await askHouseholdQuestion(turn.question, options, signal);
+    if (signal.aborted) {
+      ElMessage.info("已取消");
+      return;
+    }
+    turn.answer = result;
     if (!turn.confirmedScopes.some((scope) => scope.type === confirmedScope.type && scope.id === confirmedScope.id)) {
       turn.confirmedScopes.push(confirmedScope);
     }
   } catch (e) {
-    ElMessage.error(e instanceof ApiError ? qaErrorMessage(e) : "提问失败，请稍后重试");
+    if (signal.aborted || isAbortError(e)) {
+      ElMessage.info("已取消");
+    } else {
+      ElMessage.error(e instanceof ApiError ? qaErrorMessage(e) : "提问失败，请稍后重试");
+    }
   } finally {
     stopWaiting();
     submitting.value = false;
@@ -1239,6 +1291,10 @@ function formatDateTime(iso: string): string {
   color: var(--zj-ink-600);
 }
 
+.qa-pending-cancel {
+  align-self: flex-start;
+}
+
 .qa-pending-elapsed {
   margin: 0;
   font-size: var(--zj-text-caption);
@@ -1511,6 +1567,15 @@ function formatDateTime(iso: string): string {
   max-width: 440px;
   font-size: 13px;
   color: var(--zj-ink-400);
+}
+
+.qa-empty-examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--zj-space-2);
+  max-width: 440px;
+  margin: var(--zj-space-4) auto 0;
 }
 
 @media (max-width: 720px) {

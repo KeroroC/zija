@@ -319,7 +319,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenCalledWith("牛奶还有多少、放在哪里？", {
       answerScope: "AUTO",
       pageContext: { type: "ITEM", id: "item-1" },
-    });
+    }, expect.any(AbortSignal));
     expect(wrapper.text()).toContain("牛奶当前库存 5 瓶，放在厨房。");
   });
 
@@ -367,6 +367,26 @@ describe("QaView", () => {
     expect(wrapper.find(".qa-shell > .qa-composer").exists()).toBe(true);
   });
 
+  it("fills the composer from a clickable empty-state example so the user can ask it", async () => {
+    mockAsk.mockResolvedValue(answerFixture);
+    const wrapper = mountV();
+    const examples = wrapper.findAll('[data-testid="qa-example"]');
+    expect(examples.map((chip) => chip.text())).toEqual([
+      "牛奶还有多少？",
+      "哪些批次快到期了？",
+      "看看低库存物品",
+      "牛奶最近有没有入库？",
+      "滤网怎么清洁？",
+    ]);
+
+    await examples[0].trigger("click");
+    expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("牛奶还有多少？");
+
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+    expect(mockAsk).toHaveBeenCalledWith("牛奶还有多少？", { answerScope: "AUTO" }, expect.any(AbortSignal));
+  });
+
   it("shows a waiting card instead of a blank thread while the first question is in flight", async () => {
     vi.useFakeTimers();
     const ask = deferred<typeof answerFixture>();
@@ -392,6 +412,37 @@ describe("QaView", () => {
 
     expect(wrapper.find('[data-testid="qa-pending"]').exists()).toBe(false);
     expect(wrapper.text()).toContain("牛奶当前库存 5 瓶，放在厨房。");
+  });
+
+  it("cancels an in-flight question without writing a turn or treating it as failure", async () => {
+    const errorSpy = vi.spyOn(ElMessage, "error");
+    const infoSpy = vi.spyOn(ElMessage, "info");
+    mockAsk.mockImplementation((_question, _options, signal?: AbortSignal) => {
+      return new Promise((_resolve, reject) => {
+        const abort = () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        };
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+      });
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("牛奶还有多少？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="qa-pending"]').text()).toContain("正在查阅账册");
+    await wrapper.get('[data-testid="qa-cancel"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="qa-pending"]').exists()).toBe(false);
+    expect(wrapper.findAll(".qa-question-text")).toHaveLength(0);
+    expect(wrapper.find(".qa-empty").exists()).toBe(true);
+    expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("牛奶还有多少？");
+    expect(mockAsk.mock.calls[0][2]?.aborted).toBe(true);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith("已取消");
   });
 
   it("appends a waiting card after existing turns for a follow-up question", async () => {
@@ -497,7 +548,7 @@ describe("QaView", () => {
     expect(wrapper.findAll(".qa-jump").length).toBe(3);
     expect(mockAsk).toHaveBeenCalledWith("牛奶还有多少、放在哪里？", {
       answerScope: "AUTO",
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("jump buttons navigate to authoritative pages", async () => {
@@ -621,7 +672,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenCalled();
     expect(mockAsk).toHaveBeenCalledWith("滤网怎么清洁？", {
       answerScope: "KNOWLEDGE_SOURCE",
-    });
+    }, expect.any(AbortSignal));
     for (const [, options] of mockAsk.mock.calls) {
       expect(options?.scope?.id ?? "missing").not.toBe("");
     }
@@ -650,7 +701,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenCalledWith("咖啡机滤网怎么清洁？", {
       answerScope: "KNOWLEDGE_SOURCE",
       scope: { type: "ITEM", id: "item-1" },
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("loads every item page so any item can be selected", async () => {
@@ -800,7 +851,7 @@ describe("QaView", () => {
 
     expect(mockAsk).toHaveBeenCalledWith("咖啡机当前库存和说明书记录一致吗？", {
       answerScope: "HOUSEHOLD_FACT",
-    });
+    }, expect.any(AbortSignal));
     expect(wrapper.get('[data-testid="qa-used-scope"]').text()).toContain("家庭事实");
     expect(wrapper.get('[data-testid="qa-used-scope"]').text()).toContain("推荐 两者");
   });
@@ -821,7 +872,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenCalledWith("这个物品怎么清洁？", {
       answerScope: "AUTO",
       pageContext: { type: "ITEM", id: "item-1", label: "咖啡机" },
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("asks household facts about a composer-selected location", async () => {
@@ -865,7 +916,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenCalledWith("这个位置还有什么？", {
       answerScope: "HOUSEHOLD_FACT",
       scope: { type: "LOCATION", id: "loc-1", label: "厨房 / 柜子" },
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("uses a labeled location page context when asking from a location page", async () => {
@@ -883,7 +934,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenCalledWith("这个位置还有什么？", {
       answerScope: "AUTO",
       pageContext: { type: "LOCATION", id: "loc-1", label: "厨房 / 柜子" },
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("uses item page context to recommend both sources for a neutral question", async () => {
@@ -904,7 +955,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenCalledWith("这个呢？", {
       answerScope: "AUTO",
       pageContext: { type: "ITEM", id: "item-1" },
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("shows ambiguous candidates and retries only after the user confirms one", async () => {
@@ -938,7 +989,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenNthCalledWith(2, "牛奶还有多少？", {
       answerScope: "HOUSEHOLD_FACT",
       scope: { type: "ITEM", id: "item-1", label: "牛奶" },
-    });
+    }, expect.any(AbortSignal));
     expect(wrapper.find('[data-testid="qa-candidate"]').exists()).toBe(false);
     expect(wrapper.text()).toContain("牛奶当前库存 5 瓶");
   });
@@ -978,7 +1029,7 @@ describe("QaView", () => {
       answerScope: "BOTH",
       scope: { type: "LOCATION", id: "loc-1", label: "柜子" },
       confirmedScopes: [{ type: "ITEM", id: "item-1", label: "咖啡机" }],
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("keeps item page context while confirming an ambiguous location", async () => {
@@ -1009,7 +1060,7 @@ describe("QaView", () => {
       answerScope: "BOTH",
       scope: { type: "LOCATION", id: "loc-1", label: "柜子" },
       confirmedScopes: [{ type: "ITEM", id: "item-1", label: "咖啡机" }],
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("renders mixed source parts, an explicit conflict, and both authoritative jumps", async () => {
@@ -1087,7 +1138,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenNthCalledWith(3, "那放在哪？", {
       answerScope: "AUTO",
       confirmedScopes: [{ type: "ITEM", id: "item-1", label: "牛奶" }],
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("keeps confirmed scopes on a follow-up after the view is remounted", async () => {
@@ -1123,7 +1174,7 @@ describe("QaView", () => {
     expect(mockAsk).toHaveBeenLastCalledWith("那放在哪？", {
       answerScope: "AUTO",
       confirmedScopes: [{ type: "ITEM", id: "item-1", label: "牛奶" }],
-    });
+    }, expect.any(AbortSignal));
   });
 
   it("restores the conversation after leaving the view and coming back", async () => {

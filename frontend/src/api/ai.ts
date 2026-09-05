@@ -30,13 +30,15 @@ export function updateAiSettings(body: AiSettingsUpdate): Promise<AiSettings> {
   return putJson<AiSettings>("/api/v1/ai/settings", body);
 }
 
-/** 统一问答：家庭由服务端推导；知识问答只传物品或批次范围，不传家庭 ID。 */
+/** 统一问答：家庭由服务端推导；知识问答只传物品或批次范围，不传家庭 ID。
+ * 传入 signal 仅取消客户端等待；已发出的请求仍可能占服务端并发名额，本票不中止模型调用。 */
 export function askHouseholdQuestion(
   question: string,
-  options: QaQuestionOptions = {}
+  options: QaQuestionOptions = {},
+  signal?: AbortSignal
 ): Promise<HouseholdFactAnswer> {
   const body: HouseholdFactQuestion = { question, ...options };
-  return postJson<HouseholdFactAnswer>("/api/v1/ai/qa", body);
+  return postJson<HouseholdFactAnswer>("/api/v1/ai/qa", body, signal);
 }
 
 /** 列出当前家庭全部知识来源（含处理状态与失败原因）。 */

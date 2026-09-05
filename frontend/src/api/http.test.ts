@@ -3,6 +3,7 @@ import {
   ApiError,
   clearCsrf,
   ensureCsrf,
+  getJson,
   postJson,
   postJsonAndRefreshCsrf,
   postJsonWithIdempotency,
@@ -278,5 +279,59 @@ describe("Idempotency-Key header", () => {
     await putJsonWithIdempotency("/api/v1/x/1", { b: 2 }, "key-456");
     const init = fetchMock.mock.calls[1][1] as RequestInit;
     expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("key-456");
+  });
+});
+
+describe("AbortSignal", () => {
+  beforeEach(() => {
+    clearCsrf();
+  });
+
+  afterEach(() => {
+    clearCsrf();
+    vi.unstubAllGlobals();
+  });
+
+  it("forwards an AbortSignal from getJson to fetch", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getJson("/api/v1/ai/status", controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/ai/status",
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
+  it("forwards an AbortSignal from postJson to fetch", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ token: "csrf-token" }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await postJson("/api/v1/ai/qa", { question: "牛奶还有多少？" }, controller.signal);
+
+    const postInit = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(postInit.signal).toBe(controller.signal);
+  });
+
+  it("does not send the business POST when the signal is aborted after CSRF", async () => {
+    const controller = new AbortController();
+    const csrf = deferred<Response>();
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(csrf.promise)
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = postJson("/api/v1/ai/qa", { question: "牛奶还有多少？" }, controller.signal);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    controller.abort();
+    csrf.resolve(jsonResponse({ token: "csrf-token" }));
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
