@@ -658,8 +658,10 @@ function isKnowledgeSourceInRange(
   source: KnowledgeSourceInfo,
   range: { type: "ITEM" | "LOT"; id: string } | undefined,
 ): boolean {
+  // 未选定物品/批次时展示全家庭准备状态；选定后仍计入家庭挂载来源，
+  // 以及当前对象上的物品/批次来源。
+  if (!range) return true;
   if (source.mountType === "HOUSEHOLD") return true;
-  if (!range) return false;
   return source.mountType === range.type && source.mountId === range.id;
 }
 

@@ -321,7 +321,7 @@ describe("QaView", () => {
     expect(mockFetchKnowledgeSources).toHaveBeenCalledOnce();
   });
 
-  it("summarizes household-mounted knowledge sources when no item is selected", async () => {
+  it("summarizes all selected knowledge sources when no item is selected", async () => {
     mockFetchKnowledgeSources.mockResolvedValue([
       knowledgeSource("h1", "AVAILABLE", { mountType: "HOUSEHOLD", mountId: "hh-1" }),
       knowledgeSource("h2", "PROCESSING", { mountType: "HOUSEHOLD", mountId: "hh-1" }),
@@ -335,7 +335,25 @@ describe("QaView", () => {
     expect(prep).toContain("知识准备状态");
     expect(prep).toContain("处理中 1");
     expect(prep).toContain("可用 1");
-    expect(prep).toContain("失败 0");
+    expect(prep).toContain("失败 1");
+  });
+
+  it("counts an item-mounted available manual when opened from the sidebar", async () => {
+    mockFetchKnowledgeSources.mockResolvedValue([
+      knowledgeSource("ocr", "AVAILABLE", { mountType: "ITEM", mountId: "item-sennheiser" }),
+      knowledgeSource("scan", "FAILED", {
+        mountType: "ITEM",
+        mountId: "item-sennheiser",
+        failureCode: "TEXT_NOT_EXTRACTABLE",
+      }),
+    ]);
+    const wrapper = mountV();
+    await flushPromises();
+
+    const prep = wrapper.get('[data-testid="qa-knowledge-prep"]').text();
+    expect(prep).toContain("处理中 0");
+    expect(prep).toContain("可用 1");
+    expect(prep).toContain("失败 1");
   });
 
   it("still allows household-fact questions when status APIs fail", async () => {
