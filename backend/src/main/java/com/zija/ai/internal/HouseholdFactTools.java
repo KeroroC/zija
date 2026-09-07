@@ -70,6 +70,7 @@ final class HouseholdFactTools {
             if (hits.isEmpty() && isItemTarget()) {
                 hits = queries.searchItems(householdId, "", n, targetItemId());
             }
+            collector.noteBoundedList(hits.size(), n);
             List<Map<String, String>> rows = hits.stream()
                     .map(hit -> cellMap(
                             "itemId", String.valueOf(hit.itemId()),
@@ -105,6 +106,7 @@ final class HouseholdFactTools {
         }
         try {
             var stock = scopeStock(queries.itemStock(householdId, authorizedItemId(itemId)));
+            collector.noteBoundedList(stock.positions().size(), n);
             List<Map<String, String>> rows = stock.positions().stream()
                     .limit(n)
                     .map(p -> cellMap("位置", p.locationPath(),
@@ -161,6 +163,7 @@ final class HouseholdFactTools {
                 return unavailable("location_stock");
             }
             var stock = queries.locationStock(householdId, target.id(), itemKeyword, n);
+            collector.noteBoundedList(stock.positions().size(), n);
             List<Map<String, String>> rows = stock.positions().stream()
                     .map(position -> cellMap(
                             "物品", position.itemName(),
@@ -214,6 +217,7 @@ final class HouseholdFactTools {
             }
             var lots = queries.expiringLots(
                     householdId, days, n, targetItemId(), isLotTarget() ? target.id() : null);
+            collector.noteBoundedList(lots.size(), n);
             List<Map<String, String>> rows = lots.stream()
                     .map(lot -> cellMap("物品", lot.itemName(),
                             "批次号", lot.lotNumber(),
@@ -257,6 +261,7 @@ final class HouseholdFactTools {
             }
             var lots = queries.expiredLots(
                     householdId, n, targetItemId(), isLotTarget() ? target.id() : null);
+            collector.noteBoundedList(lots.size(), n);
             List<Map<String, String>> rows = lots.stream()
                     .map(lot -> cellMap("物品", lot.itemName(),
                             "批次号", lot.lotNumber(),
@@ -299,6 +304,7 @@ final class HouseholdFactTools {
                 return unavailable("low_stock");
             }
             var items = queries.lowStock(householdId, n, targetItemId());
+            collector.noteBoundedList(items.size(), n);
             List<Map<String, String>> rows = items.stream()
                     .map(item -> cellMap("物品", item.itemName(),
                             "单位", item.unitName(),
@@ -330,6 +336,7 @@ final class HouseholdFactTools {
         }
         try {
             var tasks = queries.reminderTasks(householdId, n);
+            collector.noteBoundedList(tasks.size(), n);
             List<Map<String, String>> rows = tasks.stream()
                     .map(task -> cellMap(
                             "类型", localizeReminderKind(task.kind()),
@@ -373,6 +380,7 @@ final class HouseholdFactTools {
                     n,
                     isLotTarget() ? target.id() : null,
                     isLocationTarget() ? target.id() : null);
+            collector.noteBoundedList(movements.size(), n);
             List<Map<String, String>> rows = movements.stream()
                     .map(m -> cellMap("类型", m.type(),
                             "数量", str(m.quantity()),

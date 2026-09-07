@@ -105,9 +105,9 @@
             </div>
             <template v-else>
               <div
-                v-if="turn.answer.reasonCode === 'STRUCTURED_FACTS_FALLBACK'"
+                v-if="hasStatusBadge(turn.answer.reasonCode)"
                 class="qa-fallback"
-                data-testid="qa-fallback"
+                :data-testid="statusBadgeTestId(turn.answer.reasonCode)"
               >
                 <span class="zj-badge zj-badge-warn">{{ reasonLabel(turn.answer.reasonCode) }}</span>
                 <p v-if="!turn.answer.answerParts?.length" class="qa-summary">
@@ -133,7 +133,7 @@
                 </article>
               </div>
               <p
-                v-else-if="turn.answer.reasonCode !== 'STRUCTURED_FACTS_FALLBACK'"
+                v-else-if="!hasStatusBadge(turn.answer.reasonCode)"
                 class="qa-summary"
               >
                 {{ turn.answer.summary }}
@@ -911,7 +911,18 @@ function formatResultCell(column: string, value: string): string {
 }
 
 function hasDisplayableResults(answer: HouseholdFactAnswer): boolean {
-  return answer.reasonCode === "ANSWERED" || answer.reasonCode === "STRUCTURED_FACTS_FALLBACK";
+  return answer.reasonCode === "ANSWERED"
+    || answer.reasonCode === "STRUCTURED_FACTS_FALLBACK"
+    || answer.reasonCode === "PARTIAL_HOUSEHOLD_FACTS";
+}
+
+function hasStatusBadge(reasonCode: string): boolean {
+  return reasonCode === "STRUCTURED_FACTS_FALLBACK"
+    || reasonCode === "PARTIAL_HOUSEHOLD_FACTS";
+}
+
+function statusBadgeTestId(reasonCode: string): string {
+  return reasonCode === "PARTIAL_HOUSEHOLD_FACTS" ? "qa-partial" : "qa-fallback";
 }
 
 /** 用户可见的失败/降级原因；未知码不展示英文原文，回退到 summary。 */
@@ -923,6 +934,7 @@ const QA_REASON_LABELS: Record<string, string> = {
   MODEL_UNAVAILABLE: "模型暂不可用",
   AI_QA_TIMEOUT: "模型暂不可用",
   STRUCTURED_FACTS_FALLBACK: "模型不可用，已返回可核对的家庭事实",
+  PARTIAL_HOUSEHOLD_FACTS: "只查到部分家庭事实，请缩小范围",
 };
 
 function reasonLabel(reasonCode: string): string | undefined {

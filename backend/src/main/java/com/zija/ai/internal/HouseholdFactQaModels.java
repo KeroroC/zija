@@ -1,5 +1,7 @@
 package com.zija.ai.internal;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -68,6 +70,7 @@ final class HouseholdFactQaModels {
     record Answer(
             String question,
             boolean modelAvailable,
+            @Schema(description = "问答结果码。PARTIAL_HOUSEHOLD_FACTS 表示部分家庭事实，属于 HTTP 200 成功响应，不是问题详情错误。")
             String reasonCode,
             String summary,
             List<StructuredResult> structuredResults,
@@ -181,6 +184,8 @@ final class HouseholdFactQaModels {
         private final List<Jump> jumps = new ArrayList<>();
         private int toolCalls;
         private boolean factSourceUnavailable;
+        private boolean toolBudgetExhausted;
+        private boolean listTruncated;
 
         void addResult(StructuredResult result) {
             results.add(result);
@@ -204,8 +209,22 @@ final class HouseholdFactQaModels {
             if (toolCalls <= MAX_TOOL_CALLS) {
                 return true;
             }
-            factSourceUnavailable = true;
+            toolBudgetExhausted = true;
             return false;
+        }
+
+        boolean toolBudgetExhausted() {
+            return toolBudgetExhausted;
+        }
+
+        void noteBoundedList(int size, int limit) {
+            if (size >= limit) {
+                listTruncated = true;
+            }
+        }
+
+        boolean listTruncated() {
+            return listTruncated;
         }
 
         List<StructuredResult> results() {

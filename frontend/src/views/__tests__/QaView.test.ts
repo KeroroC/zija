@@ -824,6 +824,28 @@ describe("QaView", () => {
     )).toHaveLength(1);
   });
 
+  it("renders a Chinese badge and structured table for partial household facts", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      reasonCode: "PARTIAL_HOUSEHOLD_FACTS",
+      summary: "只查到这一部分，请缩小范围。",
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("家里总共有多少件东西？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='qa-partial']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='qa-partial'] .zj-badge").text())
+      .toBe("只查到部分家庭事实，请缩小范围");
+    expect(wrapper.text()).not.toContain("PARTIAL_HOUSEHOLD_FACTS");
+    expect(wrapper.find(".qa-unavailable").exists()).toBe(false);
+    expect(wrapper.find(".qa-result-table").exists()).toBe(true);
+    expect(wrapper.text()).toContain("「牛奶」库存分布");
+    expect(wrapper.find(".qa-jump").exists()).toBe(true);
+  });
+
   it("keeps the question out of the thread when the server rate-limits it", async () => {
     const errorSpy = vi.spyOn(ElMessage, "error");
     mockAsk.mockRejectedValue(new ApiError(

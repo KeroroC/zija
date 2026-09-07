@@ -36,6 +36,7 @@ class OpenApiContractTest extends AbstractMockMvcIntegrationTest {
             "/api/v1/system/info",
             "/api/v1/ai/settings",
             "/api/v1/ai/status",
+            "/api/v1/ai/qa",
             "/api/v1/ai/qa/scope-preview",
             // Phase 3: File, Catalog, Location
             "/api/v1/files",
@@ -77,5 +78,27 @@ class OpenApiContractTest extends AbstractMockMvcIntegrationTest {
 
         var actualPaths = new TreeSet<>(paths.propertyNames());
         assertThat(actualPaths).containsAll(REQUIRED_PATHS);
+    }
+
+    @Test
+    void householdQaSuccessResponseDocumentsPartialHouseholdFacts() throws Exception {
+        var response = mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        var docs = objectMapper.readTree(response);
+        var qaPost = docs.path("paths").path("/api/v1/ai/qa").path("post");
+        assertThat(qaPost.isMissingNode()).isFalse();
+        var success = qaPost.path("responses").path("200");
+        assertThat(success.isMissingNode()).isFalse();
+        assertThat(success.toString() + docs.path("components").path("schemas").toString())
+                .contains("PARTIAL_HOUSEHOLD_FACTS");
+
+        for (String status : java.util.List.of("400", "401", "403", "404", "409", "422", "429", "500")) {
+            assertThat(qaPost.path("responses").path(status).toString())
+                    .doesNotContain("PARTIAL_HOUSEHOLD_FACTS");
+        }
     }
 }

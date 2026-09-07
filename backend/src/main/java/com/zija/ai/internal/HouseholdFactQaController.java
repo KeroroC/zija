@@ -1,8 +1,10 @@
 package com.zija.ai.internal;
 
-import com.zija.ZijaRequestIdFilter;
 import com.zija.ZijaPrincipal;
+import com.zija.ZijaRequestIdFilter;
 import com.zija.household.RequireMember;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -52,6 +54,10 @@ class HouseholdFactQaController {
      * 家庭问答。家庭与权限由服务端从当前认证成员推导。
      */
     @RequireMember
+    @Operation(summary = "家庭问答")
+    @ApiResponse(responseCode = "200",
+            description = "问答成功。reasonCode 为 PARTIAL_HOUSEHOLD_FACTS 时表示只查到部分家庭事实，仍是成功响应。",
+            useReturnTypeSchema = true)
     @PostMapping("/qa")
     HouseholdFactQaModels.Answer ask(
             @AuthenticationPrincipal ZijaPrincipal principal,

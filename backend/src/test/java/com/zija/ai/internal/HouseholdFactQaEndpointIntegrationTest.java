@@ -806,6 +806,43 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void modelUnavailableSoonExpiringQuestionReturnsExpiringLotsNotExpiredStock() throws Exception {
+        seedExpiredLot();
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"快过期了\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRING_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRED_LOTS"))));
+    }
+
+    @Test
+    void modelUnavailableAlreadyExpiredQuestionStillReturnsExpiredLots() throws Exception {
+        seedExpiredLot();
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"已经过期\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRED_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-EXPIRED"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRING_LOTS"))));
+    }
+
+    @Test
     void modelUnavailableExpiringQuestionStillUsesExpiringWindow() throws Exception {
         seedExpiredLot();
         jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
@@ -1127,6 +1164,114 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void fiveHouseholdFactToolCallsKeepTheFirstFourResultsAsPartialFacts() throws Exception {
+        String requestId = "qa-partial-tool-budget";
+        String sensitiveQuestion = "家里库存、临期、缺货和提醒都看看？不要写入审计";
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool("searchItems", "{\"keyword\":\"\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool("expiringLots", "{\"withinDays\":30,\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool("lowStock", "{\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool("openReminderTasks", "{\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool("expiredLots", "{\"limit\":10}")
+        ), response -> "家里所有物品一共就这些，已经查完了。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .header("X-Request-Id", requestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "%s",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """.formatted(sensitiveQuestion)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("PARTIAL_HOUSEHOLD_FACTS"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("查询未完成")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("只查到这一部分")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("请缩小范围")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("已经查完了"))))
+                .andExpect(jsonPath("$.structuredResults[*].kind", org.hamcrest.Matchers.hasItems(
+                        "ITEM_SEARCH", "EXPIRING_LOTS", "LOW_STOCK", "REMINDER_TASKS")))
+                .andExpect(jsonPath("$.structuredResults[*].kind", org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.hasItem("EXPIRED_LOTS"))))
+                .andExpect(jsonPath("$.jumps").isNotEmpty())
+                .andExpect(jsonPath("$.sources[0].category").value("HOUSEHOLD_FACT"))
+                .andExpect(jsonPath("$.sources[0].available").value(true));
+
+        assertThat(chatModel.toolDispatchCount()).isEqualTo(5);
+
+        Map<String, Object> audit = jdbc.queryForMap("""
+                SELECT outcome, detail::text AS detail
+                FROM audit_log
+                WHERE action = 'AI_HOUSEHOLD_QA'
+                  AND request_id = ?
+                """, requestId);
+        assertThat(audit.get("outcome")).isEqualTo("SUCCESS");
+        assertThat(String.valueOf(audit.get("detail")))
+                .contains("\"reasonCode\": \"PARTIAL_HOUSEHOLD_FACTS\"")
+                .doesNotContain(sensitiveQuestion, "已经查完了", "question", "answer");
+    }
+
+    @Test
+    void completeSetQuestionHittingListLimitReturnsPartialFactsInsteadOfATotal() throws Exception {
+        seedExtraActiveItems(10);
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"\",\"limit\":10}",
+                response -> "家里总共有 10 件东西。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "家里总共有多少件东西？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("PARTIAL_HOUSEHOLD_FACTS"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("请缩小范围")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("总共有 10"))))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(10))
+                .andExpect(jsonPath("$.sources[0].available").value(true));
+    }
+
+    @Test
+    void successfulHouseholdFactsStayAvailableWhenALaterToolFails() throws Exception {
+        String unknownItem = UUID.randomUUID().toString();
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool("searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool(
+                        "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(unknownItem))
+        ), response -> response.contains("UNAVAILABLE")
+                ? "物品搜索结果见表格；该未知物品库存暂时无法确认。"
+                : "编造了未知物品库存。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶还有多少？另外那件东西呢？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].名称").value("牛奶"))
+                .andExpect(jsonPath("$.jumps[0].type").value("ITEM"))
+                .andExpect(jsonPath("$.sources[0].available").value(true));
+    }
+
+    @Test
     void modelTimeoutFallsBackToControlledStructuredFacts() throws Exception {
         jdbc.update("""
                 UPDATE ai_provider_setting
@@ -1214,6 +1359,16 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 OWNER_ACCOUNT_ID, Timestamp.from(OffsetDateTime.now().toInstant()),
                 Timestamp.from(OffsetDateTime.now().toInstant()),
                 UUID.randomUUID().toString());
+    }
+
+    private void seedExtraActiveItems(int count) {
+        for (int i = 1; i <= count; i++) {
+            jdbc.update("""
+                    INSERT INTO catalog_item
+                        (id, household_id, name, management_type, unit_id, status, version)
+                    VALUES (?, ?, ?, 'CONSUMABLE', ?, 'ACTIVE', 1)
+                    """, UUID.randomUUID(), HOUSEHOLD_ID, "备用物品-" + String.format("%02d", i), UNIT_ID);
+        }
     }
 
     private void seedExpiredLot() {
@@ -1371,18 +1526,19 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     /**
-     * 确定性假 {@link ChatModel}：第一次调用读取已注册工具并发出一次 {@code toolCall}，
-     * 后续调用（收到 {@link ToolResponseMessage} 后）根据工具结果产出最终摘要。
-     * 也是「最小假模型调用」的验证 seam。
+     * 确定性假 {@link ChatModel}：按脚本依次发出工具调用，Spring AI 执行真实工具后再回喂，
+     * 脚本耗尽后根据工具结果产出最终摘要。也是「最小假模型调用」的验证 seam。
      */
     static final class ScriptedChatModel implements ChatModel {
+
+        private static final ScriptedTool DEFAULT_TOOL =
+                new ScriptedTool("searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}");
 
         private final AtomicInteger modelCalls = new AtomicInteger();
         private final AtomicInteger toolDispatchCount = new AtomicInteger();
         private final AtomicInteger interruptedCalls = new AtomicInteger();
 
-        private String toolName = "searchItems";
-        private String toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
+        private List<ScriptedTool> tools = List.of(DEFAULT_TOOL);
         private ToolConsumer finalText = response -> "完成。";
         private String firstPrompt = "";
         private final java.util.concurrent.atomic.AtomicBoolean delayNextCall =
@@ -1400,12 +1556,16 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 }
             }
             int call = modelCalls.incrementAndGet();
-            if (call == 1) {
-                firstPrompt = prompt.getContents();
+            int toolIndex = call - 1;
+            if (toolIndex < tools.size()) {
+                if (call == 1) {
+                    firstPrompt = prompt.getContents();
+                }
+                ScriptedTool tool = tools.get(toolIndex);
                 if (prompt.getOptions() instanceof ToolCallingChatOptions options
                         && options.getToolCallbacks() != null) {
                     boolean registered = options.getToolCallbacks().stream()
-                            .anyMatch(callback -> callback.getToolDefinition().name().equals(toolName));
+                            .anyMatch(callback -> callback.getToolDefinition().name().equals(tool.name()));
                     toolDispatchCount.addAndGet(registered ? 1 : 0);
                 }
                 return new ChatResponse(List.of(new Generation(
@@ -1413,8 +1573,8 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                                 .toolCalls(List.of(new AssistantMessage.ToolCall(
                                         "tool-call-" + call,
                                         "function",
-                                        toolName,
-                                        toolArguments)))
+                                        tool.name(),
+                                        tool.arguments())))
                                 .build())));
             }
             ToolResponseMessage toolResponse = prompt.getInstructions().stream()
@@ -1437,8 +1597,12 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         }
 
         void script(String toolName, String toolArguments, ToolConsumer finalText) {
-            this.toolName = toolName;
-            this.toolArguments = toolArguments;
+            this.tools = List.of(new ScriptedTool(toolName, toolArguments));
+            this.finalText = finalText;
+        }
+
+        void scriptSequence(List<ScriptedTool> tools, ToolConsumer finalText) {
+            this.tools = List.copyOf(tools);
             this.finalText = finalText;
         }
 
@@ -1446,11 +1610,13 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
             modelCalls.set(0);
             toolDispatchCount.set(0);
             interruptedCalls.set(0);
-            toolName = "searchItems";
-            toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
+            tools = List.of(DEFAULT_TOOL);
             finalText = response -> "完成。";
             firstPrompt = "";
             delayNextCall.set(false);
+        }
+
+        record ScriptedTool(String name, String arguments) {
         }
 
         void delayNextCall() {

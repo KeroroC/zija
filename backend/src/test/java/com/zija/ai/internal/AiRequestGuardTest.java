@@ -101,7 +101,8 @@ class AiRequestGuardTest {
                 callBoundedCollector.beginToolCall(),
                 callBoundedCollector.beginToolCall())).containsOnly(true);
         assertThat(callBoundedCollector.beginToolCall()).isFalse();
-        assertThat(callBoundedCollector.factSourceUnavailable()).isTrue();
+        assertThat(callBoundedCollector.toolBudgetExhausted()).isTrue();
+        assertThat(callBoundedCollector.factSourceUnavailable()).isFalse();
     }
 
     @Test
