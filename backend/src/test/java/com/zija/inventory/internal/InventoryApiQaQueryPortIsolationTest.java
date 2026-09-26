@@ -226,6 +226,53 @@ class InventoryApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void findMovementsKeepsTimeWindowAndLocationInsideHousehold() {
+        UUID pantry = UUID.fromString("61000000-0000-0000-0000-0000000000a2");
+        insertLocation(pantry, householdA, "储藏室");
+
+        UUID consumeFromKitchen = UUID.fromString("81000000-0000-0000-0000-0000000000c1");
+        UUID oldInbound = UUID.fromString("81000000-0000-0000-0000-0000000000c2");
+        UUID pantryInbound = UUID.fromString("81000000-0000-0000-0000-0000000000c3");
+        UUID expiredLotInbound = UUID.fromString("81000000-0000-0000-0000-0000000000c4");
+        UUID atExclusiveEnd = UUID.fromString("81000000-0000-0000-0000-0000000000c5");
+
+        insertDirectionalMovement(consumeFromKitchen, householdA, expiringA, itemA, "CONSUME",
+                locA, null, OffsetDateTime.parse("2026-09-10T08:00:00+08:00"));
+        insertDirectionalMovement(oldInbound, householdA, expiringA, itemA, "INBOUND",
+                null, locA, OffsetDateTime.parse("2026-06-01T08:00:00+08:00"));
+        insertDirectionalMovement(pantryInbound, householdA, expiringA, itemA, "INBOUND",
+                null, pantry, OffsetDateTime.parse("2026-09-08T09:00:00+08:00"));
+        insertDirectionalMovement(expiredLotInbound, householdA, expiredA, itemA, "INBOUND",
+                null, locA, OffsetDateTime.parse("2026-09-09T09:00:00+08:00"));
+        insertDirectionalMovement(atExclusiveEnd, householdA, expiringA, itemA, "INBOUND",
+                null, locA, OffsetDateTime.parse("2026-09-11T00:00:00+08:00"));
+
+        var from = OffsetDateTime.parse("2026-09-01T00:00:00+08:00");
+        var to = OffsetDateTime.parse("2026-09-11T00:00:00+08:00");
+
+        assertThat(inventoryApi.findMovements(householdA, itemA, null, List.of(locA), from, to, 10))
+                .extracting(InventoryApi.MovementInfo::id)
+                .containsExactly(consumeFromKitchen, expiredLotInbound, movementA);
+        assertThat(inventoryApi.findMovements(householdA, itemA, expiredA, List.of(locA), from, to, 10))
+                .extracting(InventoryApi.MovementInfo::id)
+                .containsExactly(expiredLotInbound);
+        assertThat(inventoryApi.findMovements(householdA, null, null, List.of(pantry), from, to, 10))
+                .extracting(InventoryApi.MovementInfo::id)
+                .containsExactly(pantryInbound);
+        assertThat(inventoryApi.findMovements(householdA, itemA, null, null, from, to, 1))
+                .extracting(InventoryApi.MovementInfo::id)
+                .containsExactly(consumeFromKitchen);
+
+        assertThat(inventoryApi.findMovements(householdA, null, null, List.of(locB), from, to, 10)).isEmpty();
+        assertThat(inventoryApi.findMovements(householdA, itemB, null, null, from, to, 10)).isEmpty();
+        assertThat(inventoryApi.findMovements(householdA, null, null, List.of(), from, to, 10)).isEmpty();
+        assertThat(inventoryApi.findMovements(householdA, null, null, null, null, null, 10)).isEmpty();
+        assertThat(inventoryApi.findMovements(householdB, itemB, null, null, from, to, 10))
+                .extracting(InventoryApi.MovementInfo::id)
+                .containsExactly(movementB);
+    }
+
+    @Test
     void locationFilteredExpiryQueriesCountOnlyThosePlacesAndStayInsideHousehold() {
         UUID pantry = UUID.fromString("61000000-0000-0000-0000-0000000000a2");
         insertLocation(pantry, householdA, "储藏室");
@@ -318,13 +365,26 @@ class InventoryApiQaQueryPortIsolationTest {
     private void insertMovement(
             UUID id, UUID householdId, UUID lotId, UUID itemId, UUID toLocation, OffsetDateTime businessTime
     ) {
+        insertDirectionalMovement(id, householdId, lotId, itemId, "INBOUND", null, toLocation, businessTime);
+    }
+
+    private void insertDirectionalMovement(
+            UUID id,
+            UUID householdId,
+            UUID lotId,
+            UUID itemId,
+            String type,
+            UUID fromLocation,
+            UUID toLocation,
+            OffsetDateTime businessTime
+    ) {
         jdbc.update("""
                 INSERT INTO inventory_movement
                     (id, household_id, lot_id, item_id, type, quantity, from_location_id,
                      to_location_id, reason, operator_account_id, business_time,
                      created_at, idempotency_key)
-                VALUES (?, ?, ?, ?, 'INBOUND', '1', NULL, ?, '购入', ?, ?, ?, ?)
-                """, id, householdId, lotId, itemId, toLocation, operatorId,
+                VALUES (?, ?, ?, ?, ?, '1', ?, ?, '购入', ?, ?, ?, ?)
+                """, id, householdId, lotId, itemId, type, fromLocation, toLocation, operatorId,
                 Timestamp.from(businessTime.toInstant()), Timestamp.from(businessTime.toInstant()),
                 id.toString());
     }

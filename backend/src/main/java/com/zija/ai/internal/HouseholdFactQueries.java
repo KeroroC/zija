@@ -12,6 +12,8 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -33,6 +35,9 @@ import java.util.stream.Collectors;
  */
 @Component
 class HouseholdFactQueries {
+
+    /** 流水时间窗最长跨度（含首尾当天）。 */
+    static final int MAX_MOVEMENT_WINDOW_DAYS = 90;
 
     private final CatalogApi catalogApi;
     private final InventoryApi inventoryApi;
@@ -267,7 +272,7 @@ class HouseholdFactQueries {
         return results;
     }
 
-    /** 指定物品最近若干条不可变流水（原因、操作人、时间）。 */
+    /** 指定物品最近若干条不可变流水（原因、操作人、时间）。位置按单个 id 精确匹配，不展开子位置。 */
     List<MovementFact> itemMovements(
             UUID householdId,
             UUID itemId,
@@ -276,14 +281,74 @@ class HouseholdFactQueries {
             UUID targetLocationId
     ) {
         var item = catalogApi.requireItem(householdId, itemId);
-        var locationPaths = locationPathMap(householdId);
         var movements = inventoryApi.findRecentMovementsOfItem(
                 householdId, itemId, targetLotId, targetLocationId, limit);
+        return toMovementFacts(householdId, item.name(), movements);
+    }
+
+    /**
+     * 有界流水。物品与位置至少提供一个。位置展开为自身及子位置，来源或目标任一命中即出。
+     * 起止日期按家庭时区解析；缺省一侧用「今天」或向前补满 90 个自然日，超长则保留结束日并截断起始日。
+     */
+    MovementQuery queryMovements(
+            UUID householdId,
+            UUID itemId,
+            UUID lotId,
+            UUID locationId,
+            String fromDate,
+            String toDate,
+            int limit
+    ) {
+        if (itemId == null && locationId == null) {
+            throw new IllegalArgumentException("流水查询需要物品或位置");
+        }
+        String itemName = itemId == null ? null : catalogApi.requireItem(householdId, itemId).name();
+        String locationPath = "";
+        Set<UUID> locationIds = null;
+        if (locationId != null) {
+            locationIds = locationScopeIds(householdId, locationId);
+            if (locationIds.isEmpty()) {
+                throw new IllegalArgumentException("位置不存在或不属于当前家庭");
+            }
+            locationPath = locationPathMap(householdId).getOrDefault(locationId, "");
+        }
+        var window = resolveMovementWindow(fromDate, toDate);
+        var movements = inventoryApi.findMovements(
+                householdId,
+                itemId,
+                lotId,
+                locationIds,
+                window == null ? null : window.fromInclusive(),
+                window == null ? null : window.toExclusive(),
+                limit);
+        return new MovementQuery(
+                toMovementFacts(householdId, itemName, movements),
+                itemName == null ? "" : itemName,
+                locationPath,
+                window == null ? null : window.from(),
+                window == null ? null : window.to());
+    }
+
+    private List<MovementFact> toMovementFacts(
+            UUID householdId,
+            String forcedItemName,
+            List<InventoryApi.MovementInfo> movements
+    ) {
+        var locationPaths = locationPathMap(householdId);
+        Map<UUID, String> itemNames = forcedItemName == null
+                ? catalogApi.itemNames(householdId, movements.stream()
+                        .map(InventoryApi.MovementInfo::itemId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet()))
+                : Map.of();
         var operatorNames = operatorNames(movements);
         List<MovementFact> facts = new ArrayList<>();
         for (var movement : movements) {
+            String itemName = forcedItemName != null
+                    ? forcedItemName
+                    : itemNames.getOrDefault(movement.itemId(), "");
             facts.add(new MovementFact(
-                    movement.id(), movement.lotId(), item.id(), item.name(),
+                    movement.id(), movement.lotId(), movement.itemId(), itemName,
                     movement.type(), movement.quantity(),
                     movement.reason(),
                     operatorNames.getOrDefault(movement.operatorAccountId(), ""),
@@ -293,6 +358,43 @@ class HouseholdFactQueries {
                     locationPaths.getOrDefault(movement.toLocationId(), "")));
         }
         return facts;
+    }
+
+    private ResolvedMovementWindow resolveMovementWindow(String fromDate, String toDate) {
+        LocalDate from = parseMovementDate(fromDate);
+        LocalDate to = parseMovementDate(toDate);
+        if (from == null && to == null) {
+            return null;
+        }
+        if (to == null) {
+            to = LocalDate.now(clock);
+        }
+        if (from == null) {
+            from = to.minusDays(MAX_MOVEMENT_WINDOW_DAYS - 1L);
+        }
+        if (to.isBefore(from)) {
+            throw new IllegalArgumentException("流水结束日期早于起始日期");
+        }
+        if (ChronoUnit.DAYS.between(from, to) + 1 > MAX_MOVEMENT_WINDOW_DAYS) {
+            from = to.minusDays(MAX_MOVEMENT_WINDOW_DAYS - 1L);
+        }
+        ZoneId zone = clock.getZone();
+        return new ResolvedMovementWindow(
+                from,
+                to,
+                from.atStartOfDay(zone).toOffsetDateTime(),
+                to.plusDays(1).atStartOfDay(zone).toOffsetDateTime());
+    }
+
+    private static LocalDate parseMovementDate(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(raw.trim());
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("流水日期格式无效");
+        }
     }
 
     private String unitName(UUID householdId, UUID unitId) {
@@ -469,6 +571,23 @@ class HouseholdFactQueries {
             String itemName,
             UUID lotId,
             String lotNumber
+    ) {
+    }
+
+    record MovementQuery(
+            List<MovementFact> movements,
+            String itemName,
+            String locationPath,
+            LocalDate from,
+            LocalDate to
+    ) {
+    }
+
+    private record ResolvedMovementWindow(
+            LocalDate from,
+            LocalDate to,
+            OffsetDateTime fromInclusive,
+            OffsetDateTime toExclusive
     ) {
     }
 

@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,6 +41,19 @@ public interface MovementMapper extends BaseMapper<MovementEntity> {
             @Param("itemId") UUID itemId,
             @Param("lotId") UUID lotId,
             @Param("locationId") UUID locationId,
+            @Param("limit") int limit
+    );
+
+    /**
+     * 有界流水。位置集合中来源或目标任一命中即出；时间窗按业务时间，结束为开区间。
+     */
+    List<MovementEntity> findMovements(
+            @Param("householdId") UUID householdId,
+            @Param("itemId") UUID itemId,
+            @Param("lotId") UUID lotId,
+            @Param("locationIds") Collection<UUID> locationIds,
+            @Param("from") OffsetDateTime from,
+            @Param("to") OffsetDateTime to,
             @Param("limit") int limit
     );
 }

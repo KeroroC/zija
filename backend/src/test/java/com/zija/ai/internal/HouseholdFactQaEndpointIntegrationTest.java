@@ -1599,6 +1599,353 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void movementWindowKeepsOnlyThatItemInsideHouseholdZoneDates() throws Exception {
+        LocalDate from = LocalDate.of(2026, 9, 15);
+        LocalDate to = LocalDate.of(2026, 9, 21);
+        UUID riceId = UUID.fromString("40000000-0000-0000-0000-0000000000aa");
+        UUID riceLot = UUID.fromString("50000000-0000-0000-0000-0000000000aa");
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '大米', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, riceId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-RICE', 1)
+                """, riceLot, HOUSEHOLD_ID, riceId);
+
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "3", "上周入库",
+                from.atTime(1, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "4", "周末入库",
+                to.atTime(23, 30).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "8", "窗口外",
+                from.atStartOfDay(HOUSEHOLD_ZONE).minusMinutes(30).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "9", "窗口后",
+                to.plusDays(1).atTime(0, 30).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(riceId, riceLot, "INBOUND", null, KITCHEN_ID, "2", "大米入库",
+                from.atTime(12, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+
+        chatModel.script(
+                "itemMovements",
+                """
+                {"itemId":"%s","limit":10,"fromDate":"2026-09-15","toDate":"2026-09-21"}
+                """.formatted(ITEM_ID),
+                response -> "上周牛奶有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"上周牛奶入库了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title",
+                        org.hamcrest.Matchers.containsString("2026-09-15")))
+                .andExpect(jsonPath("$.structuredResults[0].title",
+                        org.hamcrest.Matchers.containsString("2026-09-21")))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(2))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("周末入库"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("4"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].类型").value("INBOUND"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].操作人").value("户主"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").value("2026-09-15"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").value("2026-09-21"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[1].原因").value("上周入库"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("窗口外"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("窗口后"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("大米入库"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("购入"))));
+    }
+
+    @Test
+    void locationMovementQueryDoesNotRequireAnItemAndIncludesChildPlaces() throws Exception {
+        LocalDate today = LocalDate.now(HOUSEHOLD_ZONE);
+        LocalDate monthStart = today.withDayOfMonth(1);
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-0000000000f1");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-0000000000f2");
+        UUID riceId = UUID.fromString("40000000-0000-0000-0000-0000000000ab");
+        UUID riceLot = UUID.fromString("50000000-0000-0000-0000-0000000000ab");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '大米', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, riceId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-RICE-MONTH', 1)
+                """, riceLot, HOUSEHOLD_ID, riceId);
+
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, fridgeId, "6", "冰箱入库",
+                today.atTime(8, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(riceId, riceLot, "INBOUND", null, KITCHEN_ID, "2", "大米入库",
+                today.atTime(9, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "CONSUME", fridgeId, null, "1", "冰箱领用",
+                today.atTime(12, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, bedroomId, "4", "卧室入库",
+                today.atTime(10, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "7", "上月入库",
+                today.minusMonths(1).atTime(10, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+
+        chatModel.script(
+                "itemMovements",
+                """
+                {"locationId":"%s","limit":10,"fromDate":"%s","toDate":"%s"}
+                """.formatted(KITCHEN_ID, monthStart, today),
+                response -> "这个月厨房有这些进出。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"这个月厨房进出了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value(
+                        "「厨房」流水（" + monthStart + " 至 " + today + "）"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.hasItems("冰箱入库", "大米入库", "冰箱领用")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冰箱入库')].物品")
+                        .value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冰箱入库')].到")
+                        .value("厨房 / 冰箱"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冰箱领用')].从")
+                        .value("厨房 / 冰箱"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '大米入库')].物品")
+                        .value("大米"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("卧室入库"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("上月入库"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").value(monthStart.toString()))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").value(today.toString()))
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("LOCATION")));
+    }
+
+    @Test
+    void movementWindowTruncatesToNinetyHouseholdDays() throws Exception {
+        LocalDate today = LocalDate.now(HOUSEHOLD_ZONE);
+        LocalDate requestedFrom = today.minusDays(120);
+        LocalDate actualFrom = today.minusDays(89);
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "4", "窗内",
+                today.minusDays(10).atTime(9, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "1", "窗口起点",
+                actualFrom.atTime(1, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "8", "窗口前一天",
+                actualFrom.minusDays(1).atTime(23, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+
+        chatModel.script(
+                "itemMovements",
+                """
+                {"itemId":"%s","limit":10,"fromDate":"%s","toDate":"%s"}
+                """.formatted(ITEM_ID, requestedFrom, today),
+                response -> "见表格中的入库记录。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶从很早到今天入库了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value(
+                        "「牛奶」流水（" + actualFrom + " 至 " + today + "）"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.hasItems("窗内", "窗口起点", "购入")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("窗口前一天"))))
+                .andExpect(jsonPath("$.summary").value("见表格中的入库记录。"));
+    }
+
+    @Test
+    void lotFilterKeepsOnlyThatLotsMovementsInsideTheWindow() throws Exception {
+        UUID otherLotId = UUID.fromString("50000000-0000-0000-0000-0000000000ac");
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-OTHER-WEEK', 1)
+                """, otherLotId, HOUSEHOLD_ID, ITEM_ID);
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "3", "本批入库",
+                OffsetDateTime.parse("2026-09-16T10:00:00+08:00"));
+        insertQaMovement(ITEM_ID, otherLotId, "INBOUND", null, KITCHEN_ID, "8", "另一批入库",
+                OffsetDateTime.parse("2026-09-18T10:00:00+08:00"));
+
+        chatModel.script(
+                "itemMovements",
+                """
+                {"itemId":"%s","lotId":"%s","limit":10,"fromDate":"2026-09-15","toDate":"2026-09-21"}
+                """.formatted(ITEM_ID, otherLotId),
+                response -> "另一批有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"上周牛奶入库了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("另一批入库"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("8"));
+    }
+
+    @Test
+    void completeMovementListHittingTheLimitStaysPartial() throws Exception {
+        for (int i = 0; i < 9; i++) {
+            insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "1", "补流水-" + i,
+                    OffsetDateTime.now(HOUSEHOLD_ZONE).minusHours(i + 1));
+        }
+        chatModel.script(
+                "itemMovements",
+                "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
+                response -> "一共就这 10 笔，已经加总完了。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"把牛奶的全部流水都列出来\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("PARTIAL_HOUSEHOLD_FACTS"))
+                .andExpect(jsonPath("$.summary").value("查询未完成，只查到这一部分，请缩小范围。"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("一共就这 10"))))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("加总"))))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(10))
+                .andExpect(jsonPath("$.sources[0].available").value(true));
+    }
+
+    @Test
+    void confirmedTargetSuppliesTheMissingMovementAnchor() throws Exception {
+        chatModel.script(
+                "itemMovements",
+                "{\"limit\":10}",
+                response -> "最近有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "最近的流水呢？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「牛奶」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("购入"));
+
+        chatModel.reset();
+        chatModel.script(
+                "itemMovements",
+                "{\"limit\":10}",
+                response -> "厨房最近有进出。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "最近的流水呢？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「厨房」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"));
+    }
+
+    @Test
+    void movementQueryWithoutItemOrLocationIsUnavailable() throws Exception {
+        chatModel.script(
+                "itemMovements",
+                "{\"limit\":10}",
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认。"
+                        : "一共 100 笔。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些流水？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                .andExpect(jsonPath("$.structuredResults").isEmpty())
+                .andExpect(jsonPath("$.sources[0].available").value(false));
+    }
+
+    @Test
+    void movementQueryRejectsLocationOutsideTheHousehold() throws Exception {
+        String foreignLocation = "60000000-0000-0000-0000-0000000000ff";
+        chatModel.script(
+                "itemMovements",
+                "{\"locationId\":\"%s\",\"limit\":10}".formatted(foreignLocation),
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认。"
+                        : "厨房有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些流水？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                .andExpect(jsonPath("$.structuredResults").isEmpty())
+                .andExpect(jsonPath("$.sources[0].available").value(false));
+    }
+
+    @Test
+    void modelUnavailableLocationMovementQuestionReturnsMovements() throws Exception {
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个月厨房进出了什么？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("购入"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("LOCATION_STOCK"))));
+    }
+
+    @Test
     void expiringLotsToolReturnsBoundStructuredFacts() throws Exception {
         seedExpiredLot();
         chatModel.script(
@@ -2199,6 +2546,28 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                      low_stock_threshold, status, version)
                 VALUES (?, ?, '牛奶', 'CONSUMABLE', ?, 'CUSTOM', '10', 'ACTIVE', 1)
                 """, ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
+    }
+
+    private void insertQaMovement(
+            UUID itemId,
+            UUID lotId,
+            String type,
+            UUID fromLocationId,
+            UUID toLocationId,
+            String quantity,
+            String reason,
+            OffsetDateTime businessTime
+    ) {
+        jdbc.update("""
+                INSERT INTO inventory_movement
+                    (id, household_id, lot_id, item_id, type, quantity, from_location_id,
+                     to_location_id, reason, operator_account_id, business_time,
+                     created_at, idempotency_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, lotId, itemId, type, new BigDecimal(quantity),
+                fromLocationId, toLocationId, reason, OWNER_ACCOUNT_ID,
+                Timestamp.from(businessTime.toInstant()), Timestamp.from(businessTime.toInstant()),
+                UUID.randomUUID().toString());
     }
 
     private void seedInventory() {

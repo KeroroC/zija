@@ -236,6 +236,30 @@ class InventoryService implements InventoryApi {
 
     @Override
     @Transactional(readOnly = true)
+    public List<MovementInfo> findMovements(
+            UUID householdId,
+            UUID itemId,
+            UUID lotId,
+            Collection<UUID> locationIds,
+            OffsetDateTime fromInclusive,
+            OffsetDateTime toExclusive,
+            int limit
+    ) {
+        if (itemId == null && (locationIds == null || locationIds.isEmpty())) {
+            return List.of();
+        }
+        if (locationIds != null && locationIds.isEmpty()) {
+            return List.of();
+        }
+        return movementMapper.findMovements(
+                        householdId, itemId, lotId, locationIds, fromInclusive, toExclusive, sqlLimit(limit))
+                .stream()
+                .map(this::toMovementInfo)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public PageDump<StockPositionDump> dumpStockPositions(UUID householdId, OffsetDateTime cursor, int limit) {
         var items = stockPositionMapper.dumpStockPositions(householdId, cursor, limit);
         OffsetDateTime nextCursor = items.isEmpty() ? cursor : items.get(items.size() - 1).updatedAt();

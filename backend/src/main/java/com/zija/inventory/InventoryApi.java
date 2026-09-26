@@ -152,6 +152,22 @@ public interface InventoryApi {
             int limit
     );
 
+    /**
+     * 有界流水。物品、批次、位置（来源或目标任一命中）、业务时间窗均可选。
+     * 物品与位置都未给出时返回空列表，不扫全家流水。
+     * {@code locationIds} 为空集合时返回空列表；为 null 时不按位置过滤。
+     * {@code fromInclusive} / {@code toExclusive} 为 null 时不限制对应一侧。
+     */
+    List<MovementInfo> findMovements(
+            UUID householdId,
+            UUID itemId,
+            UUID lotId,
+            Collection<UUID> locationIds,
+            OffsetDateTime fromInclusive,
+            OffsetDateTime toExclusive,
+            int limit
+    );
+
     record LotQuestionMatch(
             UUID lotId,
             UUID itemId,

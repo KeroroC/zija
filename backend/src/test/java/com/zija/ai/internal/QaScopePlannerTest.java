@@ -529,6 +529,19 @@ class QaScopePlannerTest {
         }
 
         @Override
+        public List<MovementInfo> findMovements(
+                UUID householdId,
+                UUID itemId,
+                UUID lotId,
+                java.util.Collection<UUID> locationIds,
+                OffsetDateTime fromInclusive,
+                OffsetDateTime toExclusive,
+                int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public PageDump<StockPositionDump> dumpStockPositions(UUID householdId, OffsetDateTime cursor, int limit) {
             throw new UnsupportedOperationException();
         }

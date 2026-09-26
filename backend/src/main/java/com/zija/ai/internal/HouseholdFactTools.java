@@ -8,6 +8,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -507,51 +508,166 @@ final class HouseholdFactTools {
         }
     }
 
-    @Tool(description = "查询某物品最近发生的库存流水（类型、原因、操作人、时间），作为不可变事实依据")
+    @Tool(description = "查询库存流水，作为不可变事实：类型、数量、原因、操作人展示名、业务时间、来源和目标位置。可按物品、批次、位置和起止日期过滤。位置按来源或目标命中，并包含子位置。未传起止日期时返回最近若干条；传入区间时按家庭时区解析，最长 90 个自然日，结果里写出实际起止日期。物品 id 与位置 id 至少提供一个，已确认目标时可省略对应 id。不要把截断结果自行加总。")
     Map<String, Object> itemMovements(
-            @ToolParam(description = "物品 id") String itemId,
-            @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
+            @ToolParam(description = "物品 id。按位置查询且不限定物品时可以省略", required = false) String itemId,
+            @ToolParam(description = "最多返回多少条，1-50，选填", required = false) Integer limit,
+            @ToolParam(description = "批次 id，选填", required = false) String lotId,
+            @ToolParam(description = "位置 id。来源或目标任一命中即出，包含子位置。已确认位置时可以省略", required = false) String locationId,
+            @ToolParam(description = "起始日期，yyyy-MM-dd，按家庭时区。只传起始时，结束日为今天；跨度超过 90 个自然日会从结束日往前截断", required = false) String fromDate,
+            @ToolParam(description = "结束日期，yyyy-MM-dd，按家庭时区，含当天。只传结束时，起始日为结束日前 89 天", required = false) String toDate
     ) {
         int n = boundedLimit(limit);
         if (!collector.beginToolCall()) {
             return unavailableBody("item_movements");
         }
         try {
-            UUID authorizedItemId = authorizedItemId(itemId);
-            var movements = queries.itemMovements(
+            UUID authorizedItemId = resolveMovementItemId(itemId);
+            UUID authorizedLotId = resolveMovementLotId(lotId, authorizedItemId);
+            if (authorizedItemId == null && authorizedLotId != null) {
+                authorizedItemId = inventoryApi.findLot(householdId, authorizedLotId)
+                        .map(InventoryApi.LotFlat::itemId)
+                        .orElseThrow(() -> new IllegalArgumentException("批次不存在或不属于当前家庭"));
+            }
+            UUID authorizedLocationId = resolveMovementLocationId(locationId);
+            if (authorizedItemId == null && authorizedLocationId == null) {
+                throw new IllegalArgumentException("流水查询需要物品或位置");
+            }
+            var query = queries.queryMovements(
                     householdId,
                     authorizedItemId,
-                    n,
-                    isLotTarget() ? target.id() : null,
-                    isLocationTarget() ? target.id() : null);
-            collector.noteBoundedList(movements.size(), n);
-            List<Map<String, String>> rows = movements.stream()
-                    .map(m -> cellMap("类型", m.type(),
-                            "数量", str(m.quantity()),
-                            "原因", orDash(m.reason()),
-                            "操作人", orDash(m.operatorDisplayName()),
-                            "时间", m.businessTime() != null ? m.businessTime().toString() : "-",
-                            "从", orDash(m.fromLocationPath()),
-                            "到", orDash(m.toLocationPath())))
+                    authorizedLotId,
+                    authorizedLocationId,
+                    fromDate,
+                    toDate,
+                    n);
+            collector.noteBoundedList(query.movements().size(), n);
+            List<Map<String, String>> rows = query.movements().stream()
+                    .map(m -> movementRow(m, query.from(), query.to()))
                     .toList();
-            String itemName = movements.isEmpty() && isItemTarget() ? target.label()
-                    : movements.isEmpty() ? itemId : movements.getFirst().itemName();
-            collector.addResult(new StructuredResult("MOVEMENTS", "「" + itemName + "」最近流水", rows));
-            collector.addJump(new Jump("ITEM", itemName, authorizedItemId.toString(), null, null));
-            if (!rows.isEmpty()) {
-                collector.addJump(new Jump("MOVEMENT", "查看流水", authorizedItemId.toString(), null, null));
+            String title = movementTitle(query.itemName(), query.locationPath(), query.from(), query.to());
+            collector.addResult(new StructuredResult("MOVEMENTS", title, rows));
+            if (authorizedItemId != null) {
+                String itemLabel = query.itemName().isBlank() ? authorizedItemId.toString() : query.itemName();
+                collector.addJump(new Jump("ITEM", itemLabel, authorizedItemId.toString(), null, null));
             }
-            return Map.of("movements", movements.stream().map(m -> Map.of(
-                    "type", m.type(),
-                    "quantity", str(m.quantity()),
-                    "reason", orDash(m.reason()),
-                    "operator", orDash(m.operatorDisplayName()),
-                    "businessTime", m.businessTime() != null ? m.businessTime().toString() : "",
-                    "from", orDash(m.fromLocationPath()),
-                    "to", orDash(m.toLocationPath()))).toList());
+            if (authorizedLocationId != null) {
+                String locationLabel = query.locationPath().isBlank()
+                        ? authorizedLocationId.toString() : query.locationPath();
+                collector.addJump(new Jump(
+                        "LOCATION", locationLabel, null, null, authorizedLocationId.toString()));
+            }
+            if (!rows.isEmpty()) {
+                collector.addJump(new Jump(
+                        "MOVEMENT",
+                        "查看流水",
+                        authorizedItemId == null ? null : authorizedItemId.toString(),
+                        null,
+                        authorizedLocationId == null ? null : authorizedLocationId.toString()));
+            }
+            return Map.of(
+                    "fromDate", query.from() == null ? "" : ISO_DATE.format(query.from()),
+                    "toDate", query.to() == null ? "" : ISO_DATE.format(query.to()),
+                    "movements", query.movements().stream().map(m -> {
+                        Map<String, Object> body = new LinkedHashMap<>();
+                        body.put("itemName", m.itemName());
+                        body.put("type", m.type());
+                        body.put("quantity", str(m.quantity()));
+                        body.put("reason", orDash(m.reason()));
+                        body.put("operator", orDash(m.operatorDisplayName()));
+                        body.put("businessTime", m.businessTime() != null ? m.businessTime().toString() : "");
+                        body.put("from", orDash(m.fromLocationPath()));
+                        body.put("to", orDash(m.toLocationPath()));
+                        return body;
+                    }).toList());
         } catch (RuntimeException ex) {
             return unavailable("item_movements");
         }
+    }
+
+    private Map<String, String> movementRow(
+            HouseholdFactQueries.MovementFact movement,
+            LocalDate from,
+            LocalDate to
+    ) {
+        var row = cellMap(
+                "物品", orDash(movement.itemName()),
+                "类型", movement.type(),
+                "数量", str(movement.quantity()),
+                "原因", orDash(movement.reason()),
+                "操作人", orDash(movement.operatorDisplayName()),
+                "时间", movement.businessTime() != null ? movement.businessTime().toString() : "-",
+                "从", orDash(movement.fromLocationPath()),
+                "到", orDash(movement.toLocationPath()));
+        if (from != null && to != null) {
+            row.put("起始日期", ISO_DATE.format(from));
+            row.put("结束日期", ISO_DATE.format(to));
+        }
+        return row;
+    }
+
+    private static String movementTitle(String itemName, String locationPath, LocalDate from, LocalDate to) {
+        boolean hasItem = itemName != null && !itemName.isBlank();
+        boolean hasLocation = locationPath != null && !locationPath.isBlank();
+        String subject;
+        if (hasItem && hasLocation) {
+            subject = "「" + itemName + " · " + locationPath + "」";
+        } else if (hasItem) {
+            subject = "「" + itemName + "」";
+        } else if (hasLocation) {
+            subject = "「" + locationPath + "」";
+        } else {
+            subject = "流水";
+        }
+        if (from == null || to == null) {
+            return subject + "最近流水";
+        }
+        return subject + "流水（" + ISO_DATE.format(from) + " 至 " + ISO_DATE.format(to) + "）";
+    }
+
+    private UUID resolveMovementItemId(String requested) {
+        if (requested == null || requested.isBlank()) {
+            return targetItemId();
+        }
+        UUID requestedId = UUID.fromString(requested.trim());
+        UUID scopedItemId = targetItemId();
+        if (scopedItemId != null && !scopedItemId.equals(requestedId)) {
+            throw new IllegalArgumentException("模型请求超出已确认的问答范围");
+        }
+        return requestedId;
+    }
+
+    private UUID resolveMovementLotId(String requested, UUID itemId) {
+        if (isLotTarget()) {
+            if (requested != null && !requested.isBlank()
+                    && !target.id().equals(UUID.fromString(requested.trim()))) {
+                throw new IllegalArgumentException("模型请求超出已确认的问答范围");
+            }
+            if (itemId != null) {
+                return requireLotOfItem(target.id(), itemId);
+            }
+            return target.id();
+        }
+        if (requested == null || requested.isBlank()) {
+            return null;
+        }
+        UUID lotId = UUID.fromString(requested.trim());
+        if (itemId == null) {
+            return inventoryApi.findLot(householdId, lotId)
+                    .orElseThrow(() -> new IllegalArgumentException("批次不存在或不属于当前家庭"))
+                    .lotId();
+        }
+        return requireLotOfItem(lotId, itemId);
+    }
+
+    private UUID resolveMovementLocationId(String requested) {
+        if (isLocationTarget()) {
+            return authorizedLocationId(requested);
+        }
+        if (requested == null || requested.isBlank()) {
+            return null;
+        }
+        return UUID.fromString(requested.trim());
     }
 
     private static int boundedLimit(Integer limit) {

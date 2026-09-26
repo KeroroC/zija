@@ -31,6 +31,27 @@
         LIMIT #{limit}
     </select>
 
+    <select id="findMovements" resultType="com.zija.inventory.internal.persistence.MovementEntity">
+        SELECT id, household_id, lot_id, item_id, type, quantity, from_location_id, to_location_id,
+               reason, memo, operator_account_id, business_time, created_at, idempotency_key, reversal_of
+        FROM inventory_movement
+        WHERE household_id = #{householdId}
+          <if test="itemId != null">AND item_id = #{itemId}</if>
+          <if test="lotId != null">AND lot_id = #{lotId}</if>
+          <if test="locationIds != null">
+              AND (
+                  from_location_id IN
+                  <foreach collection="locationIds" item="locationId" open="(" separator="," close=")">#{locationId}</foreach>
+                  OR to_location_id IN
+                  <foreach collection="locationIds" item="locationId" open="(" separator="," close=")">#{locationId}</foreach>
+              )
+          </if>
+          <if test="from != null">AND business_time &gt;= #{from}</if>
+          <if test="to != null">AND business_time &lt; #{to}</if>
+        ORDER BY business_time DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
     <select id="findPage" resultType="com.zija.inventory.internal.persistence.MovementWithDetails">
         SELECT m.id,
                m.household_id AS "householdId",
