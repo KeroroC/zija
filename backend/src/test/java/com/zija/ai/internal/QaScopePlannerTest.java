@@ -481,8 +481,23 @@ class QaScopePlannerTest {
         }
 
         @Override
+        public List<LotQuantitySnapshot> findExpiringLotsInLocations(
+                UUID householdId, java.time.LocalDate today, java.time.LocalDate horizon,
+                Collection<UUID> locationIds, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public List<LotQuantitySnapshot> findExpiredLots(
                 UUID householdId, java.time.LocalDate today, UUID itemId, UUID lotId, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<LotQuantitySnapshot> findExpiredLotsInLocations(
+                UUID householdId, java.time.LocalDate today, Collection<UUID> locationIds, int limit
         ) {
             throw new UnsupportedOperationException();
         }

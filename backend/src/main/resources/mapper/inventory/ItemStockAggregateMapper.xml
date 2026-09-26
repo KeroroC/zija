@@ -96,8 +96,65 @@
         LIMIT #{limit}
     </select>
 
+    <select id="findExpiringLotsInLocations" resultMap="lotQuantitySnapshotMap">
+        SELECT l.id AS lot_id,
+               l.item_id AS item_id,
+               i.name AS item_name,
+               l.lot_number AS lot_number,
+               l.expiry_date AS expiry_date,
+               COALESCE(SUM(sp.quantity), 0) AS quantity,
+               u.name AS unit_name
+        FROM inventory_lot l
+        JOIN catalog_item i ON i.id = l.item_id AND i.household_id = l.household_id
+        JOIN catalog_unit u ON u.id = i.unit_id AND u.household_id = i.household_id
+        JOIN inventory_stock_position sp
+          ON sp.lot_id = l.id AND sp.household_id = l.household_id
+         AND sp.quantity &gt; 0
+         AND sp.location_id IN
+         <foreach collection="locationIds" item="locationId" open="(" separator="," close=")">
+             #{locationId}
+         </foreach>
+        WHERE l.household_id = #{householdId}
+          AND i.status = 'ACTIVE'
+          AND l.expiry_date IS NOT NULL
+          AND l.expiry_date &gt;= #{today}
+          AND l.expiry_date &lt;= #{horizon}
+        GROUP BY l.id, l.item_id, i.name, l.lot_number, l.expiry_date, u.name
+        HAVING COALESCE(SUM(sp.quantity), 0) &gt; 0
+        ORDER BY l.expiry_date ASC, l.id ASC
+        LIMIT #{limit}
+    </select>
+
     <select id="findExpiredLots" resultMap="lotQuantitySnapshotMap">
         <include refid="lotQuantitySnapshotSelect"/>
+          AND l.expiry_date &lt; #{today}
+        GROUP BY l.id, l.item_id, i.name, l.lot_number, l.expiry_date, u.name
+        HAVING COALESCE(SUM(sp.quantity), 0) &gt; 0
+        ORDER BY l.expiry_date ASC, l.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findExpiredLotsInLocations" resultMap="lotQuantitySnapshotMap">
+        SELECT l.id AS lot_id,
+               l.item_id AS item_id,
+               i.name AS item_name,
+               l.lot_number AS lot_number,
+               l.expiry_date AS expiry_date,
+               COALESCE(SUM(sp.quantity), 0) AS quantity,
+               u.name AS unit_name
+        FROM inventory_lot l
+        JOIN catalog_item i ON i.id = l.item_id AND i.household_id = l.household_id
+        JOIN catalog_unit u ON u.id = i.unit_id AND u.household_id = i.household_id
+        JOIN inventory_stock_position sp
+          ON sp.lot_id = l.id AND sp.household_id = l.household_id
+         AND sp.quantity &gt; 0
+         AND sp.location_id IN
+         <foreach collection="locationIds" item="locationId" open="(" separator="," close=")">
+             #{locationId}
+         </foreach>
+        WHERE l.household_id = #{householdId}
+          AND i.status = 'ACTIVE'
+          AND l.expiry_date IS NOT NULL
           AND l.expiry_date &lt; #{today}
         GROUP BY l.id, l.item_id, i.name, l.lot_number, l.expiry_date, u.name
         HAVING COALESCE(SUM(sp.quantity), 0) &gt; 0

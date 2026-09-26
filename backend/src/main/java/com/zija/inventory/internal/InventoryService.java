@@ -160,11 +160,39 @@ class InventoryService implements InventoryApi {
 
     @Override
     @Transactional(readOnly = true)
+    public List<LotQuantitySnapshot> findExpiringLotsInLocations(
+            UUID householdId,
+            LocalDate today,
+            LocalDate horizon,
+            Collection<UUID> locationIds,
+            int limit
+    ) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return List.of();
+        }
+        return itemStockAggregateMapper.findExpiringLotsInLocations(
+                householdId, today, horizon, locationIds, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<LotQuantitySnapshot> findExpiredLots(
             UUID householdId, LocalDate today, UUID itemId, UUID lotId, int limit
     ) {
         return itemStockAggregateMapper.findExpiredLots(
                 householdId, today, itemId, lotId, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LotQuantitySnapshot> findExpiredLotsInLocations(
+            UUID householdId, LocalDate today, Collection<UUID> locationIds, int limit
+    ) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return List.of();
+        }
+        return itemStockAggregateMapper.findExpiredLotsInLocations(
+                householdId, today, locationIds, sqlLimit(limit));
     }
 
     @Override

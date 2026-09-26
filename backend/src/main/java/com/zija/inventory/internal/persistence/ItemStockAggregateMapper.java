@@ -28,11 +28,26 @@ public interface ItemStockAggregateMapper {
             @Param("limit") int limit
     );
 
+    List<InventoryApi.LotQuantitySnapshot> findExpiringLotsInLocations(
+            @Param("householdId") UUID householdId,
+            @Param("today") LocalDate today,
+            @Param("horizon") LocalDate horizon,
+            @Param("locationIds") Collection<UUID> locationIds,
+            @Param("limit") int limit
+    );
+
     List<InventoryApi.LotQuantitySnapshot> findExpiredLots(
             @Param("householdId") UUID householdId,
             @Param("today") LocalDate today,
             @Param("itemId") UUID itemId,
             @Param("lotId") UUID lotId,
+            @Param("limit") int limit
+    );
+
+    List<InventoryApi.LotQuantitySnapshot> findExpiredLotsInLocations(
+            @Param("householdId") UUID householdId,
+            @Param("today") LocalDate today,
+            @Param("locationIds") Collection<UUID> locationIds,
             @Param("limit") int limit
     );
 

@@ -81,6 +81,17 @@ public interface InventoryApi {
     );
 
     /**
+     * 临期批次，数量只累计 {@code locationIds} 中的库存位。空集合返回空列表，不跨家庭。
+     */
+    List<LotQuantitySnapshot> findExpiringLotsInLocations(
+            UUID householdId,
+            LocalDate today,
+            LocalDate horizon,
+            Collection<UUID> locationIds,
+            int limit
+    );
+
+    /**
      * 已过期批次：{@code expiry < today} 且数量为正。日期由调用方传入。
      */
     List<LotQuantitySnapshot> findExpiredLots(
@@ -88,6 +99,16 @@ public interface InventoryApi {
             LocalDate today,
             UUID itemId,
             UUID lotId,
+            int limit
+    );
+
+    /**
+     * 已过期批次，数量只累计 {@code locationIds} 中的库存位。空集合返回空列表，不跨家庭。
+     */
+    List<LotQuantitySnapshot> findExpiredLotsInLocations(
+            UUID householdId,
+            LocalDate today,
+            Collection<UUID> locationIds,
             int limit
     );
 

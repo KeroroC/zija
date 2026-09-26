@@ -297,7 +297,7 @@ class HouseholdFactQaService {
         String normalized = question.toLowerCase(java.util.Locale.ROOT);
 
         if (target != null && "LOCATION".equals(target.type())) {
-            tools.locationStock("", 10);
+            tools.locationStock(null, "", 10);
         } else if (containsAny(normalized, "流水", "入库", "领用", "报损", "变化", "操作人")
                 && target != null) {
             fallbackItemId(householdId, target).ifPresentOrElse(

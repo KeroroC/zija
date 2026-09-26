@@ -17,8 +17,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -104,6 +106,28 @@ class HouseholdFactQueries {
                 item.lowStockThreshold());
     }
 
+    /**
+     * 按名称或路径搜索当前位置树，返回有界命中。
+     * {@code scopeLocationId} 非空时只保留该位置及其子位置。
+     */
+    List<LocationHit> searchLocations(UUID householdId, String keyword, int limit, UUID scopeLocationId) {
+        String needle = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        Set<UUID> scope = scopeLocationId == null ? null : locationScopeIds(householdId, scopeLocationId);
+        List<LocationHit> hits = new ArrayList<>();
+        collectLocationHits(locationApi.tree(householdId).roots(), "", needle, scope, hits);
+        if (hits.size() <= limit) {
+            return List.copyOf(hits);
+        }
+        return List.copyOf(hits.subList(0, Math.max(limit, 0)));
+    }
+
+    /** 指定位置及其子位置的 id。位置不在当前家庭树中时为空。 */
+    Set<UUID> locationScopeIds(UUID householdId, UUID locationId) {
+        var scope = new LinkedHashSet<UUID>();
+        collectLocationScope(locationApi.tree(householdId).roots(), locationId, false, scope);
+        return scope;
+    }
+
     /** 指定位置及其子位置中的当前库存，按物品与批次返回有界快照。 */
     LocationStock locationStock(UUID householdId, UUID locationId, String itemKeyword, int limit) {
         locationApi.requireLocation(householdId, locationId);
@@ -126,19 +150,26 @@ class HouseholdFactQueries {
         return new LocationStock(locationId, locationPaths.getOrDefault(locationId, ""), positions);
     }
 
-    /** 不限物品的临期批次快照（数量 > 0，到期日在窗口内）。 */
+    /**
+     * 临期批次快照（数量大于 0，到期日在窗口内）。
+     * {@code locationIds} 非空时只累计这些位置上的数量；为 null 时保持全家庭口径。
+     */
     List<ExpiringLot> expiringLots(
             UUID householdId,
             int withinDays,
             int limit,
             UUID targetItemId,
-            UUID targetLotId
+            UUID targetLotId,
+            Set<UUID> locationIds
     ) {
         LocalDate today = LocalDate.now(clock);
         LocalDate horizon = today.plusDays(Math.max(0, withinDays));
-        return inventoryApi.findExpiringLots(
+        List<InventoryApi.LotQuantitySnapshot> lots = locationIds == null
+                ? inventoryApi.findExpiringLots(
                         householdId, today, horizon, targetItemId, targetLotId, limit)
-                .stream()
+                : inventoryApi.findExpiringLotsInLocations(
+                        householdId, today, horizon, locationIds, limit);
+        return lots.stream()
                 .map(lot -> new ExpiringLot(
                         lot.lotId(), lot.itemId(), lot.itemName(),
                         lot.lotNumber() == null ? "" : lot.lotNumber(),
@@ -149,16 +180,22 @@ class HouseholdFactQueries {
                 .toList();
     }
 
-    /** 不限物品的已过期批次快照（数量 > 0，到期日早于今天）。 */
+    /**
+     * 已过期批次快照（数量大于 0，到期日早于今天）。
+     * {@code locationIds} 非空时只累计这些位置上的数量；为 null 时保持全家庭口径。
+     */
     List<ExpiringLot> expiredLots(
             UUID householdId,
             int limit,
             UUID targetItemId,
-            UUID targetLotId
+            UUID targetLotId,
+            Set<UUID> locationIds
     ) {
         LocalDate today = LocalDate.now(clock);
-        return inventoryApi.findExpiredLots(householdId, today, targetItemId, targetLotId, limit)
-                .stream()
+        List<InventoryApi.LotQuantitySnapshot> lots = locationIds == null
+                ? inventoryApi.findExpiredLots(householdId, today, targetItemId, targetLotId, limit)
+                : inventoryApi.findExpiredLotsInLocations(householdId, today, locationIds, limit);
+        return lots.stream()
                 .map(lot -> new ExpiringLot(
                         lot.lotId(), lot.itemId(), lot.itemName(),
                         lot.lotNumber() == null ? "" : lot.lotNumber(),
@@ -263,6 +300,32 @@ class HouseholdFactQueries {
         }
     }
 
+    private void collectLocationHits(
+            List<LocationApi.LocationNode> nodes,
+            String prefix,
+            String needle,
+            Set<UUID> scope,
+            List<LocationHit> out
+    ) {
+        for (var node : nodes) {
+            String path = prefix.isEmpty() ? node.name() : prefix + " / " + node.name();
+            boolean inScope = scope == null || scope.contains(node.id());
+            if (inScope && locationMatches(needle, node.name(), path)) {
+                out.add(new LocationHit(node.id(), node.name(), path));
+            }
+            collectLocationHits(node.children(), path, needle, scope, out);
+        }
+    }
+
+    private static boolean locationMatches(String needle, String name, String path) {
+        if (needle.isEmpty()) {
+            return true;
+        }
+        String nameText = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        String pathText = path == null ? "" : path.toLowerCase(Locale.ROOT);
+        return nameText.contains(needle) || pathText.contains(needle);
+    }
+
     private void collectLocationScope(
             List<LocationApi.LocationNode> nodes,
             UUID targetId,
@@ -319,6 +382,9 @@ class HouseholdFactQueries {
             String lowStockMode,
             BigDecimal lowStockThreshold
     ) {
+    }
+
+    record LocationHit(UUID locationId, String name, String path) {
     }
 
     record LocationStock(UUID locationId, String locationPath, List<LocationPosition> positions) {

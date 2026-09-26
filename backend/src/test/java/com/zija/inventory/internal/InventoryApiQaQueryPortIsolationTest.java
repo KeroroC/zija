@@ -196,6 +196,44 @@ class InventoryApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void locationFilteredExpiryQueriesCountOnlyThosePlacesAndStayInsideHousehold() {
+        UUID pantry = UUID.fromString("61000000-0000-0000-0000-0000000000a2");
+        insertLocation(pantry, householdA, "储藏室");
+        insertPosition(householdA, expiringA, pantry, "5");
+        insertPosition(householdA, expiredA, pantry, "4");
+
+        var expiringHere = inventoryApi.findExpiringLotsInLocations(
+                householdA, TODAY, TODAY.plusDays(7), List.of(locA), 10);
+        assertThat(expiringHere).extracting(InventoryApi.LotQuantitySnapshot::lotId).containsExactly(expiringA);
+        assertThat(expiringHere.getFirst().quantity()).isEqualByComparingTo("2");
+        assertThat(expiringHere.getFirst().unitName()).isEqualTo("瓶");
+
+        var expiringMixedIds = inventoryApi.findExpiringLotsInLocations(
+                householdA, TODAY, TODAY.plusDays(7), List.of(locA, locB), 10);
+        assertThat(expiringMixedIds).extracting(InventoryApi.LotQuantitySnapshot::lotId).containsExactly(expiringA);
+        assertThat(expiringMixedIds.getFirst().quantity()).isEqualByComparingTo("2");
+
+        assertThat(inventoryApi.findExpiringLotsInLocations(
+                householdA, TODAY, TODAY.plusDays(7), List.of(locB), 10)).isEmpty();
+        assertThat(inventoryApi.findExpiringLotsInLocations(
+                householdA, TODAY, TODAY.plusDays(7), List.of(), 10)).isEmpty();
+
+        var expiringHousehold = inventoryApi.findExpiringLots(
+                householdA, TODAY, TODAY.plusDays(7), null, null, 10);
+        assertThat(expiringHousehold).extracting(InventoryApi.LotQuantitySnapshot::lotId).containsExactly(expiringA);
+        assertThat(expiringHousehold.getFirst().quantity()).isEqualByComparingTo("7");
+
+        var expiredHere = inventoryApi.findExpiredLotsInLocations(householdA, TODAY, List.of(locA), 10);
+        assertThat(expiredHere).extracting(InventoryApi.LotQuantitySnapshot::lotId).containsExactly(expiredA);
+        assertThat(expiredHere.getFirst().quantity()).isEqualByComparingTo("3");
+        assertThat(expiredHere.getFirst().lotNumber()).isEqualTo("LOT-A-OLD");
+
+        assertThat(inventoryApi.findExpiredLotsInLocations(householdA, TODAY, List.of(locB), 10)).isEmpty();
+        assertThat(inventoryApi.findExpiredLots(householdA, TODAY, null, null, 10).getFirst().quantity())
+                .isEqualByComparingTo("7");
+    }
+
+    @Test
     void lotsOfItemIncludesLotNumberWithoutCrossingHouseholds() {
         var lots = inventoryApi.lotsOfItem(householdA, itemA);
 
