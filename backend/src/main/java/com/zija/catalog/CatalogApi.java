@@ -38,6 +38,15 @@ public interface CatalogApi {
     List<ItemInfo> searchActiveItemsByName(UUID householdId, String nameContains, UUID itemId, int limit);
 
     /**
+     * 按名称、品牌名或标签名子串搜索活跃物品。
+     * {@code keyword} 为空白时只返回该家庭前 {@code limit} 条活跃物品，不得当作全家清单；
+     * {@code itemId} 非空时只考虑该物品。空白品牌名和标签名不参与匹配。
+     * 不要把 {@link #listActiveItems} 或 {@link #dumpItems} 当在线查询。
+     */
+    List<ItemInfo> searchActiveItemsByNameBrandOrTag(
+            UUID householdId, String keyword, UUID itemId, int limit);
+
+    /**
      * 活跃物品：其名称作为子串出现在 {@code question} 中（倒置匹配，不是对整句 ILIKE）。
      * 空白名称不匹配。品牌/标签请用 {@link #findActiveItemsMatchingBrandOrTagInQuestion}。
      */

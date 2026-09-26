@@ -137,6 +137,49 @@ class CatalogApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void searchActiveItemsByNameBrandOrTagMatchesNameBrandAndTagWithinHousehold() {
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "牛奶", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkA);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "伊利", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkA);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "乳制品", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkA, yogurtA);
+
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdB, "伊利", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkB);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdB, "乳制品", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkB);
+    }
+
+    @Test
+    void searchActiveItemsByNameBrandOrTagSkipsArchivedBlankLabelsAndHonorsBounds() {
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "伊利", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .doesNotContain(archivedA, milkB, blankBrandItemA);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "乳制品", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .doesNotContain(blankBrandItemA, archivedA, milkB);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "酸奶", milkA, 10)).isEmpty();
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "伊利", milkA, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkA);
+
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "", null, 1))
+                .hasSize(1)
+                .extracting(CatalogApi.ItemInfo::householdId)
+                .containsOnly(householdA);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "   ", null, 1))
+                .hasSize(1)
+                .extracting(CatalogApi.ItemInfo::householdId)
+                .containsOnly(householdA);
+    }
+
+    @Test
     void findActiveItemsNamedInQuestionMatchesNameInsideQuestionOnly() {
         var hits = catalogApi.findActiveItemsNamedInQuestion(householdA, "家里牛奶还有多少", 10);
 

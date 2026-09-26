@@ -126,6 +126,19 @@ class ItemService implements CatalogApi {
 
     @Override
     @Transactional(readOnly = true)
+    public List<ItemInfo> searchActiveItemsByNameBrandOrTag(
+            UUID householdId, String keyword, UUID itemId, int limit
+    ) {
+        String needle = keyword == null ? "" : keyword.trim();
+        return itemMapper.searchActiveItemsByNameBrandOrTag(
+                        householdId, needle, itemId, sqlLimit(limit))
+                .stream()
+                .map(this::toInfo)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ItemInfo> findActiveItemsNamedInQuestion(UUID householdId, String question, int limit) {
         String q = question == null ? "" : question;
         return itemMapper.findActiveItemsNamedInQuestion(householdId, q, sqlLimit(limit))

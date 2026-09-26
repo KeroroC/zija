@@ -355,6 +355,13 @@ class QaScopePlannerTest {
         }
 
         @Override
+        public List<ItemInfo> searchActiveItemsByNameBrandOrTag(
+                UUID householdId, String keyword, UUID itemId, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public List<ItemInfo> searchActiveItemsByName(
                 UUID householdId, String nameContains, UUID itemId, int limit
         ) {
