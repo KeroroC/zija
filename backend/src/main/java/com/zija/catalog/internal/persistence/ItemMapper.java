@@ -37,6 +37,13 @@ public interface ItemMapper extends BaseMapper<ItemEntity> {
 
     int countByUnitId(@Param("unitId") UUID unitId);
 
+    List<ItemEntity> searchActiveItemsByNameBrandOrTag(
+            @Param("householdId") UUID householdId,
+            @Param("keyword") String keyword,
+            @Param("itemId") UUID itemId,
+            @Param("limit") int limit
+    );
+
     List<ItemEntity> searchActiveItemsByName(
             @Param("householdId") UUID householdId,
             @Param("nameContains") String nameContains,

@@ -8,6 +8,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,9 +54,9 @@ final class HouseholdFactTools {
         this.inventoryApi = inventoryApi;
     }
 
-    @Tool(description = "在当前家庭中按名称关键字搜索物品，返回命中物品的 id、名称、单位与当前总库存")
+    @Tool(description = "在当前家庭中按名称、品牌或标签搜索物品，返回命中物品的 id、名称、单位、当前总库存和低库存标记。空关键字只返回有界前若干条，不是全家清单。")
     Map<String, Object> searchItems(
-            @ToolParam(description = "物品名称关键字，例如「牛奶」") String keyword,
+            @ToolParam(description = "名称、品牌或标签关键字，例如「牛奶」「伊利」「乳制品」。留空则只返回有界前若干条，不是全家清单") String keyword,
             @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
     ) {
         int n = boundedLimit(limit);
@@ -66,7 +67,8 @@ final class HouseholdFactTools {
             if (target != null && !isItemTarget()) {
                 return unavailable("search_items");
             }
-            var hits = queries.searchItems(householdId, keyword == null ? "" : keyword, n, targetItemId());
+            String needle = keyword == null ? "" : keyword;
+            var hits = queries.searchItems(householdId, needle, n, targetItemId());
             if (hits.isEmpty() && isItemTarget()) {
                 hits = queries.searchItems(householdId, "", n, targetItemId());
             }
@@ -76,21 +78,145 @@ final class HouseholdFactTools {
                             "名称", hit.name(),
                             "单位", hit.unitName(),
                             "当前总库存", str(hit.currentTotalStock()),
-                            "低库存", Boolean.toString(hit.lowStockMode() != null
-                                    && "CUSTOM".equals(hit.lowStockMode())
-                                    && hit.lowStockThreshold() != null
-                                    && hit.currentTotalStock().compareTo(hit.lowStockThreshold()) < 0)))
+                            "低库存", Boolean.toString(lowStock(
+                                    hit.lowStockMode(), hit.lowStockThreshold(), hit.currentTotalStock()))))
                     .toList();
             collector.addResult(new StructuredResult("ITEM_SEARCH", "物品搜索结果", rows));
             hits.forEach(hit -> collector.addJump(
                     new Jump("ITEM", hit.name(), String.valueOf(hit.itemId()), null, null)));
-            return Map.of("items", hits.stream().map(hit -> Map.of(
-                    "itemId", String.valueOf(hit.itemId()),
-                    "name", hit.name(),
-                    "unitName", hit.unitName(),
-                    "currentTotalStock", str(hit.currentTotalStock()))).toList());
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("items", hits.stream().map(hit -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("itemId", String.valueOf(hit.itemId()));
+                row.put("name", hit.name());
+                row.put("unitName", hit.unitName());
+                row.put("currentTotalStock", str(hit.currentTotalStock()));
+                row.put("lowStock", lowStock(
+                        hit.lowStockMode(), hit.lowStockThreshold(), hit.currentTotalStock()));
+                return row;
+            }).toList());
+            if (needle.isBlank()) {
+                body.put("completeHouseholdInventory", false);
+            }
+            return body;
         } catch (RuntimeException ex) {
             return unavailable("search_items");
+        }
+    }
+
+    @Tool(description = "查询已确认物品的一次快照：总量、库存位、是否低于低库存阈值及阈值、最近到期、最近一条流水。一次调用即可，不要再并行调用其他库存工具补同一份快照。")
+    Map<String, Object> itemSnapshot(
+            @ToolParam(description = "物品 id") String itemId
+    ) {
+        if (!collector.beginToolCall()) {
+            return unavailableBody("item_snapshot");
+        }
+        try {
+            if (target != null && !isItemTarget() && !isLotTarget()) {
+                return unavailable("item_snapshot");
+            }
+            UUID authorizedItemId = authorizedItemId(itemId);
+            var stock = queries.itemStock(householdId, authorizedItemId);
+            var scoped = scopeStock(stock);
+            boolean lowStock = lowStock(
+                    stock.lowStockMode(), stock.lowStockThreshold(), scoped.totalStock());
+            String nearestExpiry = nearestExpiry(scoped.positions());
+            UUID movementLotId = isLotTarget() ? target.id() : null;
+            var movements = queries.itemMovements(householdId, authorizedItemId, 1, movementLotId, null);
+            var latest = movements.isEmpty() ? null : movements.getFirst();
+
+            collector.addResult(new StructuredResult(
+                    "ITEM_SNAPSHOT",
+                    "「" + scoped.itemName() + "」物品快照",
+                    List.of(cellMap(
+                            "物品", scoped.itemName(),
+                            "当前总库存", str(scoped.totalStock()),
+                            "单位", scoped.unitName(),
+                            "低库存", Boolean.toString(lowStock),
+                            "阈值", stock.lowStockThreshold() == null ? "-" : str(stock.lowStockThreshold()),
+                            "最近到期", nearestExpiry))));
+            List<Map<String, String>> positionRows = scoped.positions().stream()
+                    .map(position -> cellMap(
+                            "位置", position.locationPath(),
+                            "批次号", position.lotNumber(),
+                            "数量", str(position.quantity()),
+                            "到期日", position.expiryDate() != null
+                                    ? ISO_DATE.format(position.expiryDate()) : "-"))
+                    .toList();
+            collector.addResult(new StructuredResult(
+                    "ITEM_SNAPSHOT_POSITIONS",
+                    "「" + scoped.itemName() + "」库存位",
+                    positionRows));
+            List<Map<String, String>> movementRows = latest == null
+                    ? List.of()
+                    : List.of(cellMap(
+                            "类型", latest.type(),
+                            "数量", str(latest.quantity()),
+                            "原因", orDash(latest.reason()),
+                            "操作人", orDash(latest.operatorDisplayName()),
+                            "时间", latest.businessTime() != null ? latest.businessTime().toString() : "-",
+                            "从", orDash(latest.fromLocationPath()),
+                            "到", orDash(latest.toLocationPath())));
+            collector.addResult(new StructuredResult(
+                    "ITEM_SNAPSHOT_MOVEMENT",
+                    "「" + scoped.itemName() + "」最近一条流水",
+                    movementRows));
+
+            collector.addJump(new Jump(
+                    "ITEM", scoped.itemName(), String.valueOf(scoped.itemId()), null, null));
+            scoped.positions().forEach(position -> {
+                collector.addJump(new Jump(
+                        "LOT", position.lotNumber(),
+                        String.valueOf(scoped.itemId()), String.valueOf(position.lotId()), null));
+                if (position.locationId() != null) {
+                    collector.addJump(new Jump(
+                            "LOCATION", position.locationPath(),
+                            String.valueOf(scoped.itemId()), String.valueOf(position.lotId()),
+                            String.valueOf(position.locationId())));
+                }
+            });
+            if (latest != null) {
+                collector.addJump(new Jump(
+                        "MOVEMENT", "查看流水",
+                        authorizedItemId.toString(),
+                        latest.lotId() == null ? null : latest.lotId().toString(),
+                        null));
+            }
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("itemId", String.valueOf(scoped.itemId()));
+            body.put("itemName", scoped.itemName());
+            body.put("unitName", scoped.unitName());
+            body.put("totalStock", str(scoped.totalStock()));
+            body.put("lowStock", lowStock);
+            body.put("lowStockThreshold", stock.lowStockThreshold() == null
+                    ? "" : str(stock.lowStockThreshold()));
+            body.put("nearestExpiry", "-".equals(nearestExpiry) ? "" : nearestExpiry);
+            body.put("positions", scoped.positions().stream().map(position -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("locationPath", position.locationPath());
+                row.put("lotNumber", position.lotNumber());
+                row.put("quantity", str(position.quantity()));
+                row.put("expiryDate", position.expiryDate() != null
+                        ? ISO_DATE.format(position.expiryDate()) : "");
+                return row;
+            }).toList());
+            if (latest == null) {
+                body.put("latestMovement", null);
+            } else {
+                Map<String, Object> movement = new LinkedHashMap<>();
+                movement.put("type", latest.type());
+                movement.put("quantity", str(latest.quantity()));
+                movement.put("reason", orDash(latest.reason()));
+                movement.put("operator", orDash(latest.operatorDisplayName()));
+                movement.put("businessTime", latest.businessTime() != null
+                        ? latest.businessTime().toString() : "");
+                movement.put("lotId", latest.lotId() == null ? "" : latest.lotId().toString());
+                body.put("latestMovement", movement);
+            }
+            return body;
+        } catch (RuntimeException ex) {
+            return unavailable("item_snapshot");
         }
     }
 
@@ -443,7 +569,28 @@ final class HouseholdFactTools {
                 .map(HouseholdFactQueries.Position::quantity)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         return new HouseholdFactQueries.ItemStock(
-                stock.itemId(), stock.itemName(), stock.unitName(), total, positions);
+                stock.itemId(), stock.itemName(), stock.unitName(), total, positions,
+                stock.lowStockMode(), stock.lowStockThreshold());
+    }
+
+    private static boolean lowStock(String mode, BigDecimal threshold, BigDecimal total) {
+        return "CUSTOM".equals(mode)
+                && threshold != null
+                && total != null
+                && total.compareTo(threshold) < 0;
+    }
+
+    private static String nearestExpiry(List<HouseholdFactQueries.Position> positions) {
+        LocalDate nearest = null;
+        for (var position : positions) {
+            if (position.expiryDate() == null) {
+                continue;
+            }
+            if (nearest == null || position.expiryDate().isBefore(nearest)) {
+                nearest = position.expiryDate();
+            }
+        }
+        return nearest == null ? "-" : ISO_DATE.format(nearest);
     }
 
     private UUID authorizedItemId(String requested) {

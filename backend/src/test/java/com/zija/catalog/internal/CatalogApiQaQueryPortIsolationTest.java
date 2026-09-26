@@ -137,6 +137,44 @@ class CatalogApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void searchActiveItemsByNameBrandOrTagMatchesNameBrandAndTagInsideTheHousehold() {
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "牛奶", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkA);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "伊利", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkA);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "乳制品", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkA, yogurtA);
+
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdB, "伊利", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(milkB);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "伊利", null, 10))
+                .extracting(CatalogApi.ItemInfo::householdId)
+                .containsOnly(householdA);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "酸奶", milkA, 10)).isEmpty();
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "归档", null, 10)).isEmpty();
+    }
+
+    @Test
+    void searchActiveItemsByNameBrandOrTagEmptyKeywordReturnsOnlyTheBoundedPrefix() {
+        var bounded = catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "", null, 2);
+        var activeIds = catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "", null, 10)
+                .stream()
+                .map(CatalogApi.ItemInfo::id)
+                .toList();
+
+        assertThat(bounded).hasSize(2);
+        assertThat(activeIds).hasSizeGreaterThan(2);
+        assertThat(bounded).extracting(CatalogApi.ItemInfo::id)
+                .containsExactlyElementsOf(activeIds.subList(0, 2));
+        assertThat(bounded).extracting(CatalogApi.ItemInfo::householdId).containsOnly(householdA);
+        assertThat(bounded).extracting(CatalogApi.ItemInfo::id).doesNotContain(archivedA, milkB);
+    }
+
+    @Test
     void findActiveItemsNamedInQuestionMatchesNameInsideQuestionOnly() {
         var hits = catalogApi.findActiveItemsNamedInQuestion(householdA, "家里牛奶还有多少", 10);
 

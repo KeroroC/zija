@@ -87,6 +87,48 @@
         WHERE unit_id = #{unitId} AND status = 'ACTIVE'
     </select>
 
+    <select id="searchActiveItemsByNameBrandOrTag" resultMap="itemResultMap">
+        SELECT i.id, i.household_id, i.name, i.management_type, i.category_id, i.brand_id, i.unit_id,
+               i.cover_file_id, i.memo, i.expiry_reminder_mode, i.expiry_reminder_days,
+               i.low_stock_mode, i.low_stock_threshold, i.status, i.archived_at, i.archived_by,
+               i.created_at, i.updated_at, i.version
+        FROM catalog_item i
+        LEFT JOIN catalog_brand b
+            ON b.id = i.brand_id
+           AND b.household_id = i.household_id
+        <where>
+            i.household_id = #{householdId}
+            AND i.status = 'ACTIVE'
+            <if test="itemId != null">
+                AND i.id = #{itemId}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    i.name ILIKE CONCAT('%', #{keyword}, '%')
+                    OR (
+                        b.name IS NOT NULL
+                        AND btrim(b.name) &lt;&gt; ''
+                        AND b.name ILIKE CONCAT('%', #{keyword}, '%')
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM catalog_item_tag it
+                        INNER JOIN catalog_tag t
+                            ON t.id = it.tag_id
+                           AND t.household_id = it.household_id
+                        WHERE it.item_id = i.id
+                          AND it.household_id = i.household_id
+                          AND t.name IS NOT NULL
+                          AND btrim(t.name) &lt;&gt; ''
+                          AND t.name ILIKE CONCAT('%', #{keyword}, '%')
+                    )
+                )
+            </if>
+        </where>
+        ORDER BY i.name ASC, i.id ASC
+        LIMIT #{limit}
+    </select>
+
     <select id="searchActiveItemsByName" resultMap="itemResultMap">
         SELECT id, household_id, name, management_type, category_id, brand_id, unit_id,
                cover_file_id, memo, expiry_reminder_mode, expiry_reminder_days,

@@ -355,6 +355,12 @@ class QaScopePlannerTest {
         }
 
         @Override
+        public List<ItemInfo> searchActiveItemsByNameBrandOrTag(
+                UUID householdId, String keyword, UUID itemId, int limit
+        ) {
+            return searchActiveItemsByName(householdId, keyword, itemId, limit);
+        }
+
         public List<ItemInfo> searchActiveItemsByName(
                 UUID householdId, String nameContains, UUID itemId, int limit
         ) {

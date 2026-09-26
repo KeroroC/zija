@@ -55,10 +55,10 @@ class HouseholdFactQueries {
         this.clock = clock;
     }
 
-    /** 按名称关键字搜索活跃物品，返回限量命中；不存在的物品不会出现在结果中。 */
+    /** 按名称、品牌或标签搜索活跃物品，返回限量命中；空关键字只取前 {@code limit} 条，不是全家清单。 */
     List<ItemHit> searchItems(UUID householdId, String keyword, int limit, UUID targetItemId) {
         String needle = keyword == null ? "" : keyword.trim();
-        var items = catalogApi.searchActiveItemsByName(householdId, needle, targetItemId, limit);
+        var items = catalogApi.searchActiveItemsByNameBrandOrTag(householdId, needle, targetItemId, limit);
         var unitIds = items.stream()
                 .map(CatalogApi.ItemInfo::unitId)
                 .filter(Objects::nonNull)
@@ -99,7 +99,9 @@ class HouseholdFactQueries {
         return new ItemStock(
                 item.id(), item.name(), unitName,
                 inventoryApi.currentTotalStockOfItem(householdId, itemId),
-                positions);
+                positions,
+                item.lowStockMode(),
+                item.lowStockThreshold());
     }
 
     /** 指定位置及其子位置中的当前库存，按物品与批次返回有界快照。 */
@@ -313,7 +315,9 @@ class HouseholdFactQueries {
             String itemName,
             String unitName,
             BigDecimal totalStock,
-            List<Position> positions
+            List<Position> positions,
+            String lowStockMode,
+            BigDecimal lowStockThreshold
     ) {
     }
 

@@ -18,6 +18,7 @@ class QaHouseholdFactQueryPathSourceTest {
         String queries = Files.readString(source("HouseholdFactQueries.java"));
         String planner = Files.readString(source("QaScopePlanner.java"));
 
+        assertThat(queries).contains("searchActiveItemsByNameBrandOrTag");
         assertThat(queries).doesNotContain("listActiveItems");
         assertThat(planner).doesNotContain("listActiveItems");
         assertThat(planner).doesNotContain("lotsOfItem");
