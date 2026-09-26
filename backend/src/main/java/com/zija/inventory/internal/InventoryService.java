@@ -151,6 +151,16 @@ class InventoryService implements InventoryApi {
 
     @Override
     @Transactional(readOnly = true)
+    public List<LotQuestionMatch> searchLotsByNumberOrSerial(
+            UUID householdId, String keyword, UUID itemId, UUID lotId, int limit
+    ) {
+        String needle = keyword == null ? "" : keyword.trim();
+        return lotMapper.searchLotsByNumberOrSerial(
+                householdId, needle, itemId, lotId, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<LotQuantitySnapshot> findExpiringLots(
             UUID householdId, LocalDate today, LocalDate horizon, UUID itemId, UUID lotId, int limit
     ) {

@@ -92,4 +92,35 @@
         LIMIT #{limit}
     </select>
 
+    <select id="searchLotsByNumberOrSerial" resultMap="lotQuestionMatchMap">
+        SELECT l.id AS lot_id,
+               l.item_id AS item_id,
+               i.name AS item_name,
+               l.lot_number AS lot_number,
+               l.serial_number AS serial_number
+        FROM inventory_lot l
+        JOIN catalog_item i ON i.id = l.item_id AND i.household_id = l.household_id
+        WHERE l.household_id = #{householdId}
+          AND i.status = 'ACTIVE'
+        <if test="itemId != null">
+          AND l.item_id = #{itemId}
+        </if>
+        <if test="lotId != null">
+          AND l.id = #{lotId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+          AND (
+            (l.lot_number IS NOT NULL
+                AND btrim(l.lot_number) &lt;&gt; ''
+                AND l.lot_number ILIKE CONCAT('%', #{keyword}, '%'))
+            OR
+            (l.serial_number IS NOT NULL
+                AND btrim(l.serial_number) &lt;&gt; ''
+                AND l.serial_number ILIKE CONCAT('%', #{keyword}, '%'))
+          )
+        </if>
+        ORDER BY i.name ASC, l.lot_number ASC NULLS LAST, l.id ASC
+        LIMIT #{limit}
+    </select>
+
 </mapper>

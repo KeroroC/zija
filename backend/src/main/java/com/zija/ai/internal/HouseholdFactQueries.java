@@ -77,6 +77,22 @@ class HouseholdFactQueries {
         return hits;
     }
 
+    /**
+     * 按批次号或序列号搜索当前家庭批次，返回可交给物品快照使用的 id。
+     * {@code itemId}、{@code lotId} 非空时只保留该物品或该批次。
+     */
+    List<LotHit> searchLots(UUID householdId, String keyword, int limit, UUID itemId, UUID lotId) {
+        return inventoryApi.searchLotsByNumberOrSerial(householdId, keyword, itemId, lotId, limit)
+                .stream()
+                .map(lot -> new LotHit(
+                        lot.lotId(),
+                        lot.itemId(),
+                        lot.itemName() == null ? "" : lot.itemName(),
+                        lot.lotNumber() == null ? "" : lot.lotNumber(),
+                        lot.serialNumber() == null ? "" : lot.serialNumber()))
+                .toList();
+    }
+
     /** 指定物品的库存分布：批次 + 位置 + 数量 + 到期日。 */
     ItemStock itemStock(UUID householdId, UUID itemId) {
         var item = catalogApi.requireItem(householdId, itemId);
@@ -361,6 +377,15 @@ class HouseholdFactQueries {
     }
 
     // ---------- 只读事实记录 ----------
+
+    record LotHit(
+            UUID lotId,
+            UUID itemId,
+            String itemName,
+            String lotNumber,
+            String serialNumber
+    ) {
+    }
 
     record ItemHit(
             UUID itemId,

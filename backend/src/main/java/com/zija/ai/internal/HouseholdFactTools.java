@@ -98,9 +98,54 @@ final class HouseholdFactTools {
         }
     }
 
-    @Tool(description = "查询某物品快照：总量、库存位、是否低于低库存阈值及阈值、最近到期、最近一条流水")
+    @Tool(description = "在当前家庭按批次号或序列号搜索批次，返回批次 id 和所属物品 id，供物品快照使用。空白序列号不会命中无关关键字。空关键字只返回有界前 N 条")
+    Map<String, Object> searchLots(
+            @ToolParam(description = "批次号或序列号关键字，例如「LOT-2024-01」") String keyword,
+            @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
+    ) {
+        int n = boundedLimit(limit);
+        if (!collector.beginToolCall()) {
+            return unavailableBody("search_lots");
+        }
+        try {
+            if (isLocationTarget()) {
+                return unavailable("search_lots");
+            }
+            UUID itemScope = isItemTarget() ? target.id() : (isLotTarget() ? targetItemId() : null);
+            UUID lotScope = isLotTarget() ? target.id() : null;
+            var hits = queries.searchLots(householdId, keyword == null ? "" : keyword, n, itemScope, lotScope);
+            collector.noteBoundedList(hits.size(), n);
+            List<Map<String, String>> rows = hits.stream()
+                    .map(hit -> cellMap(
+                            "物品", hit.itemName(),
+                            "批次号", orDash(hit.lotNumber()),
+                            "序列号", orDash(hit.serialNumber())))
+                    .toList();
+            collector.addResult(new StructuredResult("LOT_SEARCH", "批次搜索结果", rows));
+            hits.forEach(hit -> collector.addJump(new Jump(
+                    "LOT",
+                    lotLabel(hit.itemName(), hit.lotNumber()),
+                    hit.itemId().toString(),
+                    hit.lotId().toString(),
+                    null)));
+            return Map.of("lots", hits.stream().map(hit -> {
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("lotId", hit.lotId().toString());
+                body.put("itemId", hit.itemId().toString());
+                body.put("itemName", hit.itemName());
+                body.put("lotNumber", hit.lotNumber());
+                body.put("serialNumber", hit.serialNumber());
+                return body;
+            }).toList());
+        } catch (RuntimeException ex) {
+            return unavailable("search_lots");
+        }
+    }
+
+    @Tool(description = "查询某物品快照：总量、库存位、是否低于低库存阈值及阈值、最近到期、最近一条流水。传入批次 id 时，库存位和最近流水只属于该批次")
     Map<String, Object> itemStock(
             @ToolParam(description = "物品 id") String itemId,
+            @ToolParam(description = "批次 id。传入搜索得到的 id 时，库存位和最近流水只属于该批次", required = false) String lotId,
             @ToolParam(description = "最多返回多少条位置分布，1-50，选填") Integer limit
     ) {
         int n = boundedLimit(limit);
@@ -108,8 +153,10 @@ final class HouseholdFactTools {
             return unavailableBody("item_stock");
         }
         try {
-            var full = queries.itemStock(householdId, authorizedItemId(itemId));
-            var stock = scopeStock(full);
+            UUID authorizedItem = authorizedItemId(itemId);
+            UUID scopedLotId = authorizedLotId(lotId, authorizedItem);
+            var full = queries.itemStock(householdId, authorizedItem);
+            var stock = scopeStock(full, scopedLotId);
             var shown = stock.positions().stream().limit(n).toList();
             collector.noteBoundedList(stock.positions().size(), n);
             List<Map<String, String>> rows = shown.stream()
@@ -154,7 +201,7 @@ final class HouseholdFactTools {
                     householdId,
                     stock.itemId(),
                     1,
-                    isLotTarget() ? target.id() : null,
+                    scopedLotId,
                     isLocationTarget() ? target.id() : null);
             List<Map<String, String>> movementRows = movements.stream()
                     .map(m -> cellMap("类型", m.type(),
@@ -538,11 +585,18 @@ final class HouseholdFactTools {
         return null;
     }
 
-    private HouseholdFactQueries.ItemStock scopeStock(HouseholdFactQueries.ItemStock stock) {
-        if (target == null || isItemTarget()) return stock;
+    private HouseholdFactQueries.ItemStock scopeStock(
+            HouseholdFactQueries.ItemStock stock,
+            UUID lotId
+    ) {
+        boolean filterLot = lotId != null;
+        boolean filterLocation = isLocationTarget();
+        if (!filterLot && !filterLocation) {
+            return stock;
+        }
         var positions = stock.positions().stream()
-                .filter(position -> !isLotTarget() || target.id().equals(position.lotId()))
-                .filter(position -> !isLocationTarget() || target.id().equals(position.locationId()))
+                .filter(position -> !filterLot || lotId.equals(position.lotId()))
+                .filter(position -> !filterLocation || target.id().equals(position.locationId()))
                 .toList();
         BigDecimal total = positions.stream()
                 .map(HouseholdFactQueries.Position::quantity)
@@ -570,6 +624,36 @@ final class HouseholdFactTools {
             throw new IllegalArgumentException("缺少位置");
         }
         return requestedId;
+    }
+
+    private UUID authorizedLotId(String requested, UUID itemId) {
+        if (requested == null || requested.isBlank()) {
+            if (!isLotTarget()) {
+                return null;
+            }
+            return requireLotOfItem(target.id(), itemId);
+        }
+        UUID lotId = UUID.fromString(requested.trim());
+        if (isLotTarget() && !target.id().equals(lotId)) {
+            throw new IllegalArgumentException("模型请求超出已确认的问答范围");
+        }
+        return requireLotOfItem(lotId, itemId);
+    }
+
+    private UUID requireLotOfItem(UUID lotId, UUID itemId) {
+        var lot = inventoryApi.findLot(householdId, lotId)
+                .orElseThrow(() -> new IllegalArgumentException("批次不存在或不属于当前家庭"));
+        if (!lot.itemId().equals(itemId)) {
+            throw new IllegalArgumentException("模型请求超出已确认的问答范围");
+        }
+        return lotId;
+    }
+
+    private static String lotLabel(String itemName, String lotNumber) {
+        if (lotNumber == null || lotNumber.isBlank()) {
+            return itemName + "的批次";
+        }
+        return itemName + " · " + lotNumber;
     }
 
     private UUID authorizedItemId(String requested) {

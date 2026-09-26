@@ -455,6 +455,13 @@ class QaScopePlannerTest {
         }
 
         @Override
+        public List<LotQuestionMatch> searchLotsByNumberOrSerial(
+                UUID householdId, String keyword, UUID itemId, UUID lotId, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public List<LotQuestionMatch> findLotsMatchingQuestion(UUID householdId, String question, int limit) {
             findLotsMatchingQuestionCalls++;
             String normalized = question == null ? "" : question.toLowerCase(java.util.Locale.ROOT);

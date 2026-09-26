@@ -132,6 +132,36 @@ class InventoryApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void searchLotsByNumberOrSerialStaysInsideHouseholdAndIgnoresBlankSerial() {
+        var bySerial = inventoryApi.searchLotsByNumberOrSerial(householdA, "sn-coffee", null, null, 10);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(serialA);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::itemId).containsExactly(itemA);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::itemName).containsExactly("牛奶");
+
+        var byLotNumber = inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT-A-EXP", null, null, 10);
+        assertThat(byLotNumber).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(expiringA);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT-B-EXP", null, null, 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN-COFFEE", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .doesNotContain(serialB);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "厨房还有多少东西？", null, null, 10))
+                .isEmpty();
+
+        var bounded = inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT-A", null, null, 1);
+        assertThat(bounded).hasSize(1);
+        assertThat(bounded).extracting(InventoryApi.LotQuestionMatch::lotId).doesNotContain(serialB, expiringB);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN-COFFEE", itemB, null, 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN-COFFEE", null, expiringA, 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "  ", null, null, 2))
+                .hasSize(2)
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .doesNotContain(expiringB, serialB);
+    }
+
+    @Test
     void findLotsMatchingQuestionDoesNotReturnOtherHouseholdOrBlankSerial() {
         var serialHits = inventoryApi.findLotsMatchingQuestion(householdA, "序列号 SN-COFFEE 在哪？", 10);
         assertThat(serialHits).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(serialA);
