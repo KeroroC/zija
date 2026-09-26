@@ -4,6 +4,7 @@ import com.zija.ai.internal.HouseholdFactQaModels.Collector;
 import com.zija.ai.internal.HouseholdFactQaModels.Jump;
 import com.zija.ai.internal.HouseholdFactQaModels.StructuredResult;
 import com.zija.inventory.InventoryApi;
+import com.zija.shared.ZijaReminderMode;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -119,7 +120,7 @@ final class HouseholdFactTools {
             var stock = queries.itemStock(householdId, authorizedItemId);
             var scoped = scopeStock(stock);
             boolean lowStock = lowStock(
-                    stock.lowStockMode(), stock.lowStockThreshold(), scoped.totalStock());
+                    stock.lowStockMode(), stock.lowStockThreshold(), stock.totalStock());
             String nearestExpiry = nearestExpiry(scoped.positions());
             UUID movementLotId = isLotTarget() ? target.id() : null;
             var movements = queries.itemMovements(householdId, authorizedItemId, 1, movementLotId, null);
@@ -574,7 +575,7 @@ final class HouseholdFactTools {
     }
 
     private static boolean lowStock(String mode, BigDecimal threshold, BigDecimal total) {
-        return "CUSTOM".equals(mode)
+        return ZijaReminderMode.CUSTOM.equals(mode)
                 && threshold != null
                 && total != null
                 && total.compareTo(threshold) < 0;

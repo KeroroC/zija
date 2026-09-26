@@ -398,6 +398,10 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                                 """.formatted(LOT_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_SNAPSHOT')].rows[0].当前总库存")
+                        .value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_SNAPSHOT')].rows[0].低库存")
+                        .value("false"))
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_SNAPSHOT_POSITIONS')].rows.length()")
                         .value(1))
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_SNAPSHOT_POSITIONS')].rows[0].批次号")
@@ -412,6 +416,7 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(SECOND_LOT_ID.toString()))));
 
         var snapshotJson = new com.fasterxml.jackson.databind.ObjectMapper().readTree(toolResponse.get());
+        assertThat(snapshotJson.get("lowStock").asBoolean()).isFalse();
         assertThat(snapshotJson.get("latestMovement").get("lotId").asText()).isEqualTo(LOT_ID.toString());
         assertThat(snapshotJson.toString()).doesNotContain("LOT-OTHER", "阳台", "领用");
     }
