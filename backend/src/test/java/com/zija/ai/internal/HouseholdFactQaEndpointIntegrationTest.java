@@ -1661,6 +1661,9 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("大米入库"))))
                 .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("购入"))));
+
+        assertThat(chatModel.firstPrompt()).contains(
+                "今天是 " + LocalDate.now(HOUSEHOLD_ZONE), HOUSEHOLD_ZONE.getId());
     }
 
     @Test

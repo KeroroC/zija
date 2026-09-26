@@ -4,8 +4,11 @@ import com.zija.household.HouseholdApi;
 import com.zija.inventory.InventoryApi;
 import com.zija.shared.ZijaAuditOutcome;
 import com.zija.system.SystemApi;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -41,6 +44,7 @@ class HouseholdFactQaService {
             - 不要生成 SQL，不要尝试写入或修改任何数据，不要自行跨页汇总。
             - 如果查询未完成或列表被截断，不要把当前结果说成完整合计。
             - 用户按批次号或序列号提问时，先搜索批次，再用返回的物品 id 和批次 id 查询物品快照，避免串到同物品的其他批次。
+            - 用户问「上周」「这个月」等相对时间时，以用户消息中服务端给出的今天日期和时区换算出起止日期。
             - 用简洁自然的中文回答：先给结论，再列关键事实。""";
 
     private final HouseholdApi householdApi;
@@ -51,6 +55,7 @@ class HouseholdFactQaService {
     private final KnowledgeQaService knowledgeQaService;
     private final QaScopePlanner scopePlanner;
     private final AiQaExecutionGuard executionGuard;
+    private final Clock clock;
 
     HouseholdFactQaService(
             HouseholdApi householdApi,
@@ -60,7 +65,8 @@ class HouseholdFactQaService {
             SystemApi systemApi,
             KnowledgeQaService knowledgeQaService,
             QaScopePlanner scopePlanner,
-            AiQaExecutionGuard executionGuard
+            AiQaExecutionGuard executionGuard,
+            @Qualifier(AiClockConfig.AI_CLOCK) Clock clock
     ) {
         this.householdApi = householdApi;
         this.aiService = aiService;
@@ -70,6 +76,7 @@ class HouseholdFactQaService {
         this.knowledgeQaService = knowledgeQaService;
         this.scopePlanner = scopePlanner;
         this.executionGuard = executionGuard;
+        this.clock = clock;
     }
 
     HouseholdFactQaModels.Answer ask(
@@ -384,9 +391,11 @@ class HouseholdFactQaService {
             String question,
             HouseholdFactQaModels.QaTarget target
     ) {
-        if (target == null) return question;
         StringBuilder context = new StringBuilder(question)
-                .append("\n\n服务端已确认目标：type=").append(target.type())
+                .append("\n\n服务端日期：今天是 ").append(LocalDate.now(clock))
+                .append("（时区 ").append(clock.getZone().getId()).append("）");
+        if (target == null) return context.toString();
+        context.append("\n服务端已确认目标：type=").append(target.type())
                 .append("; id=").append(target.id())
                 .append("; label=").append(target.label());
         if ("LOT".equals(target.type())) {
