@@ -143,7 +143,7 @@ final class HouseholdFactTools {
         }
     }
 
-    @Tool(description = "查询某物品快照：总量、库存位、是否低于低库存阈值及阈值、最近到期、最近一条流水。传入批次 id 时，库存位和最近流水只属于该批次")
+    @Tool(description = "查询某物品快照：总量、库存位、是否低于低库存阈值及阈值、最近到期、最近一条流水。传入批次 id 时，库存位和最近流水只属于该批次，scopedStock 是该批次的数量；totalStock 始终是整件物品所有批次的合计")
     Map<String, Object> itemStock(
             @ToolParam(description = "物品 id") String itemId,
             @ToolParam(description = "批次 id。传入搜索得到的 id 时，库存位和最近流水只属于该批次", required = false) String lotId,
@@ -177,16 +177,21 @@ final class HouseholdFactTools {
                     .min(java.time.LocalDate::compareTo)
                     .orElse(null);
             String nearestExpiryText = nearestExpiry == null ? "-" : ISO_DATE.format(nearestExpiry);
+            boolean scoped = scopedLotId != null || isLocationTarget();
+            var totalRow = cellMap(
+                    "物品", stock.itemName(),
+                    "当前总库存", str(full.totalStock()),
+                    "单位", stock.unitName(),
+                    "低库存", Boolean.toString(lowStock),
+                    "阈值", thresholdText,
+                    "最近到期", nearestExpiryText);
+            if (scoped) {
+                totalRow.put(scopedLotId != null ? "批次数量" : "位置内数量", str(stock.totalStock()));
+            }
             collector.addResult(new StructuredResult(
                     "ITEM_STOCK_TOTAL",
                     "「" + stock.itemName() + "」库存总量",
-                    List.of(cellMap(
-                            "物品", stock.itemName(),
-                            "当前总库存", str(full.totalStock()),
-                            "单位", stock.unitName(),
-                            "低库存", Boolean.toString(lowStock),
-                            "阈值", thresholdText,
-                            "最近到期", nearestExpiryText))));
+                    List.of(totalRow)));
             collector.addJump(new Jump("ITEM", stock.itemName(),
                     String.valueOf(stock.itemId()), null, null));
             shown.forEach(p -> {
@@ -223,6 +228,9 @@ final class HouseholdFactTools {
             body.put("itemName", stock.itemName());
             body.put("unitName", stock.unitName());
             body.put("totalStock", str(full.totalStock()));
+            if (scoped) {
+                body.put("scopedStock", str(stock.totalStock()));
+            }
             body.put("lowStock", lowStock);
             body.put("lowStockThreshold", full.lowStockThreshold() == null ? "" : str(full.lowStockThreshold()));
             body.put("nearestExpiry", nearestExpiry == null ? "" : ISO_DATE.format(nearestExpiry));

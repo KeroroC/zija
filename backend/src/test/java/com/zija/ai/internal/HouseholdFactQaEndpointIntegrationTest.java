@@ -337,9 +337,13 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 Timestamp.from(OffsetDateTime.now().plusHours(2).toInstant()),
                 UUID.randomUUID().toString());
 
+        var toolResponse = new AtomicReference<String>();
         chatModel.script(
                 "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
-                response -> response.contains("LOT-001") ? "这个批次还有 5 瓶。" : "串到了其他批次。");
+                response -> {
+                    toolResponse.set(response);
+                    return response.contains("LOT-001") ? "这个批次还有 5 瓶。" : "串到了其他批次。";
+                });
 
         var result = mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
@@ -361,6 +365,8 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].数量").value("5"))
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].当前总库存")
                         .value("13"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].批次数量")
+                        .value("5"))
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].低库存")
                         .value("false"))
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows.length()").value(1))
@@ -370,6 +376,8 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         String body = result.getResponse().getContentAsString();
         assertThat(body).doesNotContain("LOT-OTHER");
         assertThat(body).doesNotContain("领用");
+        assertThat(toolResponse.get()).contains("\"scopedStock\":\"5\"");
+        assertThat(toolResponse.get()).contains("\"totalStock\":\"13\"");
     }
 
     @Test
@@ -412,6 +420,10 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                         .value("LOT-001"))
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].数量").value("5"))
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].到期日").value(expiry))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].批次数量")
+                        .value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].当前总库存")
+                        .value("13"))
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows.length()").value(1))
                 .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows[0].原因").value("购入"))
                 .andReturn();
