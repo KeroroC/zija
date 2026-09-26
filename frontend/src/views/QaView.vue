@@ -963,12 +963,13 @@ function goJump(jump: QaJump) {
     case "LOCATION":
       router.push({ path: "/locations", query: { highlight: jump.locationId ?? "" } });
       break;
-    case "MOVEMENT":
-      router.push({
-        name: "report-movements",
-        query: jump.itemId ? { itemId: jump.itemId } : {},
-      });
+    case "MOVEMENT": {
+      const query: Record<string, string> = {};
+      if (jump.itemId) query.itemId = jump.itemId;
+      if (jump.locationId) query.locationId = jump.locationId;
+      router.push({ name: "report-movements", query });
       break;
+    }
     case "REMINDER":
       router.push({
         name: "reminders",

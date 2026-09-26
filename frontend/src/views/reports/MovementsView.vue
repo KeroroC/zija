@@ -166,7 +166,7 @@ function queryString(value: unknown): string {
 const filters = ref<Record<string, string | undefined>>({
   itemId: queryString(route.query.itemId) || undefined,
   type: undefined,
-  locationId: undefined,
+  locationId: queryString(route.query.locationId) || undefined,
   operatorAccountId: undefined,
 })
 

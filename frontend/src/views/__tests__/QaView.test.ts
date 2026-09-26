@@ -739,6 +739,46 @@ describe("QaView", () => {
     });
   });
 
+  it("movement jump with only a location passes the location filter", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      jumps: [
+        { type: "MOVEMENT", label: "查看流水", locationId: "loc-1" },
+      ],
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("这个月厨房进出了什么？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    await jumpByLabel(wrapper, "查看流水").trigger("click");
+    expect(pushMock).toHaveBeenCalledWith({
+      name: "report-movements",
+      query: { locationId: "loc-1" },
+    });
+  });
+
+  it("movement jump with item and location passes both filters", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      jumps: [
+        { type: "MOVEMENT", label: "查看流水", itemId: "item-1", locationId: "loc-1" },
+      ],
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("这个月厨房的牛奶进出了什么？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    await jumpByLabel(wrapper, "查看流水").trigger("click");
+    expect(pushMock).toHaveBeenCalledWith({
+      name: "report-movements",
+      query: { itemId: "item-1", locationId: "loc-1" },
+    });
+  });
+
   it("renders pending reminder tasks and jumps to the reminder center", async () => {
     mockAsk.mockResolvedValue({
       ...answerFixture,
