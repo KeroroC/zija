@@ -297,17 +297,13 @@ class HouseholdFactQaService {
         var tools = new HouseholdFactTools(householdId, queries, collector, target, inventoryApi);
         String normalized = question.toLowerCase(java.util.Locale.ROOT);
 
-        if (containsAny(normalized, "流水", "入库", "领用", "报损", "进出", "变化", "操作人")
-                && target != null) {
-            if ("LOCATION".equals(target.type())) {
-                tools.itemMovements(null, 10, null, null, null, null);
-            } else {
-                fallbackItemId(householdId, target).ifPresentOrElse(
-                        itemId -> tools.itemMovements(itemId.toString(), 10, null, null, null, null),
-                        () -> collector.markFactSourceUnavailable());
-            }
-        } else if (target != null && "LOCATION".equals(target.type())) {
+        if (target != null && "LOCATION".equals(target.type())) {
             tools.locationStock(null, "", 10);
+        } else if (containsAny(normalized, "流水", "入库", "领用", "报损", "变化", "操作人")
+                && target != null) {
+            fallbackItemId(householdId, target).ifPresentOrElse(
+                    itemId -> tools.itemMovements(itemId.toString(), 10, null, null, null, null),
+                    () -> collector.markFactSourceUnavailable());
         } else if (asksPendingReminders(normalized)) {
             tools.openReminderTasks(10);
         } else if (asksSoonExpiring(normalized)) {

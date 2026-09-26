@@ -514,8 +514,8 @@ final class HouseholdFactTools {
             @ToolParam(description = "最多返回多少条，1-50，选填", required = false) Integer limit,
             @ToolParam(description = "批次 id，选填", required = false) String lotId,
             @ToolParam(description = "位置 id。来源或目标任一命中即出，包含子位置。已确认位置时可以省略", required = false) String locationId,
-            @ToolParam(description = "起始日期，yyyy-MM-dd，按家庭时区。只传起始时，结束日为今天；跨度超过 90 个自然日会从结束日往前截断", required = false) String fromDate,
-            @ToolParam(description = "结束日期，yyyy-MM-dd，按家庭时区，含当天。只传结束时，起始日为结束日前 89 天", required = false) String toDate
+            @ToolParam(description = "起始日期，yyyy-MM-dd，按家庭时区。须与结束日期同时传入", required = false) String fromDate,
+            @ToolParam(description = "结束日期，yyyy-MM-dd，按家庭时区，含当天。须与起始日期同时传入；跨度超过 90 个自然日会从结束日往前截断", required = false) String toDate
     ) {
         int n = boundedLimit(limit);
         if (!collector.beginToolCall()) {
@@ -523,16 +523,11 @@ final class HouseholdFactTools {
         }
         try {
             UUID authorizedItemId = resolveMovementItemId(itemId);
-            UUID authorizedLotId = resolveMovementLotId(lotId, authorizedItemId);
-            if (authorizedItemId == null && authorizedLotId != null) {
-                authorizedItemId = inventoryApi.findLot(householdId, authorizedLotId)
-                        .map(InventoryApi.LotFlat::itemId)
-                        .orElseThrow(() -> new IllegalArgumentException("批次不存在或不属于当前家庭"));
-            }
             UUID authorizedLocationId = resolveMovementLocationId(locationId);
             if (authorizedItemId == null && authorizedLocationId == null) {
                 throw new IllegalArgumentException("流水查询需要物品或位置");
             }
+            UUID authorizedLotId = resolveMovementLotId(lotId, authorizedItemId);
             var query = queries.queryMovements(
                     householdId,
                     authorizedItemId,

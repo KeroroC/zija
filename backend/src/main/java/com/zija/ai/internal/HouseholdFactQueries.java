@@ -288,7 +288,7 @@ class HouseholdFactQueries {
 
     /**
      * 有界流水。物品与位置至少提供一个。位置展开为自身及子位置，来源或目标任一命中即出。
-     * 起止日期按家庭时区解析；缺省一侧用「今天」或向前补满 90 个自然日，超长则保留结束日并截断起始日。
+     * 起止日期须同时提供，按家庭时区解析；超长则保留结束日并截断起始日，最长 90 个自然日。
      */
     MovementQuery queryMovements(
             UUID householdId,
@@ -366,11 +366,8 @@ class HouseholdFactQueries {
         if (from == null && to == null) {
             return null;
         }
-        if (to == null) {
-            to = LocalDate.now(clock);
-        }
-        if (from == null) {
-            from = to.minusDays(MAX_MOVEMENT_WINDOW_DAYS - 1L);
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("流水起止日期需要同时提供");
         }
         if (to.isBefore(from)) {
             throw new IllegalArgumentException("流水结束日期早于起始日期");

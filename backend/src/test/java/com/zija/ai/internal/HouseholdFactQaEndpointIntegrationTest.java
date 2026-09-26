@@ -1921,8 +1921,55 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
-    void modelUnavailableLocationMovementQuestionReturnsMovements() throws Exception {
-        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+    void movementQueryRejectsLotOnlyAndAOneSidedDate() throws Exception {
+        chatModel.script(
+                "itemMovements",
+                "{\"lotId\":\"%s\",\"limit\":10}".formatted(LOT_ID),
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认。"
+                        : "查到了流水。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些流水？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                .andExpect(jsonPath("$.structuredResults").isEmpty());
+
+        chatModel.reset();
+        chatModel.script(
+                "itemMovements",
+                "{\"itemId\":\"%s\",\"limit\":10,\"fromDate\":\"2026-09-15\"}".formatted(ITEM_ID),
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认。"
+                        : "上周有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"上周牛奶入库了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                .andExpect(jsonPath("$.structuredResults").isEmpty());
+    }
+
+    @Test
+    void confirmedLotSuppliesItsItemForRecentMovements() throws Exception {
+        UUID otherLotId = UUID.fromString("50000000-0000-0000-0000-0000000000ad");
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-NOT-TARGET', 1)
+                """, otherLotId, HOUSEHOLD_ID, ITEM_ID);
+        insertQaMovement(ITEM_ID, otherLotId, "CONSUME", KITCHEN_ID, null, "1", "另一批领用",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).plusMinutes(5));
+
+        chatModel.script(
+                "itemMovements",
+                "{\"limit\":10}",
+                response -> "这一批最近有入库。");
 
         mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
@@ -1930,19 +1977,17 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "question": "这个月厨房进出了什么？",
+                                  "question": "最近的流水呢？",
                                   "answerScope": "HOUSEHOLD_FACT",
-                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                  "scope": {"type": "LOT", "id": "%s"}
                                 }
-                                """.formatted(KITCHEN_ID)))
+                                """.formatted(LOT_ID)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.modelAvailable").value(false))
-                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
                 .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
-                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("购入"))
-                .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"))
-                .andExpect(jsonPath("$.structuredResults[*].kind",
-                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("LOCATION_STOCK"))));
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.hasItem("购入")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("另一批领用"))));
     }
 
     @Test
