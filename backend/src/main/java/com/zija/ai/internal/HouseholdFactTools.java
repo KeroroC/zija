@@ -546,7 +546,7 @@ final class HouseholdFactTools {
                     n);
             collector.noteBoundedList(query.movements().size(), n);
             List<Map<String, String>> rows = query.movements().stream()
-                    .map(m -> movementRow(m, query.from(), query.to()))
+                    .map(HouseholdFactTools::movementRow)
                     .toList();
             String title = movementTitle(query.itemName(), query.locationPath(), query.from(), query.to());
             collector.addResult(new StructuredResult("MOVEMENTS", title, rows));
@@ -588,12 +588,8 @@ final class HouseholdFactTools {
         }
     }
 
-    private Map<String, String> movementRow(
-            HouseholdFactQueries.MovementFact movement,
-            LocalDate from,
-            LocalDate to
-    ) {
-        var row = cellMap(
+    private static Map<String, String> movementRow(HouseholdFactQueries.MovementFact movement) {
+        return cellMap(
                 "物品", orDash(movement.itemName()),
                 "类型", movement.type(),
                 "数量", str(movement.quantity()),
@@ -602,11 +598,6 @@ final class HouseholdFactTools {
                 "时间", movement.businessTime() != null ? movement.businessTime().toString() : "-",
                 "从", orDash(movement.fromLocationPath()),
                 "到", orDash(movement.toLocationPath()));
-        if (from != null && to != null) {
-            row.put("起始日期", ISO_DATE.format(from));
-            row.put("结束日期", ISO_DATE.format(to));
-        }
-        return row;
     }
 
     private static String movementTitle(String itemName, String locationPath, LocalDate from, LocalDate to) {

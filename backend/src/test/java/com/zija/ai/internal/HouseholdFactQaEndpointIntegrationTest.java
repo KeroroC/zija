@@ -1642,7 +1642,10 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 """
                 {"itemId":"%s","limit":10,"fromDate":"2026-09-15","toDate":"2026-09-21"}
                 """.formatted(ITEM_ID),
-                response -> "上周牛奶有入库。");
+                response -> {
+                    assertThat(response).contains("2026-09-15", "2026-09-21");
+                    return "上周牛奶有入库。";
+                });
 
         mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
@@ -1662,8 +1665,10 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].类型").value("INBOUND"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].操作人").value("户主"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"))
-                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").value("2026-09-15"))
-                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").value("2026-09-21"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[1].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[1].结束日期").doesNotExist())
                 .andExpect(jsonPath("$.structuredResults[0].rows[1].原因").value("上周入库"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("窗口外"))))
@@ -1722,7 +1727,10 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 """
                 {"locationId":"%s","limit":10,"fromDate":"%s","toDate":"%s"}
                 """.formatted(KITCHEN_ID, monthStart, today),
-                response -> "这个月厨房有这些进出。");
+                response -> {
+                    assertThat(response).contains(monthStart.toString(), today.toString());
+                    return "这个月厨房有这些进出。";
+                });
 
         mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
@@ -1748,8 +1756,8 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("卧室入库"))))
                 .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("上月入库"))))
-                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").value(monthStart.toString()))
-                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").value(today.toString()))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist())
                 .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("LOCATION")));
     }
 
@@ -1770,7 +1778,11 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 """
                 {"itemId":"%s","limit":10,"fromDate":"%s","toDate":"%s"}
                 """.formatted(ITEM_ID, requestedFrom, today),
-                response -> "见表格中的入库记录。");
+                response -> {
+                    assertThat(response).contains(actualFrom.toString(), today.toString());
+                    assertThat(response).doesNotContain(requestedFrom.toString());
+                    return "见表格中的入库记录。";
+                });
 
         mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
@@ -1781,6 +1793,8 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
                 .andExpect(jsonPath("$.structuredResults[0].title").value(
                         "「牛奶」流水（" + actualFrom + " 至 " + today + "）"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist())
                 .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
                         org.hamcrest.Matchers.hasItems("窗内", "窗口起点", "购入")))
                 .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
@@ -1868,7 +1882,9 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
                 .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
                 .andExpect(jsonPath("$.structuredResults[0].title").value("「牛奶」最近流水"))
-                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("购入"));
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("购入"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist());
 
         chatModel.reset();
         chatModel.script(
@@ -1890,7 +1906,9 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
                 .andExpect(jsonPath("$.structuredResults[0].title").value("「厨房」最近流水"))
-                .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"));
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist());
     }
 
     @Test
