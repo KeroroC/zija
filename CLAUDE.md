@@ -59,7 +59,7 @@ make recover-owner           # Generate owner recovery link
 
 ## Tech Stack
 
-- **Backend:** Java 25, Spring Boot 4.1.x, Spring Modulith 2.0.5, MyBatis-Plus 3.5.16, Flyway, PostgreSQL 17 + pgvector
+- **Backend:** Java 25, Spring Boot 4.1.x, Spring Modulith 2.0.5, MyBatis-Plus 3.5.16, Spring AI 2.0 (Ollama), Flyway, PostgreSQL 17 + pgvector
 - **Frontend:** Vue 3, TypeScript, Vite 7, Vue Router 4, Pinia 3, Element Plus, Vitest, Playwright (e2e)
 - **Infra:** Docker Compose (postgres + app + web/nginx), Maven Wrapper, npm
 
@@ -79,7 +79,7 @@ com.zija.<module>/
     persistence/            # Mapper, Entity, XML — module-internal
 ```
 
-Existing modules: `system` (health check, installation info, audit), `identity` (auth, users, sessions), `household` (family management, bootstrap, invitations), `catalog` (item categories), `location` (storage places), `file` (file storage), `inventory` (lots, stock movements, stocktake, idempotency, consistency checks), `reminder` (reminder rules, notifications), `reporting` (read-model projections, CSV export, query ports), `ai` (provider abstraction and Spring AI adapter).
+Existing modules: `shared` (cross-cutting enums, error codes, problem helpers — open to all modules), `system` (health check, installation info, audit), `identity` (auth, users, sessions), `household` (family management, bootstrap, invitations), `catalog` (item categories), `location` (storage places), `file` (attachments, remount, recycle bin), `inventory` (lots, stock movements, stocktake, idempotency, consistency checks), `reminder` (reminder rules, notifications), `reporting` (read-model projections, CSV export, query ports), `ai` (readonly Q&A, knowledge RAG via pgvector; Spring AI types stay inside the module).
 
 **Rules:**
 - External modules may only depend on another module's public `Api` interface and its public DTOs/records.
@@ -107,13 +107,13 @@ Existing modules: `system` (health check, installation info, audit), `identity` 
 
 ```
 src/
-  api/          # HTTP client (http.ts) + domain API modules (auth, catalog, file, household, inventory, invitation, location, member, notification, reminder, reporting, owner-recovery, audit, system)
-  components/   # Shared components (AppShell.vue)
-  views/        # Page-level components. Notable subdirectories: inventory/ (stock, lot, movement, stocktake), reports/ (reporting read models, CSV export). Other top-level views: HomeView, LoginPage, BootstrapPage, ItemsPage, InventoryPage, LocationsPage, CatalogSettingsPage, MembersPage, InvitationRedeemPage, NotificationsView, RemindersView, ReminderRulesSettingsView, SystemStatusView, AuditLogPage, OwnerRecoveryPage, ProfilePage, NotFoundPage.
+  api/          # HTTP client (http.ts) + domain API modules (auth, catalog, file, household, inventory, invitation, location, member, notification, reminder, reporting, owner-recovery, audit, system, ai)
+  components/   # Shared components (AppShell.vue, NotificationBell.vue)
+  views/        # Pages: inventory/ (stock, lot, movement, stocktake), reports/, settings/ (AiSettingsTab, ReminderRulesTab). Top-level: HomeView, LoginPage, BootstrapPage, ItemsPage, InventoryPage, LocationsPage, AttachmentsPage, QaView, CatalogSettingsPage, MembersPage, InvitationRedeemPage, NotificationsView, RemindersView, SystemStatusView, AuditLogPage, OwnerRecoveryPage, ProfilePage, NotFoundPage.
   stores/       # Pinia stores (session.ts — auth/session state)
   router/       # Vue Router configuration
   types/        # TypeScript interfaces for API responses
-  utils/        # Shared helpers (date.ts, movement.ts)
+  utils/        # Shared helpers (date.ts, movement.ts, location.ts, aiStatus.ts, qaThread.ts, format.ts)
   styles/       # Global CSS — tokens.css (design tokens + Element Plus variable overrides) and index.css (shell, components)
   test/         # Test setup
 ```
@@ -135,7 +135,7 @@ src/
 
 - All config via environment variables prefixed with `ZIJA_` (see `.env.example`).
 - `.env` file loaded by `docker compose` and by `make dev-backend` (via `set -a; . ./$(ENV_FILE); set +a`).
-- Key variables: `ZIJA_DB_URL`, `ZIJA_DB_USERNAME`, `ZIJA_DB_PASSWORD`, `ZIJA_VERSION`, `ZIJA_POSTGRES_PORT`, `ZIJA_HTTP_PORT`.
+- Key variables: `ZIJA_DB_*`, `ZIJA_VERSION`, `ZIJA_POSTGRES_PORT`, `ZIJA_HTTP_PORT` (Compose host port; local `make dev-backend` still defaults to 8080), `ZIJA_SETUP_TOKEN`, `ZIJA_FILE_STORAGE_PATH`, `ZIJA_FILE_RETENTION_DAYS`, `ZIJA_AI_OLLAMA_BASE_URL`, `ZIJA_AI_CHAT_MODEL`, `ZIJA_AI_EMBEDDING_MODEL`. Full list: `.env.example`.
 
 ### Docker Compose Services
 
@@ -163,91 +163,20 @@ src/
 
 - **Background schedulers must stay disabled in tests.** `backend/src/test/resources/application.properties` sets every `zija.schedule.*` cron to `-`. Background writes race with each test class's `TRUNCATE` and cause random PostgreSQL deadlocks in CI. Cover schedulers by calling their methods directly (`scanAt` / `sendDailyDigests` / `retryOnceNow`). Enforced by `NoBackgroundSchedulingInTestsTest`.
 - **Schedulers are timezone-pinned.** `@Scheduled` uses `zone = "${zija.schedule.zone:Asia/Shanghai}"`, and the reminder `Clock` reads the same property. New scheduled jobs and any date-boundary logic must use that clock, not the JVM default zone — otherwise scan dates drift by a day.
+- **AI is readonly and optional.** Q&A must not write inventory/attachments; answers need grounding (ADR-020). App starts without Ollama; AI calls report unavailable. Embedding models must be 1024-dim (ADR-026). Attachment domain terms (挂载点 / 改挂 / 回收站) live in `CONTEXT.md` — do not invent synonyms.
 
 ## Visual Design (松间账册 / Pine Ledger)
 
-Design spec: `docs/design/redesign-visual-spec.md`.
+Full spec: `docs/design/redesign-visual-spec.md`. Token source of truth: `frontend/src/styles/tokens.css` (Element Plus `--el-*` overrides live there too).
 
-**Concept:** 高端、精致、宁静 — 一本装帧克制的家庭账册，不是鲜艳的 SaaS 后台。暖白纸面底色、极低饱和度、大量留白、单一深松绿强调色。
+**Concept:** 高端、精致、宁静 — 装帧克制的家庭账册，不是鲜艳 SaaS 后台。暖白纸面、极低饱和、大量留白、单一深松绿强调色。
 
-### CSS Architecture
-
-```
-src/styles/
-  tokens.css    # 设计令牌 + Element Plus --el-* 变量覆盖（唯一色源）
-  index.css     # 全局样式：导入 tokens.css，应用骨架、通用组件、Element Plus 细节调制
-```
-
-- 所有颜色/间距/圆角/阴影/字体通过 `tokens.css` 的 CSS 变量定义，**禁止在组件中硬编码色值**。
-- Element Plus 主题通过覆盖 `--el-*` 变量实现，不修改组件源码。
-- 组件样式使用 `<style scoped>`，引用 `--zj-*` 令牌。
-
-### Color System
-
-唯一强调色：**松绿（pine）**。所有灰色统一偏暖绿一族，禁止纯黑。
-
-| 令牌 | 色值 | 用途 |
-|---|---|---|
-| `--zj-canvas` | `#F6F5F1` | 主区背景（暖纸白） |
-| `--zj-surface` | `#FFFFFF` | 卡片、表格、顶栏 |
-| `--zj-surface-sunken` | `#EFEDE6` | 凹陷区、筛选条底、禁用态 |
-| `--zj-ink-900` | `#1F2721` | 主文字（带绿墨感，非纯黑） |
-| `--zj-ink-600` | `#5A655D` | 次级文字 |
-| `--zj-ink-400` | `#98A29A` | 占位、辅助 |
-| `--zj-line` | `#E5E3DB` | 发丝边框 |
-| `--zj-pine-800` | `#1C3A2F` | 侧边栏底、登录页底 |
-| `--zj-pine-600` | `#2E5D4B` | 主按钮/主色 |
-| `--zj-pine-50` | `#EFF4F0` | 行 hover 底 |
-| `--zj-warning` | `#9C7426` | 低饱和赭金（仅警告） |
-| `--zj-danger` | `#A3492F` | 低饱和砖红（仅删除/失败） |
-
-规则：不引入第二种强调色；语义色去饱和；阴影带松绿/墨色调，禁止纯黑。
-
-### Typography
-
-字体通过 `@fontsource-variable` 自托管打包（私有部署，不走 CDN）。
-
-| 角色 | 字体栈 | 用途 |
-|---|---|---|
-| 展示/标题 | `"Noto Serif SC Variable", serif` | 品牌字标、h1/h2、页标题 |
-| 界面正文 | `"Inter Variable", "PingFang SC", system-ui, sans-serif` | 组件、表格、表单 |
-| 数字/代码 | `"JetBrains Mono", ui-monospace, monospace` | 邀请链接、安装 ID、IP、表格数字列 |
-
-规则：标题用衬线体（书卷气）；表格数字列用 `font-variant-numeric: tabular-nums`。
-
-### Spacing & Layout
-
-- **4px 网格**：间距令牌 `4 / 8 / 12 / 16 / 24 / 32 / 48 / 64`。
-- **统一页面骨架**：主区 `padding: 32px 40px`；页面容器 `.page-container`（`max-width: 1120px`）；窄表单页 `.page-container-narrow`（`max-width: 440px`）。
-- **页头**：`.page-header`（flex，两端对齐）+ 衬线 `.page-title`（22px）+ `.page-subtitle`（13px），下距 24px。
-- 卡片内边距 24px；表格行高 ≥ 52px。
-
-### Radius & Shadow
-
-| 令牌 | 值 | 用途 |
-|---|---|---|
-| `--zj-radius-sm` | 6px | 输入框、按钮、标签 |
-| `--zj-radius-md` | 10px | 卡片、表格容器 |
-| `--zj-radius-lg` | 14px | 抽屉、弹窗、登录卡 |
-
-规则：容器圆角 > 内部元素圆角；优先用底色分层，边框仅 `--zj-line` 发丝级。
-
-### Animation
-
-- 缓动：`--zj-ease-out: cubic-bezier(0.22, 1, 0.36, 1)`
-- 时长：`--zj-dur-fast: 150ms`（hover/焦点），`--zj-dur-med: 240ms`（抽屉/弹窗）
-- 按钮按下 `transform: scale(0.98)`
-- 尊重 `prefers-reduced-motion`（全局关闭非必要动效）
-
-### Key UI Patterns
-
-- **深色登录/入口页**：`.auth-stage`（全屏 `--zj-pine-800` 底 + 噪点 + 微弱径向提亮）居中 `.auth-card`（实色暖白卡，`--zj-shadow-lg`）。
-- **侧边栏**：`--zj-pine-800` 底；激活项 = 4px 左指示条 + `--zj-pine-100` 文字 + 8% 白底；菜单分两组（物品/家庭），组间 `.nav-group-label`（11px 全大写）。
-- **顶栏**：56px 高；左侧家庭名；右侧角色徽章（`.zj-badge` 描边药丸）+ 登出文字按钮。
-- **全局噪点**：`body::after` 固定定位 SVG noise，3% 不透明度，`pointer-events: none`，消除平面感。
-- **可点击表格行**：`.table-clickable` → `cursor: pointer` + hover `--zj-pine-50`。
-- **徽章**：`.zj-badge`（描边药丸）+ `.zj-badge-pine` / `.zj-badge-ink` / `.zj-badge-plain`。
-- **状态点**：`.zj-dot`（7px 圆点）+ `.zj-dot-pine` / `.zj-dot-warn` / `.zj-dot-danger` / `.zj-dot-off`。
+**Hard rules for UI work:**
+- Never hardcode colors/spacing/radii/shadows/fonts in components — use `--zj-*` tokens via `<style scoped>`.
+- One accent only: pine (`--zj-pine-*`). Warm-green greys; no pure black; no second brand color.
+- Titles use Noto Serif SC; UI body uses Inter Variable; tabular nums for numeric columns.
+- 4px spacing grid; page shell `.page-container` / `.page-header` / `.page-title` patterns in `index.css`.
+- Prefer surface layering over borders; hairline borders only via `--zj-line`.
 
 ## Code Style
 
