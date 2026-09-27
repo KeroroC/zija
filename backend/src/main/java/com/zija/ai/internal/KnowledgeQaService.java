@@ -11,6 +11,8 @@ import com.zija.catalog.CatalogApi;
 import com.zija.file.FileApi;
 import com.zija.household.HouseholdApi;
 import com.zija.inventory.InventoryApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +27,8 @@ import java.util.UUID;
 /** 家庭、物品或批次范围内的知识来源检索、基于证据生成与回答依据映射。 */
 @Service
 class KnowledgeQaService {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeQaService.class);
 
     static final String CATEGORY_KNOWLEDGE_SOURCE = "KNOWLEDGE_SOURCE";
     static final String REASON_ANSWERED = "ANSWERED";
@@ -122,6 +126,8 @@ class KnowledgeQaService {
                     queryEmbedding,
                     TOP_K);
         } catch (RuntimeException exception) {
+            log.warn("知识问答检索失败: {}", exception.toString());
+            log.debug("知识问答检索失败堆栈", exception);
             return unavailable(question, false, REASON_MODEL_UNAVAILABLE,
                     "知识检索暂时不可用，请稍后重试或查看附件。", attachmentJumps(attachments), dataTime);
         }
@@ -132,6 +138,7 @@ class KnowledgeQaService {
                 .map(document -> grounding(document, attachmentById))
                 .filter(java.util.Objects::nonNull)
                 .toList();
+        log.debug("知识问答检索命中: documents={} groundings={}", documents.size(), groundings.size());
         if (groundings.isEmpty()) {
             return unavailable(question, true, REASON_NO_SOURCE,
                     "没有检索到能回答该问题的可用资料，请查看附件或换一种问法。",
@@ -146,6 +153,8 @@ class KnowledgeQaService {
         } catch (AiRequestLimitException exception) {
             throw exception;
         } catch (RuntimeException exception) {
+            log.warn("知识问答模型调用失败: {}", exception.toString());
+            log.debug("知识问答模型调用失败堆栈", exception);
             return unavailable(question, false, REASON_MODEL_UNAVAILABLE,
                     "AI 模型暂时无法依据资料生成回答，请稍后重试或查看附件。",
                     attachmentJumps(attachments), dataTime);

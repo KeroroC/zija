@@ -59,6 +59,8 @@ class ExpiryScanScheduler {
     /** 测试入口：按指定「今天」扫描，便于 Clock 覆盖。 */
     @Transactional
     public void scanAt(LocalDate today) {
+        long startNanos = System.nanoTime();
+        log.info("Expiry scan started for {}", today);
         // Issue #29: 用业务时区（ClockConfig 注入的 Clock）的零点作为 SNOOZED 到期回 OPEN 的判定时刻，
         // 不再把「今天」的午夜硬编码成 UTC 零点（那会造成北京 08:00 的 ~5h 偏移）。
         OffsetDateTime now = today.atStartOfDay(clock.getZone()).toOffsetDateTime();
@@ -79,6 +81,7 @@ class ExpiryScanScheduler {
 
         // 3-4. 收集活跃物品/批次并全量重算
         reconcileAllForHousehold(hhId);
+        log.info("Expiry scan finished for {} ({} ms)", today, (System.nanoTime() - startNanos) / 1_000_000);
     }
 
     /**

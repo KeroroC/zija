@@ -135,7 +135,14 @@ src/
 
 - All config via environment variables prefixed with `ZIJA_` (see `.env.example`).
 - `.env` file loaded by `docker compose` and by `make dev-backend` (via `set -a; . ./$(ENV_FILE); set +a`).
-- Key variables: `ZIJA_DB_*`, `ZIJA_VERSION`, `ZIJA_POSTGRES_PORT`, `ZIJA_HTTP_PORT` (Compose host port; local `make dev-backend` still defaults to 8080), `ZIJA_SETUP_TOKEN`, `ZIJA_FILE_STORAGE_PATH`, `ZIJA_FILE_RETENTION_DAYS`, `ZIJA_AI_OLLAMA_BASE_URL`, `ZIJA_AI_CHAT_MODEL`, `ZIJA_AI_EMBEDDING_MODEL`. Full list: `.env.example`.
+- Key variables: `ZIJA_DB_*`, `ZIJA_VERSION`, `ZIJA_POSTGRES_PORT`, `ZIJA_HTTP_PORT` (Compose host port; local `make dev-backend` still defaults to 8080), `ZIJA_SETUP_TOKEN`, `ZIJA_FILE_STORAGE_PATH`, `ZIJA_FILE_RETENTION_DAYS`, `ZIJA_AI_OLLAMA_BASE_URL`, `ZIJA_AI_CHAT_MODEL`, `ZIJA_AI_EMBEDDING_MODEL`, `ZIJA_LOG_*` (level, SQL level, path, retention). Full list: `.env.example`.
+
+### Runtime Logging (Logback — not the audit log)
+
+- `logback-spring.xml` owns appenders/rolling only; levels live in `application*.yml` (`com.zija` DEBUG in dev, INFO in `prod`; SQL under the `sql` logger via MyBatis `log-prefix`).
+- `prod` writes `zija.log` + `error.log` (WARN+) under `ZIJA_LOG_PATH` with size/time rolling and automatic cleanup; non-prod is console only.
+- Every line carries `[requestId accountId]` from MDC. Never log passwords, session/CSRF/invitation/recovery tokens, setup token, or SMTP credentials; AI question/answer text only at DEBUG. Guarded by `SensitiveValueLogTest`.
+- Details and the audit-vs-runtime-log split: `docs/developer/architecture.md`.
 
 ### Docker Compose Services
 

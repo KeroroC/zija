@@ -4,6 +4,8 @@ import com.zija.household.HouseholdApi;
 import com.zija.inventory.InventoryApi;
 import com.zija.shared.ZijaAuditOutcome;
 import com.zija.system.SystemApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +28,8 @@ import java.util.concurrent.ExecutionException;
  */
 @Service
 class HouseholdFactQaService {
+
+    private static final Logger log = LoggerFactory.getLogger(HouseholdFactQaService.class);
 
     private static final String REASON_ANSWERED = "ANSWERED";
     private static final String REASON_PARTIAL_HOUSEHOLD_FACTS = "PARTIAL_HOUSEHOLD_FACTS";
@@ -85,6 +89,7 @@ class HouseholdFactQaService {
             HouseholdFactQaModels.QaInput input,
             String requestId
     ) {
+        long startNanos = System.nanoTime();
         var member = householdApi.requireActiveMember(accountId);
         UUID householdId = member.householdId();
         var session = aiService.startQaSession();
@@ -111,6 +116,7 @@ class HouseholdFactQaService {
                 auditFailure(householdId, accountId, requestId, session.providerId(), exception.reasonCode());
                 throw exception;
             } catch (AiProviderUnavailableException exception) {
+                log.warn("AI 问答执行失败，已降级为兜底回答: reason={}", exception.getMessage());
                 answer = executionFailureFallback(householdId, question, plan);
             } catch (RuntimeException exception) {
                 auditFailure(householdId, accountId, requestId, session.providerId(), REASON_QA_FAILED);
@@ -118,6 +124,11 @@ class HouseholdFactQaService {
             }
         }
         audit(householdId, accountId, requestId, session.providerId(), answer);
+        log.info("AI 问答完成: provider={} scope={} reason={} modelAvailable={} facts={} sources={} ({} ms)",
+                session.providerId(), plan.usedAnswerScope(), answer.reasonCode(), answer.modelAvailable(),
+                answer.structuredResults().size(), answer.sources().size(),
+                (System.nanoTime() - startNanos) / 1_000_000);
+        log.debug("AI 问答原文: question={} answer={}", question, answer.summary());
         return answer;
     }
 
@@ -195,6 +206,8 @@ class HouseholdFactQaService {
         } catch (AiRequestLimitException exception) {
             throw exception;
         } catch (RuntimeException exception) {
+            log.warn("家庭事实问答模型调用失败，改用结构化事实兜底: {}", exception.toString());
+            log.debug("家庭事实问答模型调用失败堆栈", exception);
             return structuredFactFallback(householdId, question, target, "MODEL_CALL_FAILED");
         }
 

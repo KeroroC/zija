@@ -138,10 +138,19 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     default-statement-timeout: 10
+    # Mapper 语句日志统一挂在 "sql.*" 下，由 logging.level.sql 控制
+    log-prefix: "sql."
   global-config:
     banner: false
     db-config:
       id-type: assign_uuid
+
+# ---------- 日志（Logback，非审计日志）----------
+# 开发：仅控制台，com.zija 默认 DEBUG；prod：控制台 + 滚动文件，com.zija 默认 INFO
+logging:
+  level:
+    com.zija: ${ZIJA_LOG_LEVEL:DEBUG}
+    sql: ${ZIJA_LOG_SQL_LEVEL:INFO}
 
 # ---------- SpringDoc (OpenAPI / Swagger) ----------
 # prod profile 下无论此值如何均强制关闭（见 application-prod.yml）
@@ -154,6 +163,12 @@ springdoc:
 
 # ---------- 业务配置 ----------
 zija:
+  # prod 下 zija.log / error.log 的目录与滚动清理策略（见 logback-spring.xml）
+  log:
+    path: ${ZIJA_LOG_PATH:logs}
+    max-history: ${ZIJA_LOG_MAX_HISTORY:14}
+    total-size-cap: ${ZIJA_LOG_TOTAL_SIZE_CAP:1GB}
+    slow-request-ms: ${ZIJA_LOG_SLOW_REQUEST_MS:1000}
   setup:
     token: ${ZIJA_SETUP_TOKEN:}
   # 文件存储根目录（容器内挂载卷路径）

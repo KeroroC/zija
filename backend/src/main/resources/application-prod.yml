@@ -9,6 +9,10 @@
 # （deploy/nginx/default.conf 已透传；见 docs/deploy/deploy.md §5），
 # 此时 Secure 标志自动生效；纯 HTTP 暴露下不设置 Secure（浏览器不会拒收）。
 # 切勿在此处重新添加 cookie.secure: true —— 一旦其生效，纯 HTTP 部署将无法登录。
+logging:
+  level:
+    com.zija: ${ZIJA_LOG_LEVEL:INFO}
+
 springdoc:
   api-docs:
     enabled: false

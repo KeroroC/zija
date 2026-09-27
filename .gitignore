@@ -17,6 +17,7 @@ docs/superpowers/
 # Backend build output
 backend/target/
 *.log
+logs/
 
 # Frontend dependencies and build output
 frontend/node_modules/

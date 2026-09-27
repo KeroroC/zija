@@ -124,6 +124,8 @@ class FileService implements FileApi {
             }
             throw e;
         }
+        log.info("附件已上传: fileId={} mediaType={} bytes={} mount={}/{}",
+                entity.getId(), inspection.detectedMediaType(), content.length, mountType, mountId);
         return toAttachment(entity, householdId);
     }
 

@@ -15,6 +15,9 @@
 /** 请求字段校验失败（根包校验处理器与 inventory 共用）。 */
 export const VALIDATION_FAILED = "VALIDATION_FAILED";
 
+/** 未被任何模块处理器认领的服务端异常（根包兜底处理器）。 */
+export const INTERNAL_ERROR = "INTERNAL_ERROR";
+
 // ==================== Security (ZijaProblemHandlers) ====================
 
 export const AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED";

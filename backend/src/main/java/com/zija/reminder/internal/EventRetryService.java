@@ -99,7 +99,7 @@ class EventRetryService {
                 systemApi.recordAudit(new SystemApi.AuditEvent(
                         SystemApi.AuditAction.REMINDER_EVENT_POISON, ZijaAuditOutcome.FAILURE, null, null, null, null, null,
                         Map.of("eventId", dl.getEventId().toString())));
-                log.warn("Dead-letter abandoned after {} failures: eventId={}", newCount, dl.getEventId());
+                log.error("Dead-letter abandoned after {} failures: eventId={}", newCount, dl.getEventId());
             } else {
                 // 指数退避：30s * 2^count（上限 2^6 = 64x = 1920s ≈ 32min）
                 long backoffSeconds = RETRY_DELAY_SECONDS * (1L << Math.min(newCount, MAX_BACKOFF_SHIFT));

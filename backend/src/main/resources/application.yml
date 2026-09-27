@@ -103,6 +103,8 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     default-statement-timeout: 10
+    # Mapper 语句日志统一挂在 "sql.*" 下，由 logging.level.sql 单独控制
+    log-prefix: "sql."
   global-config:
     banner: false
     db-config:
@@ -115,7 +117,21 @@ springdoc:
     path: /swagger-ui.html
     enabled: ${ZIJA_SWAGGER_ENABLED:false}
 
+logging:
+  level:
+    # 开发默认 DEBUG；prod profile 覆盖为 INFO（application-prod.yml）
+    com.zija: ${ZIJA_LOG_LEVEL:DEBUG}
+    # MyBatis SQL 语句与参数；排查时设 ZIJA_LOG_SQL_LEVEL=DEBUG
+    sql: ${ZIJA_LOG_SQL_LEVEL:INFO}
+
 zija:
+  log:
+    # 仅 prod profile 写文件（logback-spring.xml）；开发只输出控制台
+    path: ${ZIJA_LOG_PATH:logs}
+    max-history: ${ZIJA_LOG_MAX_HISTORY:14}
+    total-size-cap: ${ZIJA_LOG_TOTAL_SIZE_CAP:1GB}
+    # 超过该耗时（毫秒）的请求在 prod 下记 WARN
+    slow-request-ms: ${ZIJA_LOG_SLOW_REQUEST_MS:1000}
   setup:
     # 家庭初始化口令；非空时 POST /api/v1/household/bootstrap 须携带 X-Zija-Setup-Token。
     # prod profile 下必须配置（见 HouseholdSetupTokenStartupValidator）。

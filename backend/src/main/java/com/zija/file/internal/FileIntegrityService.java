@@ -13,11 +13,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 class FileIntegrityService {
+
+  private static final Logger log = LoggerFactory.getLogger(FileIntegrityService.class);
 
   private final StoredFileMapper storedFileMapper;
   private final String storageRoot;
@@ -80,6 +84,12 @@ class FileIntegrityService {
       // 无法遍历卷时不计入失败
     }
 
+    if (!missing.isEmpty() || !hashMismatch.isEmpty() || byteSizeMismatchCount > 0 || orphanCount > 0) {
+      log.warn("附件完整性检查发现异常: checked={} missing={} hashMismatch={} sizeMismatch={} orphan={}",
+          checkedCount, missing.size(), hashMismatch.size(), byteSizeMismatchCount, orphanCount);
+    } else {
+      log.info("附件完整性检查通过: checked={}", checkedCount);
+    }
     return new FileIntegrityReport(
         checkedCount,
         missing.size(),

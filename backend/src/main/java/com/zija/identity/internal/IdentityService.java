@@ -7,6 +7,8 @@ import com.zija.identity.internal.exception.InvalidCredentialsException;
 import com.zija.identity.internal.exception.UsernameAlreadyExistsException;
 import com.zija.identity.internal.persistence.AccountEntity;
 import com.zija.identity.internal.persistence.AccountMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +29,8 @@ import java.util.stream.Collectors;
  */
 @Service
 class IdentityService implements IdentityApi {
+
+    private static final Logger log = LoggerFactory.getLogger(IdentityService.class);
 
     private final AccountMapper accountMapper;
     private final PasswordEncoder passwordEncoder;
@@ -109,6 +113,7 @@ class IdentityService implements IdentityApi {
             throw new AccountVersionConflictException();
         }
         sessionInvalidator.invalidateAllForAccount(accountId);
+        log.info("密码已修改，账户会话已全部失效: accountId={}", accountId);
     }
 
     /**
@@ -132,6 +137,7 @@ class IdentityService implements IdentityApi {
             throw new AccountVersionConflictException();
         }
         sessionInvalidator.invalidateAllForAccount(accountId);
+        log.info("密码已重置，账户会话已全部失效: accountId={}", accountId);
     }
 
     @Override
@@ -156,6 +162,7 @@ class IdentityService implements IdentityApi {
         var account = accountMapper.selectById(accountId);
         if (account != null) {
             accountMapper.updateStatus(accountId, AccountStatus.DISABLED, account.getVersion());
+            log.debug("账户已停用: accountId={}", accountId);
         }
     }
 
@@ -170,6 +177,7 @@ class IdentityService implements IdentityApi {
         var account = accountMapper.selectById(accountId);
         if (account != null) {
             accountMapper.updateStatus(accountId, AccountStatus.ACTIVE, account.getVersion());
+            log.debug("账户已激活: accountId={}", accountId);
         }
     }
 

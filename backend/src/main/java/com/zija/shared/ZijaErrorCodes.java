@@ -11,6 +11,9 @@ public final class ZijaErrorCodes {
     /** 请求字段校验失败（根包校验处理器与 inventory 共用）。 */
     public static final String VALIDATION_FAILED = "VALIDATION_FAILED";
 
+    /** 未被任何模块处理器认领的服务端异常（根包兜底处理器）。 */
+    public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+
     /** 事件处理异常信息缺失时的兜底错误名（reminder 与 reporting 共用）。 */
     public static final String UNKNOWN_ERROR = "UnknownError";
 
