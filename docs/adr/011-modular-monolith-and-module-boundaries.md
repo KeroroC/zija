@@ -2,7 +2,7 @@
 
 ## 状态
 
-已批准。依赖图中 `inventory → file` 见 [ADR-019](019-attachments-in-file-module.md)。
+已批准。依赖图以各模块 `package-info.java` 为准。`inventory → file` 见 [ADR-019](019-attachments-in-file-module.md)；`ai` 与 `shared` 为后续加入的模块。
 
 ## 背景
 
@@ -12,18 +12,19 @@
 
 采用 **Spring Modulith 模块化单体**，以约定优于配置的方式执行模块边界：
 
-1. **9 个业务模块**，按业务能力组织包结构：`identity`、`household`、`catalog`、`location`、`inventory`、`reminder`、`file`、`reporting`、`system`。每个模块的根包即公开 API，`internal` 子包默认对其它模块不可见。
+1. **11 个模块**，按业务能力组织包结构：`shared`、`identity`、`household`、`catalog`、`location`、`inventory`、`reminder`、`file`、`reporting`、`system`、`ai`。`shared` 放跨模块枚举、错误码和问题辅助类型。每个模块的根包即公开 API，`internal` 子包默认对其它模块不可见。
 
 2. **单向依赖**，依赖图由 `@ApplicationModule(allowedDependencies = ...)` 在 `package-info.java` 中声明：
-   - `identity` → `system`
-   - `household` → `identity`, `system`
-   - `catalog` → `household`, `file`
-   - `location` → `household`
-   - `inventory` → `household`, `catalog`, `location`, `file`（批次附件，见 ADR-019）
-   - `reminder` → `household`, `catalog`, `inventory`, `system`
-   - `file` → `household`, `system`
-   - `reporting` → `household`, `catalog`, `location`, `inventory`, `system`
-   - `system` → 无业务模块依赖
+   - `shared`、`system` → 无业务模块依赖
+   - `identity` → `shared`, `system`
+   - `household` → `shared`, `identity`, `system`
+   - `catalog` → `shared`, `household`, `file`, `system`
+   - `location` → `shared`, `household`, `system`
+   - `inventory` → `shared`, `household`, `catalog`, `location`, `file`, `system`（批次附件，见 ADR-019）
+   - `reminder` → `shared`, `household`, `catalog`, `inventory`, `system`
+   - `file` → `shared`, `household`, `system`
+   - `reporting` → `shared`, `household`, `catalog`, `location`, `inventory`, `identity`, `system`
+   - `ai` → `shared`, `household`, `system`, `file`, `inventory`, `catalog`, `location`, `identity`, `reminder`
 
 3. **公开契约 = Api 接口 + DTO record + 领域事件**。跨模块只能交换这三类公开类型；实体（Entity）、Mapper、XML 映射、持久化对象都位于 `internal/persistence/` 子包，不得作为跨模块类型。
 
@@ -31,7 +32,7 @@
 
 5. **不启用全局逻辑删除**（`@TableLogic`）。物品归档、成员停用和流水冲正均使用明确业务状态字段，审计敏感记录不得被通用删除能力隐藏。
 
-6. **复杂 SQL 写在模块自有的 Mapper XML 中**，不跨模块 JOIN 他表。`reporting` 模块的复杂报表 SQL 作用在自有投影表上（见 ADR-004），不直连 `inventory` 或 `catalog` 的事务表。
+6. **复杂 SQL 写在模块自有的 Mapper XML 中**。`reporting` 的报表 SQL 只作用在自有投影表上（见 ADR-004），不直连 `inventory` 或 `catalog` 的事务表。`inventory` 的展示查询可以在本模块 XML 里 JOIN `catalog` 表补物品名、批次号和单位（见 ADR-018）；这不把 catalog 实体暴露成跨模块类型。
 
 ## 考虑过的备选
 
