@@ -7,6 +7,8 @@ import com.zija.ZijaSessionInvalidator;
 import com.zija.ai.AiApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
@@ -1537,6 +1539,234 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItems("ITEM", "LOT", "LOCATION")));
 
         assertThat(chatModel.modelCallCount()).isZero();
+    }
+
+    @Test
+    void modelUnavailableConfirmedLocationMovementQuestionReturnsRecentMovementsIncludingChildren()
+            throws Exception {
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-0000000000e1");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-0000000000e2");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '2', 0)
+                """, UUID.fromString("70000000-0000-0000-0000-0000000000e1"), HOUSEHOLD_ID, LOT_ID, fridgeId);
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, fridgeId, "6", "冷藏入库",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusHours(1));
+        insertQaMovement(ITEM_ID, LOT_ID, "LOSS", KITCHEN_ID, null, "1", "灶台报损",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusHours(2));
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, bedroomId, "4", "卧室入库",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusMinutes(10));
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置最近的流水",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「厨房」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("LOCATION_STOCK"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].物品")
+                        .value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].类型")
+                        .value("INBOUND"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].数量")
+                        .value("6"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].到")
+                        .value("厨房 / 冰箱"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].操作人")
+                        .value("户主"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '灶台报损')].类型")
+                        .value("LOSS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '灶台报损')].数量")
+                        .value("1"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '灶台报损')].从")
+                        .value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("卧室入库"))))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOCATION')].locationId",
+                        org.hamcrest.Matchers.hasItem(KITCHEN_ID.toString())))
+                .andExpect(jsonPath("$.jumps[*].type",
+                        org.hamcrest.Matchers.hasItem("MOVEMENT")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"进出", "入库", "领用", "报损"})
+    void modelUnavailableConfirmedLocationMovementKeywordReturnsRecentMovements(String keyword)
+            throws Exception {
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置%s",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(keyword, KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「厨房」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("LOCATION_STOCK"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].物品")
+                        .value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].类型")
+                        .value("INBOUND"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].数量")
+                        .value("5"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].到")
+                        .value("厨房"))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOCATION')].locationId",
+                        org.hamcrest.Matchers.hasItem(KITCHEN_ID.toString())))
+                .andExpect(jsonPath("$.jumps[*].type",
+                        org.hamcrest.Matchers.hasItem("MOVEMENT")));
+    }
+
+    @Test
+    void modelUnavailableConfirmedLocationQuestionWithoutMovementKeywordReturnsLocationStock()
+            throws Exception {
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "6", "冷藏入库",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusHours(1));
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置里有什么",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOCATION_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「厨房」当前库存"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("MOVEMENTS"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].位置").value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因").doesNotExist())
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOCATION')].locationId",
+                        org.hamcrest.Matchers.hasItem(KITCHEN_ID.toString())));
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置的数量变化，操作人是谁",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOCATION_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("MOVEMENTS"))));
+    }
+
+    @Test
+    void modelUnavailableConfirmedItemMovementQuestionStillReturnsThatItemsMovements() throws Exception {
+        UUID riceId = UUID.fromString("40000000-0000-0000-0000-0000000000e3");
+        UUID riceLot = UUID.fromString("50000000-0000-0000-0000-0000000000e3");
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '大米', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, riceId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-RICE-ITEM', 1)
+                """, riceLot, HOUSEHOLD_ID, riceId);
+        insertQaMovement(riceId, riceLot, "INBOUND", null, KITCHEN_ID, "2", "大米入库",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusMinutes(5));
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "最近的流水呢？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「牛奶」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].数量")
+                        .value("5"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("大米入库"))));
+    }
+
+    @Test
+    void modelUnavailableConfirmedLotMovementQuestionStillReturnsThatLotsMovements() throws Exception {
+        UUID otherLotId = UUID.fromString("50000000-0000-0000-0000-0000000000e4");
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-NOT-FALLBACK', 1)
+                """, otherLotId, HOUSEHOLD_ID, ITEM_ID);
+        insertQaMovement(ITEM_ID, otherLotId, "CONSUME", KITCHEN_ID, null, "1", "另一批领用",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).plusMinutes(5));
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "最近的领用呢？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOT", "id": "%s"}
+                                }
+                                """.formatted(LOT_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.hasItem("购入")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("另一批领用"))));
     }
 
     @Test

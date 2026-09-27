@@ -306,7 +306,11 @@ class HouseholdFactQaService {
         String normalized = question.toLowerCase(java.util.Locale.ROOT);
 
         if (target != null && "LOCATION".equals(target.type())) {
-            tools.locationStock(null, "", 10);
+            if (asksLocationMovements(normalized)) {
+                tools.itemMovements(null, 10, null, null, null, null);
+            } else {
+                tools.locationStock(null, "", 10);
+            }
         } else if (containsAny(normalized, "流水", "入库", "领用", "报损", "变化", "操作人")
                 && target != null) {
             fallbackItemId(householdId, target).ifPresentOrElse(
@@ -362,6 +366,10 @@ class HouseholdFactQaService {
             return inventoryApi.findLot(householdId, target.id()).map(InventoryApi.LotFlat::itemId);
         }
         return java.util.Optional.empty();
+    }
+
+    private static boolean asksLocationMovements(String question) {
+        return containsAny(question, "流水", "进出", "入库", "领用", "报损");
     }
 
     private static boolean asksSoonExpiring(String question) {
