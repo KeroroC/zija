@@ -204,7 +204,7 @@
               #{locationId}
           </foreach>
           <if test="itemNameContains != null and itemNameContains != ''">
-              AND i.name ILIKE CONCAT('%', #{itemNameContains}, '%')
+              AND strpos(lower(i.name), lower(#{itemNameContains})) &gt; 0
           </if>
         ORDER BY i.name ASC, l.lot_number ASC, sp.location_id ASC, l.id ASC
         LIMIT #{limit}

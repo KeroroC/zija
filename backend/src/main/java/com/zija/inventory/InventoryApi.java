@@ -145,6 +145,7 @@ public interface InventoryApi {
 
     /**
      * 指定位置集合（含子位置 id）中的当前库存位，可选物品名称关键字，有界。
+     * 关键字按字面子串匹配，{@code %} 与 {@code _} 不是通配符。
      */
     List<LocationStockPositionSnapshot> findStockPositionsInLocations(
             UUID householdId,

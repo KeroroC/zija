@@ -216,6 +216,43 @@ class InventoryApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void findStockPositionsInLocationsTreatsLikeWildcardsInItemNameAsLiterals() {
+        UUID unitA = UUID.fromString("31000000-0000-0000-0000-00000000000a");
+        UUID unitB = UUID.fromString("31000000-0000-0000-0000-00000000000b");
+        UUID underscoreItem = UUID.fromString("41000000-0000-0000-0000-0000000000a1");
+        UUID lookalikeItem = UUID.fromString("41000000-0000-0000-0000-0000000000a2");
+        UUID percentItem = UUID.fromString("41000000-0000-0000-0000-0000000000a3");
+        UUID foreignItem = UUID.fromString("41000000-0000-0000-0000-0000000000b1");
+        UUID underscoreLot = UUID.fromString("51000000-0000-0000-0000-0000000000c1");
+        UUID lookalikeLot = UUID.fromString("51000000-0000-0000-0000-0000000000c2");
+        UUID percentLot = UUID.fromString("51000000-0000-0000-0000-0000000000c3");
+        UUID foreignLot = UUID.fromString("51000000-0000-0000-0000-0000000000c4");
+
+        insertItem(underscoreItem, householdA, unitA, "酸奶_1", "DISABLED", null);
+        insertItem(lookalikeItem, householdA, unitA, "酸奶X1", "DISABLED", null);
+        insertItem(percentItem, householdA, unitA, "奶粉%装", "DISABLED", null);
+        insertItem(foreignItem, householdB, unitB, "外家_%酸奶", "DISABLED", null);
+        insertLot(underscoreLot, householdA, underscoreItem, "LOT-U", null, TODAY.plusDays(10));
+        insertLot(lookalikeLot, householdA, lookalikeItem, "LOT-X", null, TODAY.plusDays(10));
+        insertLot(percentLot, householdA, percentItem, "LOT-P", null, TODAY.plusDays(10));
+        insertLot(foreignLot, householdB, foreignItem, "LOT-F", null, TODAY.plusDays(10));
+        insertPosition(householdA, underscoreLot, locA, "1");
+        insertPosition(householdA, lookalikeLot, locA, "1");
+        insertPosition(householdA, percentLot, locA, "1");
+        insertPosition(householdB, foreignLot, locB, "1");
+
+        assertThat(inventoryApi.findStockPositionsInLocations(householdA, List.of(locA, locB), "酸奶_1", 20))
+                .extracting(InventoryApi.LocationStockPositionSnapshot::lotId)
+                .containsExactly(underscoreLot);
+        assertThat(inventoryApi.findStockPositionsInLocations(householdA, List.of(locA, locB), "_", 20))
+                .extracting(InventoryApi.LocationStockPositionSnapshot::lotId)
+                .containsExactly(underscoreLot);
+        assertThat(inventoryApi.findStockPositionsInLocations(householdA, List.of(locA, locB), "%", 20))
+                .extracting(InventoryApi.LocationStockPositionSnapshot::lotId)
+                .containsExactly(percentLot);
+    }
+
+    @Test
     void findRecentMovementsOfItemDoesNotReturnOtherHousehold() {
         var hits = inventoryApi.findRecentMovementsOfItem(householdA, itemA, null, null, 10);
 
