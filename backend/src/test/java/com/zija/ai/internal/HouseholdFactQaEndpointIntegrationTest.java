@@ -1103,6 +1103,223 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void confirmedLocationLotSearchReturnsLotsStockedInThatPlaceAndChildren() throws Exception {
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000077");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-000000000078");
+        UUID inScopeLotId = UUID.fromString("50000000-0000-0000-0000-000000000077");
+        UUID outsideLotId = UUID.fromString("50000000-0000-0000-0000-000000000078");
+        UUID zeroLotId = UUID.fromString("50000000-0000-0000-0000-000000000079");
+        UUID sharedSerialOutsideLotId = UUID.fromString("50000000-0000-0000-0000-00000000007a");
+        UUID otherHousehold = UUID.fromString("10000000-0000-0000-0000-000000000077");
+        UUID otherUnit = UUID.fromString("30000000-0000-0000-0000-000000000077");
+        UUID otherItem = UUID.fromString("40000000-0000-0000-0000-000000000077");
+        UUID otherLocation = UUID.fromString("60000000-0000-0000-0000-000000000079");
+        UUID foreignLotId = UUID.fromString("50000000-0000-0000-0000-00000000007b");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0),
+                       (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot
+                    (id, household_id, item_id, lot_number, serial_number, version)
+                VALUES (?, ?, ?, 'LOT-2024-01', 'SN-SHARED-77', 1),
+                       (?, ?, ?, 'LOT-2024-01-BED', 'SN-BED-77', 1),
+                       (?, ?, ?, 'LOT-2024-01-ZERO', 'SN-ZERO-77', 1),
+                       (?, ?, ?, 'LOT-BED-77', 'SN-SHARED-77', 1)
+                """, inScopeLotId, HOUSEHOLD_ID, ITEM_ID,
+                outsideLotId, HOUSEHOLD_ID, ITEM_ID,
+                zeroLotId, HOUSEHOLD_ID, ITEM_ID,
+                sharedSerialOutsideLotId, HOUSEHOLD_ID, ITEM_ID);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '2', 0),
+                       (?, ?, ?, ?, '4', 0),
+                       (?, ?, ?, ?, '0', 0),
+                       (?, ?, ?, ?, '6', 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, inScopeLotId, fridgeId,
+                UUID.randomUUID(), HOUSEHOLD_ID, outsideLotId, bedroomId,
+                UUID.randomUUID(), HOUSEHOLD_ID, zeroLotId, fridgeId,
+                UUID.randomUUID(), HOUSEHOLD_ID, sharedSerialOutsideLotId, bedroomId);
+        jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+        try {
+            jdbc.update("""
+                    INSERT INTO household(singleton_key, id, name, timezone)
+                    VALUES (2, ?, '外家', 'Asia/Shanghai')
+                    """, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO catalog_unit(id, household_id, name, name_normalized, decimal_scale, status)
+                    VALUES (?, ?, '罐', '罐', 0, 'ACTIVE')
+                    """, otherUnit, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO catalog_item
+                        (id, household_id, name, management_type, unit_id, status, version)
+                    VALUES (?, ?, '外家黄豆', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                    """, otherItem, otherHousehold, otherUnit);
+            jdbc.update("""
+                    INSERT INTO location
+                        (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                    VALUES (?, ?, NULL, '外家厨房', '外家厨房', 0, false, 0)
+                    """, otherLocation, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO inventory_lot
+                        (id, household_id, item_id, lot_number, serial_number, version)
+                    VALUES (?, ?, ?, 'LOT-2024-01-FOREIGN', 'SN-SHARED-77', 1)
+                    """, foreignLotId, otherHousehold, otherItem);
+            jdbc.update("""
+                    INSERT INTO inventory_stock_position
+                        (id, household_id, lot_id, location_id, quantity, revision)
+                    VALUES (?, ?, ?, ?, '9', 0)
+                    """, UUID.randomUUID(), otherHousehold, foreignLotId, otherLocation);
+
+            var lotToolResponse = new AtomicReference<String>();
+            chatModel.script(
+                    "searchLots", "{\"keyword\":\"LOT-2024-01\",\"limit\":10}",
+                    response -> {
+                        lotToolResponse.set(response);
+                        return response.contains("LOT-2024-01")
+                                && response.contains("SN-SHARED-77")
+                                && response.contains(inScopeLotId.toString())
+                                && !response.contains("LOT-2024-01-BED")
+                                && !response.contains("SN-BED-77")
+                                && !response.contains("LOT-2024-01-ZERO")
+                                && !response.contains("SN-ZERO-77")
+                                && !response.contains("LOT-BED-77")
+                                && !response.contains("LOT-2024-01-FOREIGN")
+                                && !response.contains("外家黄豆")
+                                && !response.contains(outsideLotId.toString())
+                                && !response.contains(zeroLotId.toString())
+                                && !response.contains(sharedSerialOutsideLotId.toString())
+                                && !response.contains(foreignLotId.toString())
+                                ? "冰箱里的 LOT-2024-01 对得上。"
+                                : "暂时无法确认。";
+                    });
+
+            var lotResult = mvc.perform(post("/api/v1/ai/qa")
+                            .with(auth())
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "question": "LOT-2024-01 还有多少",
+                                      "answerScope": "HOUSEHOLD_FACT",
+                                      "scope": {"type": "LOCATION", "id": "%s"}
+                                    }
+                                    """.formatted(KITCHEN_ID)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                    .andExpect(jsonPath("$.summary").value("冰箱里的 LOT-2024-01 对得上。"))
+                    .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                    .andExpect(jsonPath("$.targetScope.type").value("LOCATION"))
+                    .andExpect(jsonPath("$.targetScope.id").value(KITCHEN_ID.toString()))
+                    .andExpect(jsonPath("$.sources[0].dataTime").isNotEmpty())
+                    .andExpect(jsonPath("$.structuredResults[0].kind").value("LOT_SEARCH"))
+                    .andExpect(jsonPath("$.structuredResults[0].title").value("批次搜索结果"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-2024-01"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].序列号").value("SN-SHARED-77"))
+                    .andExpect(jsonPath("$.jumps[?(@.type == 'LOT')].lotId",
+                            org.hamcrest.Matchers.contains(inScopeLotId.toString())))
+                    .andExpect(jsonPath("$.jumps[?(@.type == 'LOT')].label",
+                            org.hamcrest.Matchers.contains("牛奶 · LOT-2024-01")))
+                    .andReturn();
+
+            String lotBody = lotResult.getResponse().getContentAsString();
+            assertThat(lotBody).doesNotContain("LOT-2024-01-BED");
+            assertThat(lotBody).doesNotContain("SN-BED-77");
+            assertThat(lotBody).doesNotContain("LOT-2024-01-ZERO");
+            assertThat(lotBody).doesNotContain("SN-ZERO-77");
+            assertThat(lotBody).doesNotContain("LOT-BED-77");
+            assertThat(lotBody).doesNotContain("LOT-2024-01-FOREIGN");
+            assertThat(lotBody).doesNotContain("外家黄豆");
+            assertThat(lotBody).doesNotContain(outsideLotId.toString());
+            assertThat(lotBody).doesNotContain(zeroLotId.toString());
+            assertThat(lotBody).doesNotContain(sharedSerialOutsideLotId.toString());
+            assertThat(lotBody).doesNotContain(foreignLotId.toString());
+            assertThat(lotToolResponse.get()).contains("\"lotNumber\":\"LOT-2024-01\"");
+            assertThat(lotToolResponse.get()).contains("\"serialNumber\":\"SN-SHARED-77\"");
+            assertThat(lotToolResponse.get()).doesNotContain("LOT-2024-01-BED");
+            assertThat(lotToolResponse.get()).doesNotContain("SN-BED-77");
+            assertThat(lotToolResponse.get()).doesNotContain("LOT-2024-01-ZERO");
+            assertThat(lotToolResponse.get()).doesNotContain("SN-ZERO-77");
+            assertThat(lotToolResponse.get()).doesNotContain("LOT-BED-77");
+            assertThat(lotToolResponse.get()).doesNotContain("LOT-2024-01-FOREIGN");
+            assertThat(lotToolResponse.get()).doesNotContain("外家黄豆");
+
+            chatModel.reset();
+            var serialToolResponse = new AtomicReference<String>();
+            chatModel.script(
+                    "searchLots", "{\"keyword\":\"SN-SHARED-77\",\"limit\":10}",
+                    response -> {
+                        serialToolResponse.set(response);
+                        return response.contains("SN-SHARED-77")
+                                && response.contains(inScopeLotId.toString())
+                                && !response.contains("LOT-BED-77")
+                                && !response.contains("LOT-2024-01-FOREIGN")
+                                && !response.contains("外家黄豆")
+                                && !response.contains(sharedSerialOutsideLotId.toString())
+                                && !response.contains(foreignLotId.toString())
+                                ? "序列号只对上冰箱里的那一批。"
+                                : "暂时无法确认。";
+                    });
+
+            var serialResult = mvc.perform(post("/api/v1/ai/qa")
+                            .with(auth())
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "question": "这个位置里序列号对得上的批次",
+                                      "answerScope": "HOUSEHOLD_FACT",
+                                      "scope": {"type": "LOCATION", "id": "%s"}
+                                    }
+                                    """.formatted(KITCHEN_ID)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                    .andExpect(jsonPath("$.summary").value("序列号只对上冰箱里的那一批。"))
+                    .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                    .andExpect(jsonPath("$.structuredResults[0].kind").value("LOT_SEARCH"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-2024-01"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].序列号").value("SN-SHARED-77"))
+                    .andExpect(jsonPath("$.jumps[?(@.type == 'LOT')].lotId",
+                            org.hamcrest.Matchers.contains(inScopeLotId.toString())))
+                    .andReturn();
+
+            String serialBody = serialResult.getResponse().getContentAsString();
+            assertThat(serialBody).doesNotContain("LOT-BED-77");
+            assertThat(serialBody).doesNotContain("LOT-2024-01-BED");
+            assertThat(serialBody).doesNotContain("SN-BED-77");
+            assertThat(serialBody).doesNotContain("LOT-2024-01-ZERO");
+            assertThat(serialBody).doesNotContain("SN-ZERO-77");
+            assertThat(serialBody).doesNotContain("LOT-2024-01-FOREIGN");
+            assertThat(serialBody).doesNotContain("外家黄豆");
+            assertThat(serialBody).doesNotContain(outsideLotId.toString());
+            assertThat(serialBody).doesNotContain(zeroLotId.toString());
+            assertThat(serialBody).doesNotContain(sharedSerialOutsideLotId.toString());
+            assertThat(serialBody).doesNotContain(foreignLotId.toString());
+            assertThat(serialToolResponse.get()).contains("\"lotNumber\":\"LOT-2024-01\"");
+            assertThat(serialToolResponse.get()).doesNotContain("LOT-BED-77");
+            assertThat(serialToolResponse.get()).doesNotContain("LOT-2024-01-FOREIGN");
+            assertThat(serialToolResponse.get()).doesNotContain("外家黄豆");
+        } finally {
+            jdbc.update("DELETE FROM inventory_stock_position WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM inventory_lot WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM location WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM catalog_item WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM catalog_unit WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM household WHERE id = ?", otherHousehold);
+            jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+            jdbc.execute("""
+                    ALTER TABLE household
+                    ADD CONSTRAINT ck_household_singleton CHECK (singleton_key = 1)
+                    """);
+        }
+    }
+
+    @Test
     void confirmedLocationExpiringLotsStayInsideThatPlaceAndChildren() throws Exception {
         UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000011");
         UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-000000000012");

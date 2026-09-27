@@ -311,6 +311,62 @@ class InventoryApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void searchLotsByNumberOrSerialInLocationsStaysInsideHouseholdAndPlace() {
+        UUID pantry = UUID.fromString("61000000-0000-0000-0000-0000000000a2");
+        UUID bedroom = UUID.fromString("61000000-0000-0000-0000-0000000000a3");
+        insertLocation(pantry, householdA, "储藏室");
+        insertLocation(bedroom, householdA, "卧室");
+
+        UUID inPantry = UUID.fromString("51000000-0000-0000-0000-0000000000aa");
+        UUID alsoInPantry = UUID.fromString("51000000-0000-0000-0000-0000000000ad");
+        UUID inBedroom = UUID.fromString("51000000-0000-0000-0000-0000000000ab");
+        UUID zeroInPantry = UUID.fromString("51000000-0000-0000-0000-0000000000ac");
+        UUID foreign = UUID.fromString("51000000-0000-0000-0000-0000000000ba");
+
+        insertLot(inPantry, householdA, itemA, "LOT-PLACE-IN", "SN-ONLY-IN", TODAY.plusDays(10));
+        insertLot(alsoInPantry, householdA, itemA, "LOT-PLACE-IN-2", "SN-PLACE-IN-2", TODAY.plusDays(10));
+        insertLot(inBedroom, householdA, itemA, "LOT-PLACE-OUT", "SN-PLACE-OUT", TODAY.plusDays(10));
+        insertLot(zeroInPantry, householdA, itemA, "LOT-PLACE-ZERO", "SN-PLACE-ZERO", TODAY.plusDays(10));
+        insertLot(foreign, householdB, itemB, "LOT-PLACE-B", "SN-ONLY-IN", TODAY.plusDays(10));
+
+        insertPosition(householdA, inPantry, pantry, "3");
+        insertPosition(householdA, alsoInPantry, pantry, "1");
+        insertPosition(householdA, inBedroom, bedroom, "4");
+        insertPosition(householdA, zeroInPantry, pantry, "0");
+        insertPosition(householdB, foreign, locB, "8");
+
+        var inPlace = inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE", List.of(pantry), 10);
+        assertThat(inPlace).extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(inPantry, alsoInPantry);
+        assertThat(inPlace).extracting(InventoryApi.LotQuestionMatch::lotNumber)
+                .containsExactly("LOT-PLACE-IN", "LOT-PLACE-IN-2");
+        assertThat(inPlace).extracting(InventoryApi.LotQuestionMatch::serialNumber)
+                .containsExactly("SN-ONLY-IN", "SN-PLACE-IN-2");
+        assertThat(inPlace.getFirst().itemName()).isEqualTo("牛奶");
+
+        var bySerial = inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "sn-only-in", List.of(pantry, locB), 10);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(inPantry);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::serialNumber)
+                .containsExactly("SN-ONLY-IN");
+
+        var bounded = inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE", List.of(pantry), 1);
+        assertThat(bounded).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(inPantry);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE", List.of(), 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "SN-ONLY-IN", List.of(locB), 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE-OUT", List.of(pantry), 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT-PLACE-OUT", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(inBedroom);
+    }
+
+    @Test
     void searchLotsByNumberOrSerialTreatsLikeWildcardsAsLiteralsAndStaysInsideHousehold() {
         UUID underscoreA = UUID.fromString("51000000-0000-0000-0000-0000000000a6");
         UUID lookalikeA = UUID.fromString("51000000-0000-0000-0000-0000000000a7");

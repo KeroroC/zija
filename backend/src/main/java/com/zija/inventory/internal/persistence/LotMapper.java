@@ -7,6 +7,7 @@ import com.zija.inventory.InventoryApi;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -50,6 +51,13 @@ public interface LotMapper extends BaseMapper<LotEntity> {
             @Param("keyword") String keyword,
             @Param("itemId") UUID itemId,
             @Param("lotId") UUID lotId,
+            @Param("limit") int limit
+    );
+
+    List<InventoryApi.LotQuestionMatch> searchLotsByNumberOrSerialInLocations(
+            @Param("householdId") UUID householdId,
+            @Param("keyword") String keyword,
+            @Param("locationIds") Collection<UUID> locationIds,
             @Param("limit") int limit
     );
 }

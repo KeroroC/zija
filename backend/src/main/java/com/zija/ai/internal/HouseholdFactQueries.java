@@ -84,11 +84,22 @@ class HouseholdFactQueries {
 
     /**
      * 按批次号或序列号搜索当前家庭批次，返回可交给物品快照使用的 id。
-     * {@code itemId}、{@code lotId} 非空时只保留该物品或该批次。
+     * {@code locationIds} 为 null 时，{@code itemId}、{@code lotId} 非空则只保留该物品或该批次。
+     * {@code locationIds} 非 null 时只保留这些位置上数量为正的批次，不再按物品或批次 id 收窄。
      */
-    List<LotHit> searchLots(UUID householdId, String keyword, int limit, UUID itemId, UUID lotId) {
-        return inventoryApi.searchLotsByNumberOrSerial(householdId, keyword, itemId, lotId, limit)
-                .stream()
+    List<LotHit> searchLots(
+            UUID householdId,
+            String keyword,
+            int limit,
+            UUID itemId,
+            UUID lotId,
+            Set<UUID> locationIds
+    ) {
+        var matches = locationIds == null
+                ? inventoryApi.searchLotsByNumberOrSerial(householdId, keyword, itemId, lotId, limit)
+                : inventoryApi.searchLotsByNumberOrSerialInLocations(
+                        householdId, keyword, locationIds, limit);
+        return matches.stream()
                 .map(lot -> new LotHit(
                         lot.lotId(),
                         lot.itemId(),

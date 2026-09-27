@@ -108,6 +108,12 @@
         <if test="lotId != null">
           AND l.id = #{lotId}
         </if>
+        <include refid="lotNumberOrSerialKeyword"/>
+        ORDER BY i.name ASC, l.lot_number ASC NULLS LAST, l.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <sql id="lotNumberOrSerialKeyword">
         <if test="keyword != null and keyword != ''">
           AND (
             (l.lot_number IS NOT NULL
@@ -119,6 +125,30 @@
                 AND strpos(lower(l.serial_number), lower(#{keyword})) &gt; 0)
           )
         </if>
+    </sql>
+
+    <select id="searchLotsByNumberOrSerialInLocations" resultMap="lotQuestionMatchMap">
+        SELECT l.id AS lot_id,
+               l.item_id AS item_id,
+               i.name AS item_name,
+               l.lot_number AS lot_number,
+               l.serial_number AS serial_number
+        FROM inventory_lot l
+        JOIN catalog_item i ON i.id = l.item_id AND i.household_id = l.household_id
+        WHERE l.household_id = #{householdId}
+          AND i.status = 'ACTIVE'
+          AND EXISTS (
+            SELECT 1
+            FROM inventory_stock_position sp
+            WHERE sp.lot_id = l.id
+              AND sp.household_id = l.household_id
+              AND sp.quantity &gt; 0
+              AND sp.location_id IN
+              <foreach collection="locationIds" item="locationId" open="(" separator="," close=")">
+                  #{locationId}
+              </foreach>
+          )
+        <include refid="lotNumberOrSerialKeyword"/>
         ORDER BY i.name ASC, l.lot_number ASC NULLS LAST, l.id ASC
         LIMIT #{limit}
     </select>

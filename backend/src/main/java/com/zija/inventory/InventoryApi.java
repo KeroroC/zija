@@ -84,6 +84,17 @@ public interface InventoryApi {
     );
 
     /**
+     * 按批次号或序列号搜索，且只保留在 {@code locationIds} 中数量为正的批次。
+     * 空集合或 null 返回空列表，不跨家庭。关键字规则与 {@link #searchLotsByNumberOrSerial} 相同。
+     */
+    List<LotQuestionMatch> searchLotsByNumberOrSerialInLocations(
+            UUID householdId,
+            String keyword,
+            Collection<UUID> locationIds,
+            int limit
+    );
+
+    /**
      * 临期批次：{@code today <= expiry <= horizon} 且数量为正。日期由调用方按 AI Clock 传入，本模块不自造时区。
      */
     List<LotQuantitySnapshot> findExpiringLots(

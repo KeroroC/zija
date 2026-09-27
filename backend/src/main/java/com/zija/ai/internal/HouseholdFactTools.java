@@ -99,7 +99,7 @@ final class HouseholdFactTools {
         }
     }
 
-    @Tool(description = "在当前家庭按批次号或序列号搜索批次，返回批次 id 和所属物品 id，供物品快照使用。空白序列号不会命中无关关键字。空关键字只返回有界前 N 条")
+    @Tool(description = "在当前家庭按批次号或序列号搜索批次，返回批次 id 和所属物品 id，供物品快照使用。空白序列号不会命中无关关键字。空关键字只返回有界前 N 条。已确认位置时只返回该位置及子位置中有库存的批次")
     Map<String, Object> searchLots(
             @ToolParam(description = "批次号或序列号关键字，例如「LOT-2024-01」") String keyword,
             @ToolParam(description = "最多返回多少条，1-50，选填") Integer limit
@@ -109,12 +109,13 @@ final class HouseholdFactTools {
             return unavailableBody("search_lots");
         }
         try {
-            if (isLocationTarget()) {
-                return unavailable("search_lots");
-            }
             UUID itemScope = isItemTarget() ? target.id() : (isLotTarget() ? targetItemId() : null);
             UUID lotScope = isLotTarget() ? target.id() : null;
-            var hits = queries.searchLots(householdId, keyword == null ? "" : keyword, n, itemScope, lotScope);
+            var locationScope = isLocationTarget()
+                    ? queries.locationScopeIds(householdId, target.id())
+                    : null;
+            var hits = queries.searchLots(
+                    householdId, keyword == null ? "" : keyword, n, itemScope, lotScope, locationScope);
             collector.noteBoundedList(hits.size(), n);
             List<Map<String, String>> rows = hits.stream()
                     .map(hit -> cellMap(
