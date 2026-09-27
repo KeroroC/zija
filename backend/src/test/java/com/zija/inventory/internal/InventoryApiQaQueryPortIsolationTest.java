@@ -364,6 +364,28 @@ class InventoryApiQaQueryPortIsolationTest {
         assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT-PLACE-OUT", null, null, 10))
                 .extracting(InventoryApi.LotQuestionMatch::lotId)
                 .containsExactly(inBedroom);
+
+        UUID fridge = UUID.fromString("61000000-0000-0000-0000-0000000000a4");
+        UUID inFridge = UUID.fromString("51000000-0000-0000-0000-0000000000ae");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0)
+                """, fridge, householdA, pantry);
+        insertLot(inFridge, householdA, itemA, "LOT-PLACE-CHILD", "SN-CHILD", TODAY.plusDays(10));
+        insertPosition(householdA, inFridge, fridge, "5");
+
+        var inChild = inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE-CHILD", List.of(pantry, fridge), 10);
+        assertThat(inChild).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(inFridge);
+        assertThat(inChild).extracting(InventoryApi.LotQuestionMatch::lotNumber)
+                .containsExactly("LOT-PLACE-CHILD");
+        assertThat(inChild).extracting(InventoryApi.LotQuestionMatch::serialNumber)
+                .containsExactly("SN-CHILD");
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE-CHILD", List.of(pantry), 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE-CHILD", List.of(bedroom), 10)).isEmpty();
     }
 
     @Test
