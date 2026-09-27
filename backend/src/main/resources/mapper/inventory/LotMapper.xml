@@ -112,11 +112,11 @@
           AND (
             (l.lot_number IS NOT NULL
                 AND btrim(l.lot_number) &lt;&gt; ''
-                AND l.lot_number ILIKE CONCAT('%', #{keyword}, '%'))
+                AND strpos(lower(l.lot_number), lower(#{keyword})) &gt; 0)
             OR
             (l.serial_number IS NOT NULL
                 AND btrim(l.serial_number) &lt;&gt; ''
-                AND l.serial_number ILIKE CONCAT('%', #{keyword}, '%'))
+                AND strpos(lower(l.serial_number), lower(#{keyword})) &gt; 0)
           )
         </if>
         ORDER BY i.name ASC, l.lot_number ASC NULLS LAST, l.id ASC

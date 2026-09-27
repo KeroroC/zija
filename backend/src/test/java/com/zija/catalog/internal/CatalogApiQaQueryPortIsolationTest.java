@@ -180,6 +180,72 @@ class CatalogApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void searchActiveItemsByNameBrandOrTagTreatsLikeWildcardsAsLiteralsAndStaysInsideHousehold() {
+        UUID underscoreNameA = UUID.fromString("40000000-0000-0000-0000-000000000011");
+        UUID lookalikeNameA = UUID.fromString("40000000-0000-0000-0000-000000000012");
+        UUID percentNameA = UUID.fromString("40000000-0000-0000-0000-000000000013");
+        UUID underscoreNameB = UUID.fromString("40000000-0000-0000-0000-000000000014");
+        UUID brandItemA = UUID.fromString("40000000-0000-0000-0000-000000000021");
+        UUID brandLookalikeItemA = UUID.fromString("40000000-0000-0000-0000-000000000022");
+        UUID brandPercentItemA = UUID.fromString("40000000-0000-0000-0000-000000000023");
+        UUID brandItemB = UUID.fromString("40000000-0000-0000-0000-000000000024");
+        UUID tagItemA = UUID.fromString("40000000-0000-0000-0000-000000000031");
+        UUID tagLookalikeItemA = UUID.fromString("40000000-0000-0000-0000-000000000032");
+        UUID tagPercentItemA = UUID.fromString("40000000-0000-0000-0000-000000000033");
+        UUID tagItemB = UUID.fromString("40000000-0000-0000-0000-000000000034");
+
+        UUID brandUnderscoreA = UUID.fromString("50000000-0000-0000-0000-000000000011");
+        UUID brandLookalikeA = UUID.fromString("50000000-0000-0000-0000-000000000012");
+        UUID brandPercentA = UUID.fromString("50000000-0000-0000-0000-000000000013");
+        UUID brandUnderscoreB = UUID.fromString("50000000-0000-0000-0000-000000000014");
+        UUID tagUnderscoreA = UUID.fromString("60000000-0000-0000-0000-000000000011");
+        UUID tagLookalikeA = UUID.fromString("60000000-0000-0000-0000-000000000012");
+        UUID tagPercentA = UUID.fromString("60000000-0000-0000-0000-000000000013");
+        UUID tagUnderscoreB = UUID.fromString("60000000-0000-0000-0000-000000000014");
+
+        insertItem(underscoreNameA, householdA, unitA, "物_品", "ACTIVE", null);
+        insertItem(lookalikeNameA, householdA, unitA, "物X品", "ACTIVE", null);
+        insertItem(percentNameA, householdA, unitA, "物%品", "ACTIVE", null);
+        insertItem(underscoreNameB, householdB, unitB, "物_品", "ACTIVE", null);
+
+        insertBrand(brandUnderscoreA, householdA, "牌_甲");
+        insertBrand(brandLookalikeA, householdA, "牌X甲");
+        insertBrand(brandPercentA, householdA, "牌%甲");
+        insertBrand(brandUnderscoreB, householdB, "牌_甲");
+        insertItem(brandItemA, householdA, unitA, "品牌物品甲", "ACTIVE", brandUnderscoreA);
+        insertItem(brandLookalikeItemA, householdA, unitA, "品牌物品乙", "ACTIVE", brandLookalikeA);
+        insertItem(brandPercentItemA, householdA, unitA, "品牌物品丙", "ACTIVE", brandPercentA);
+        insertItem(brandItemB, householdB, unitB, "品牌物品甲", "ACTIVE", brandUnderscoreB);
+
+        insertTag(tagUnderscoreA, householdA, "签_甲");
+        insertTag(tagLookalikeA, householdA, "签X甲");
+        insertTag(tagPercentA, householdA, "签%甲");
+        insertTag(tagUnderscoreB, householdB, "签_甲");
+        insertItem(tagItemA, householdA, unitA, "标签物品甲", "ACTIVE", null);
+        insertItem(tagLookalikeItemA, householdA, unitA, "标签物品乙", "ACTIVE", null);
+        insertItem(tagPercentItemA, householdA, unitA, "标签物品丙", "ACTIVE", null);
+        insertItem(tagItemB, householdB, unitB, "标签物品甲", "ACTIVE", null);
+        insertItemTag(householdA, tagItemA, tagUnderscoreA);
+        insertItemTag(householdA, tagLookalikeItemA, tagLookalikeA);
+        insertItemTag(householdA, tagPercentItemA, tagPercentA);
+        insertItemTag(householdB, tagItemB, tagUnderscoreB);
+
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "物_", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(underscoreNameA);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "牌_", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(brandItemA);
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "签_", null, 10))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(tagItemA);
+
+        assertThat(catalogApi.searchActiveItemsByNameBrandOrTag(householdA, "%", null, 20))
+                .extracting(CatalogApi.ItemInfo::id)
+                .containsExactly(brandPercentItemA, tagPercentItemA, percentNameA);
+    }
+
+    @Test
     void findActiveItemsNamedInQuestionMatchesNameInsideQuestionOnly() {
         var hits = catalogApi.findActiveItemsNamedInQuestion(householdA, "家里牛奶还有多少", 10);
 

@@ -311,6 +311,40 @@ class InventoryApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void searchLotsByNumberOrSerialTreatsLikeWildcardsAsLiteralsAndStaysInsideHousehold() {
+        UUID underscoreA = UUID.fromString("51000000-0000-0000-0000-0000000000a6");
+        UUID lookalikeA = UUID.fromString("51000000-0000-0000-0000-0000000000a7");
+        UUID percentLotA = UUID.fromString("51000000-0000-0000-0000-0000000000a8");
+        UUID percentSerialA = UUID.fromString("51000000-0000-0000-0000-0000000000a9");
+        UUID underscoreB = UUID.fromString("51000000-0000-0000-0000-0000000000b3");
+        UUID percentB = UUID.fromString("51000000-0000-0000-0000-0000000000b4");
+
+        insertLot(underscoreA, householdA, itemA, "LOT_01", "SN_A1", TODAY.plusDays(10));
+        insertLot(lookalikeA, householdA, itemA, "LOTX01", "SNXA1", TODAY.plusDays(10));
+        insertLot(percentLotA, householdA, itemA, "LOT%A", null, TODAY.plusDays(10));
+        insertLot(percentSerialA, householdA, itemA, "NOPCT-A", "SN%1", TODAY.plusDays(10));
+        insertLot(underscoreB, householdB, itemB, "XLOT_01", "SN_A1", TODAY.plusDays(10));
+        insertLot(percentB, householdB, itemB, "BLOT%1", "SN%1", TODAY.plusDays(10));
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT_01", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(underscoreA);
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "lot_01", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(underscoreA);
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN_A1", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(underscoreA);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "%", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(percentLotA, percentSerialA);
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN%", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(percentSerialA);
+    }
+
+    @Test
     void lotsOfItemIncludesLotNumberWithoutCrossingHouseholds() {
         var lots = inventoryApi.lotsOfItem(householdA, itemA);
 

@@ -39,6 +39,7 @@ public interface CatalogApi {
 
     /**
      * 按名称、品牌名或标签名子串搜索活跃物品。
+     * 关键字按字面子串匹配，{@code %} 与 {@code _} 不是通配符。
      * {@code keyword} 为空白时只返回该家庭前 {@code limit} 条活跃物品，不得当作全家清单；
      * {@code itemId} 非空时只考虑该物品。空白品牌名和标签名不参与匹配。
      * 不要把 {@link #listActiveItems} 或 {@link #dumpItems} 当在线查询。

@@ -70,6 +70,7 @@ public interface InventoryApi {
 
     /**
      * 按批次号或序列号关键字有界搜索当前家庭、所属物品为 ACTIVE 的批次。
+     * 关键字按字面子串匹配，{@code %} 与 {@code _} 不是通配符。
      * 空白批次号与空白序列号不参与匹配，因此无关问题不会因空序列号命中。
      * 关键字为空白时只返回有界前 {@code limit} 条。
      * {@code itemId}、{@code lotId} 非空时再收窄到该物品或该批次。
