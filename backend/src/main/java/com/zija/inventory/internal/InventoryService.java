@@ -238,17 +238,6 @@ class InventoryService implements InventoryApi {
 
     @Override
     @Transactional(readOnly = true)
-    public List<MovementInfo> findRecentMovementsOfItem(
-            UUID householdId, UUID itemId, UUID lotId, UUID locationId, int limit
-    ) {
-        return movementMapper.findRecentByItem(householdId, itemId, lotId, locationId, sqlLimit(limit))
-                .stream()
-                .map(this::toMovementInfo)
-                .toList();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public List<MovementInfo> findMovements(
             UUID householdId,
             UUID itemId,

@@ -253,16 +253,6 @@ class InventoryApiQaQueryPortIsolationTest {
     }
 
     @Test
-    void findRecentMovementsOfItemDoesNotReturnOtherHousehold() {
-        var hits = inventoryApi.findRecentMovementsOfItem(householdA, itemA, null, null, 10);
-
-        assertThat(hits).extracting(InventoryApi.MovementInfo::id).containsExactly(movementA);
-        assertThat(inventoryApi.findRecentMovementsOfItem(householdB, itemB, null, null, 10))
-                .extracting(InventoryApi.MovementInfo::id)
-                .containsExactly(movementB);
-    }
-
-    @Test
     void findMovementsKeepsTimeWindowAndLocationInsideHousehold() {
         UUID pantry = UUID.fromString("61000000-0000-0000-0000-0000000000a2");
         insertLocation(pantry, householdA, "储藏室");

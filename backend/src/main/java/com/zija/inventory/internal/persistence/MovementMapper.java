@@ -36,14 +36,6 @@ public interface MovementMapper extends BaseMapper<MovementEntity> {
                                                    @Param("cursor") OffsetDateTime cursor,
                                                    @Param("limit") int limit);
 
-    List<MovementEntity> findRecentByItem(
-            @Param("householdId") UUID householdId,
-            @Param("itemId") UUID itemId,
-            @Param("lotId") UUID lotId,
-            @Param("locationId") UUID locationId,
-            @Param("limit") int limit
-    );
-
     /**
      * 有界流水。位置集合中来源或目标任一命中即出；时间窗按业务时间，结束为开区间。
      */

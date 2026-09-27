@@ -155,17 +155,6 @@ public interface InventoryApi {
     );
 
     /**
-     * 某物品最近流水，按 business_time 降序有界；可选批次/位置过滤。
-     */
-    List<MovementInfo> findRecentMovementsOfItem(
-            UUID householdId,
-            UUID itemId,
-            UUID lotId,
-            UUID locationId,
-            int limit
-    );
-
-    /**
      * 有界流水。物品、批次、位置（来源或目标任一命中）、业务时间窗均可选。
      * 物品与位置都未给出时返回空列表，不扫全家流水。
      * {@code locationIds} 为空集合时返回空列表；为 null 时不按位置过滤。

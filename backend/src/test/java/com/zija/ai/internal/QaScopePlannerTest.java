@@ -529,13 +529,6 @@ class QaScopePlannerTest {
         }
 
         @Override
-        public List<MovementInfo> findRecentMovementsOfItem(
-                UUID householdId, UUID itemId, UUID lotId, UUID locationId, int limit
-        ) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
         public List<MovementInfo> findMovements(
                 UUID householdId,
                 UUID itemId,
