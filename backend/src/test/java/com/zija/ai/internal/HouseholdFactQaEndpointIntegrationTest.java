@@ -391,11 +391,14 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 new ScriptedChatModel.ScriptedTool(
                         "itemStock",
                         "{\"itemId\":\"%s\",\"lotId\":\"%s\",\"limit\":10}".formatted(ITEM_ID, LOT_ID))
-        ), response -> response.contains("LOT-001")
-                && response.contains(LOT_ID.toString())
-                && !response.contains("LOT-OTHER")
-                ? "LOT-001 还有 5 瓶，放在厨房。"
-                : "串到了其他批次。");
+        ), steps -> {
+            String response = steps.payload(0);
+            return response.contains("LOT-001")
+                    && response.contains(LOT_ID.toString())
+                    && !response.contains("LOT-OTHER")
+                    ? "LOT-001 还有 5 瓶，放在厨房。"
+                    : "串到了其他批次。";
+        });
 
         String expiry = LocalDate.now().plusDays(30).format(DateTimeFormatter.ISO_LOCAL_DATE);
         var result = mvc.perform(post("/api/v1/ai/qa")
@@ -438,6 +441,47 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void lotNumberSearchThenSnapshotReturnsScopedStockAndItemTotalToTheModel() throws Exception {
+        seedSiblingLot();
+        var returnedToModel = new AtomicReference<ScriptedChatModel.ToolPayloadsByStep>();
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool(
+                        "searchLots", "{\"keyword\":\"LOT-001\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool(
+                        "itemStock",
+                        "{\"itemId\":\"%s\",\"lotId\":\"%s\",\"limit\":10}".formatted(ITEM_ID, LOT_ID))
+        ), steps -> {
+            returnedToModel.set(steps);
+            String snapshot = steps.size() > 1 ? steps.payload(1) : "";
+            return snapshot.contains("\"scopedStock\":\"5\"")
+                    && snapshot.contains("\"totalStock\":\"13\"")
+                    ? "LOT-001 范围内还有 5，整件物品一共 13。"
+                    : "快照没有把范围数量和总库存交给模型。";
+        });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "帮我核对一下编号",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value("LOT-001 范围内还有 5，整件物品一共 13。"));
+
+        ScriptedChatModel.ToolPayloadsByStep steps = returnedToModel.get();
+        assertThat(steps.size()).isEqualTo(2);
+        assertThat(steps.payload(0)).contains(LOT_ID.toString());
+        assertThat(steps.payload(0)).doesNotContain("\"scopedStock\"");
+        assertThat(steps.payload(1)).contains("\"scopedStock\":\"5\"")
+                .contains("\"totalStock\":\"13\"");
+    }
+
+    @Test
     void serialNumberSearchThenSnapshotKeepsPositionsAndLatestMovementOnThatLot() throws Exception {
         UUID otherLotId = seedSiblingLot();
         jdbc.update("UPDATE inventory_lot SET serial_number = 'SN-COFFEE' WHERE id = ?", LOT_ID);
@@ -448,11 +492,14 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 new ScriptedChatModel.ScriptedTool(
                         "itemStock",
                         "{\"itemId\":\"%s\",\"lotId\":\"%s\",\"limit\":10}".formatted(ITEM_ID, LOT_ID))
-        ), response -> response.contains("SN-COFFEE")
-                && response.contains(LOT_ID.toString())
-                && !response.contains("LOT-OTHER")
-                ? "序列号 SN-COFFEE 还有 5 瓶，放在厨房。"
-                : "串到了其他批次。");
+        ), steps -> {
+            String response = steps.payload(0);
+            return response.contains("SN-COFFEE")
+                    && response.contains(LOT_ID.toString())
+                    && !response.contains("LOT-OTHER")
+                    ? "序列号 SN-COFFEE 还有 5 瓶，放在厨房。"
+                    : "串到了其他批次。";
+        });
 
         var result = mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
@@ -2987,9 +3034,12 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 new ScriptedChatModel.ScriptedTool("searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}"),
                 new ScriptedChatModel.ScriptedTool(
                         "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(unknownItem))
-        ), response -> response.contains("UNAVAILABLE")
-                ? "物品搜索结果见表格；该未知物品库存暂时无法确认。"
-                : "编造了未知物品库存。");
+        ), steps -> {
+            String response = steps.payload(0);
+            return response.contains("UNAVAILABLE")
+                    ? "物品搜索结果见表格；该未知物品库存暂时无法确认。"
+                    : "编造了未知物品库存。";
+        });
 
         mvc.perform(post("/api/v1/ai/qa")
                         .with(auth())
@@ -3313,7 +3363,8 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
     /**
      * 确定性假 {@link ChatModel}：按脚本依次发出工具调用，Spring AI 执行真实工具后再回喂，
-     * 脚本耗尽后根据工具结果产出最终摘要。也是「最小假模型调用」的验证 seam。
+     * 脚本耗尽后根据工具结果产出最终摘要。单步脚本的摘要回调只看到那一步的工具返回；
+     * 多步脚本按步骤拿到每一步返回给模型的内容。也是「最小假模型调用」的验证 seam。
      */
     static final class ScriptedChatModel implements ChatModel {
 
@@ -3326,6 +3377,7 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         private List<ScriptedTool> tools = List.of(DEFAULT_TOOL);
         private ToolConsumer finalText = response -> "完成。";
+        private SummaryFromSteps steppedFinalText;
         private String firstPrompt = "";
         private final java.util.concurrent.atomic.AtomicBoolean delayNextCall =
                 new java.util.concurrent.atomic.AtomicBoolean();
@@ -3363,18 +3415,23 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                                         tool.arguments())))
                                 .build())));
             }
-            ToolResponseMessage toolResponse = prompt.getInstructions().stream()
-                    .filter(ToolResponseMessage.class::isInstance)
-                    .map(ToolResponseMessage.class::cast)
-                    .findFirst()
-                    .orElse(null);
-            String content = toolResponse != null
-                    ? toolResponse.getResponses().stream()
-                            .map(ToolResponseMessage.ToolResponse::responseData)
-                            .reduce("", (a, b) -> a + b)
-                    : "";
-            return new ChatResponse(List.of(new Generation(
-                    new AssistantMessage(finalText.apply(content)))));
+            String content;
+            if (steppedFinalText != null) {
+                content = steppedFinalText.apply(new ToolPayloadsByStep(toolPayloadsByStep(prompt)));
+            } else {
+                ToolResponseMessage toolResponse = prompt.getInstructions().stream()
+                        .filter(ToolResponseMessage.class::isInstance)
+                        .map(ToolResponseMessage.class::cast)
+                        .findFirst()
+                        .orElse(null);
+                String payload = toolResponse != null
+                        ? toolResponse.getResponses().stream()
+                                .map(ToolResponseMessage.ToolResponse::responseData)
+                                .reduce("", (a, b) -> a + b)
+                        : "";
+                content = finalText.apply(payload);
+            }
+            return new ChatResponse(List.of(new Generation(new AssistantMessage(content))));
         }
 
         @Override
@@ -3385,11 +3442,12 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         void script(String toolName, String toolArguments, ToolConsumer finalText) {
             this.tools = List.of(new ScriptedTool(toolName, toolArguments));
             this.finalText = finalText;
+            this.steppedFinalText = null;
         }
 
-        void scriptSequence(List<ScriptedTool> tools, ToolConsumer finalText) {
+        void scriptSequence(List<ScriptedTool> tools, SummaryFromSteps finalText) {
             this.tools = List.copyOf(tools);
-            this.finalText = finalText;
+            this.steppedFinalText = finalText;
         }
 
         void reset() {
@@ -3398,6 +3456,7 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
             interruptedCalls.set(0);
             tools = List.of(DEFAULT_TOOL);
             finalText = response -> "完成。";
+            steppedFinalText = null;
             firstPrompt = "";
             delayNextCall.set(false);
         }
@@ -3427,6 +3486,35 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         interface ToolConsumer {
             String apply(String toolResponse);
+        }
+
+        /** 多步摘要回调。参数按工具调用顺序给出每一步返回给模型的内容。 */
+        interface SummaryFromSteps {
+            String apply(ToolPayloadsByStep toolPayloadsByStep);
+        }
+
+        record ToolPayloadsByStep(List<String> payloads) {
+            ToolPayloadsByStep {
+                payloads = List.copyOf(payloads);
+            }
+
+            String payload(int stepIndex) {
+                return payloads.get(stepIndex);
+            }
+
+            int size() {
+                return payloads.size();
+            }
+        }
+
+        private static List<String> toolPayloadsByStep(Prompt prompt) {
+            return prompt.getInstructions().stream()
+                    .filter(ToolResponseMessage.class::isInstance)
+                    .map(ToolResponseMessage.class::cast)
+                    .map(message -> message.getResponses().stream()
+                            .map(ToolResponseMessage.ToolResponse::responseData)
+                            .reduce("", (left, right) -> left + right))
+                    .toList();
         }
     }
 }
