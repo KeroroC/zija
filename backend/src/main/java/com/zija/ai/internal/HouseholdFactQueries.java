@@ -283,17 +283,20 @@ class HouseholdFactQueries {
         return results;
     }
 
-    /** 指定物品最近若干条不可变流水（原因、操作人、时间）。位置按单个 id 精确匹配，不展开子位置。 */
+    /**
+     * 指定物品最近若干条不可变流水（原因、操作人、时间）。
+     * {@code locationIds} 非 null 时只保留来源或目标落在这些位置上的流水，调用方负责展开子位置。
+     */
     List<MovementFact> itemMovements(
             UUID householdId,
             UUID itemId,
             int limit,
             UUID targetLotId,
-            UUID targetLocationId
+            Set<UUID> locationIds
     ) {
         var item = catalogApi.requireItem(householdId, itemId);
-        var movements = inventoryApi.findRecentMovementsOfItem(
-                householdId, itemId, targetLotId, targetLocationId, limit);
+        var movements = inventoryApi.findMovements(
+                householdId, itemId, targetLotId, locationIds, null, null, limit);
         return toMovementFacts(householdId, item.name(), movements);
     }
 

@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -157,8 +158,11 @@ final class HouseholdFactTools {
         try {
             UUID authorizedItem = authorizedItemId(itemId);
             UUID scopedLotId = authorizedLotId(lotId, authorizedItem);
+            Set<UUID> locationScope = isLocationTarget()
+                    ? queries.locationScopeIds(householdId, target.id())
+                    : null;
             var full = queries.itemStock(householdId, authorizedItem);
-            var stock = scopeStock(full, scopedLotId);
+            var stock = scopeStock(full, scopedLotId, locationScope);
             var shown = stock.positions().stream().limit(n).toList();
             collector.noteBoundedList(stock.positions().size(), n);
             List<Map<String, String>> rows = shown.stream()
@@ -209,7 +213,7 @@ final class HouseholdFactTools {
                     stock.itemId(),
                     1,
                     scopedLotId,
-                    isLocationTarget() ? target.id() : null);
+                    locationScope);
             List<Map<String, String>> movementRows = movements.stream()
                     .map(m -> cellMap("类型", m.type(),
                             "数量", str(m.quantity()),
@@ -696,18 +700,19 @@ final class HouseholdFactTools {
         return null;
     }
 
-    private HouseholdFactQueries.ItemStock scopeStock(
+    private static HouseholdFactQueries.ItemStock scopeStock(
             HouseholdFactQueries.ItemStock stock,
-            UUID lotId
+            UUID lotId,
+            Set<UUID> locationIds
     ) {
         boolean filterLot = lotId != null;
-        boolean filterLocation = isLocationTarget();
+        boolean filterLocation = locationIds != null;
         if (!filterLot && !filterLocation) {
             return stock;
         }
         var positions = stock.positions().stream()
                 .filter(position -> !filterLot || lotId.equals(position.lotId()))
-                .filter(position -> !filterLocation || target.id().equals(position.locationId()))
+                .filter(position -> !filterLocation || locationIds.contains(position.locationId()))
                 .toList();
         BigDecimal total = positions.stream()
                 .map(HouseholdFactQueries.Position::quantity)

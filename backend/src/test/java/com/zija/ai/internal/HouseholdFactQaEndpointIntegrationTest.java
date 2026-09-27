@@ -1367,6 +1367,123 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void confirmedLocationLotSearchThenSnapshotCountsStockAndMovementsInChildPlaces() throws Exception {
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000177");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-000000000178");
+        UUID fridgeLotId = UUID.fromString("50000000-0000-0000-0000-000000000177");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0),
+                       (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-FRIDGE-77', 1)
+                """, fridgeLotId, HOUSEHOLD_ID, ITEM_ID);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '3', 0),
+                       (?, ?, ?, ?, '4', 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, fridgeLotId, fridgeId,
+                UUID.randomUUID(), HOUSEHOLD_ID, fridgeLotId, bedroomId);
+        var fridgeTime = Timestamp.from(OffsetDateTime.now().plusHours(1).toInstant());
+        var bedroomTime = Timestamp.from(OffsetDateTime.now().plusHours(2).toInstant());
+        jdbc.update("""
+                INSERT INTO inventory_movement
+                    (id, household_id, lot_id, item_id, type, quantity, from_location_id,
+                     to_location_id, reason, operator_account_id, business_time,
+                     created_at, idempotency_key)
+                VALUES (?, ?, ?, ?, 'INBOUND', '3', NULL, ?, '放进冰箱', ?, ?, ?, ?),
+                       (?, ?, ?, ?, 'INBOUND', '4', NULL, ?, '放进卧室', ?, ?, ?, ?)
+                """,
+                UUID.randomUUID(), HOUSEHOLD_ID, fridgeLotId, ITEM_ID, fridgeId,
+                OWNER_ACCOUNT_ID, fridgeTime, fridgeTime, UUID.randomUUID().toString(),
+                UUID.randomUUID(), HOUSEHOLD_ID, fridgeLotId, ITEM_ID, bedroomId,
+                OWNER_ACCOUNT_ID, bedroomTime, bedroomTime, UUID.randomUUID().toString());
+
+        var lotSteps = new AtomicReference<ScriptedChatModel.ToolPayloadsByStep>();
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool(
+                        "searchLots", "{\"keyword\":\"LOT-FRIDGE-77\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool(
+                        "itemStock",
+                        "{\"itemId\":\"%s\",\"lotId\":\"%s\",\"limit\":10}".formatted(ITEM_ID, fridgeLotId))
+        ), steps -> {
+            lotSteps.set(steps);
+            return "冰箱里的 LOT-FRIDGE-77 还有 3 瓶。";
+        });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "LOT-FRIDGE-77 还有多少",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOT_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[1].kind").value("ITEM_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[1].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[1].rows[0].位置").value("厨房 / 冰箱"))
+                .andExpect(jsonPath("$.structuredResults[1].rows[0].数量").value("3"))
+                .andExpect(jsonPath("$.structuredResults[2].kind").value("ITEM_STOCK_TOTAL"))
+                .andExpect(jsonPath("$.structuredResults[2].rows[0].当前总库存").value("12"))
+                .andExpect(jsonPath("$.structuredResults[2].rows[0].批次数量").value("3"))
+                .andExpect(jsonPath("$.structuredResults[3].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[3].rows[0].原因").value("放进冰箱"))
+                .andExpect(jsonPath("$.structuredResults[3].rows[0].到").value("厨房 / 冰箱"));
+
+        var steps = lotSteps.get();
+        assertThat(steps.size()).isEqualTo(2);
+        assertThat(steps.payload(0)).contains(fridgeLotId.toString());
+        assertThat(steps.payload(1))
+                .contains("\"scopedStock\":\"3\"")
+                .contains("\"totalStock\":\"12\"")
+                .contains("厨房 / 冰箱")
+                .contains("放进冰箱")
+                .doesNotContain("卧室");
+
+        chatModel.reset();
+        var itemResponse = new AtomicReference<String>();
+        chatModel.script(
+                "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
+                response -> {
+                    itemResponse.set(response);
+                    return "厨房和冰箱里一共 8 瓶。";
+                });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶在这里还有多少",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(2))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].位置",
+                        org.hamcrest.Matchers.containsInAnyOrder("厨房", "厨房 / 冰箱")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[0].位置内数量").value("8"))
+                .andExpect(jsonPath("$.structuredResults[1].rows[0].当前总库存").value("12"))
+                .andExpect(jsonPath("$.structuredResults[2].rows[0].原因").value("放进冰箱"));
+        assertThat(itemResponse.get())
+                .contains("\"scopedStock\":\"8\"")
+                .doesNotContain("卧室");
+    }
+
+    @Test
     void confirmedLocationExpiringLotsStayInsideThatPlaceAndChildren() throws Exception {
         UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000011");
         UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-000000000012");
