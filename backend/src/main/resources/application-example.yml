@@ -59,9 +59,8 @@ spring:
 
   # ---------- 邮件 (SMTP，可选) ----------
   # host 不写在这里。${ZIJA_SMTP_HOST:} 在未设置时会变成空字符串，
-  # MailSenderAutoConfiguration 仍会把它当成已配置。设置 ZIJA_SMTP_HOST 后，
-  # relaxed binding 会填上 spring.mail.host，启动摘要用它判断邮件是否配置。
-  # 真正发信读取下方 zija.smtp.*。
+  # MailSenderAutoConfiguration 仍会把它当成已配置。
+  # 发信与启动摘要都读下方 zija.smtp.host；false 或空白视为未配置。
   mail:
     port: ${ZIJA_SMTP_PORT:587}
     username: ${ZIJA_SMTP_USERNAME:}
@@ -111,8 +110,8 @@ server:
         name: ZIJA_SESSION
         http-only: true
         same-site: lax
-        # 注意：secure 不在此处配置。应用注册了自定义 CookieSerializer，该属性不会生效；
-        # Secure 标志由传输层决定（request.isSecure()，经 X-Forwarded-Proto 透传），
+        # 自定义 CookieSerializer 会读取 name、http-only、same-site。
+        # secure 不在此处配置，未设置时跟随 request.isSecure()（经 X-Forwarded-Proto 透传），
         # TLS 反代透传 X-Forwarded-Proto: https 后自动生效（见 deploy/nginx/default.conf）。
 
 # ---------- 应用信息（系统信息页展示） ----------
@@ -208,8 +207,8 @@ zija:
     file-purge: ${ZIJA_SCHEDULE_FILE_PURGE:0 20 3 * * *}               # 附件回收站保留期清除
     knowledge-prepare: ${ZIJA_SCHEDULE_KNOWLEDGE_PREPARE:*/10 * * * * *}  # 知识来源异步准备/重试扫描
 
-  # 发信配置。host 默认 false：@ConditionalOnProperty 把 false 视为关闭，不会创建发送器。
-  # 不要改成空字符串。设置 ZIJA_SMTP_HOST 后 MailCapabilityConfig 才创建 JavaMailSender。
+  # 发信配置。host 为 false 或空白时不创建发送器。
+  # 将 ZIJA_SMTP_HOST 设为实际主机名后，MailCapabilityConfig 才创建 JavaMailSender。
   smtp:
     host: ${ZIJA_SMTP_HOST:false}
     port: ${ZIJA_SMTP_PORT:587}

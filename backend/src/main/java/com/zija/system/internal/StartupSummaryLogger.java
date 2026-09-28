@@ -39,8 +39,19 @@ class StartupSummaryLogger {
                 withoutUserInfo(environment.getProperty("spring.ai.ollama.base-url")),
                 environment.getProperty("spring.ai.ollama.chat.model"),
                 environment.getProperty("spring.ai.ollama.embedding.model"),
-                hasText("spring.mail.host"),
+                mailConfigured(environment.getProperty("zija.smtp.host")),
                 hasText("zija.setup.token"));
+    }
+
+    /**
+     * 发信是否启用。只认 {@code zija.smtp.host}；{@code false} 与空白都视为未配置。
+     * {@code spring.mail.host} 故意不设置，避免空值触发 {@code MailSenderAutoConfiguration}。
+     */
+    static boolean mailConfigured(String host) {
+        if (host == null || host.isBlank()) {
+            return false;
+        }
+        return !"false".equalsIgnoreCase(host.trim());
     }
 
     private static String withoutUserInfo(String url) {
