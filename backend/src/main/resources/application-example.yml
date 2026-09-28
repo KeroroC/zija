@@ -48,15 +48,21 @@ spring:
     encoding:
       charset: UTF-8
       force: true
+    # 附件与封面上传上限
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
 
   # ---------- 优雅停机 ----------
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
   # ---------- 邮件 (SMTP，可选) ----------
-  # 不配置则 MailCapabilityConfig 不创建 JavaMailSender，邮件功能静默禁用
+  # host 不写在这里。${ZIJA_SMTP_HOST:} 在未设置时会变成空字符串，
+  # MailSenderAutoConfiguration 仍会把它当成已配置。设置 ZIJA_SMTP_HOST 后，
+  # relaxed binding 会填上 spring.mail.host，启动摘要用它判断邮件是否配置。
+  # 真正发信读取下方 zija.smtp.*。
   mail:
-    host: ${ZIJA_SMTP_HOST:}
     port: ${ZIJA_SMTP_PORT:587}
     username: ${ZIJA_SMTP_USERNAME:}
     password: ${ZIJA_SMTP_PASSWORD:}
@@ -126,9 +132,12 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,db
+          include:
+            - readinessState
+            - db
         liveness:
-          include: livenessState
+          include:
+            - livenessState
       show-details: never
 
 # ---------- MyBatis-Plus ----------
@@ -174,6 +183,8 @@ zija:
   # 文件存储根目录（容器内挂载卷路径）
   file:
     storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}
+    # 附件回收站保留期（天）：保留期满后由清除任务物理删除
+    retention-days: ${ZIJA_FILE_RETENTION_DAYS:30}
   ai:
     knowledge:
       similarity-threshold: ${ZIJA_AI_KNOWLEDGE_SIMILARITY_THRESHOLD:0.30}
@@ -195,10 +206,12 @@ zija:
     dead-letter-retry: ${ZIJA_SCHEDULE_DEAD_LETTER_RETRY:*/30 * * * * *}   # 事件死信重投
     reporting-dead-letter-retry: ${ZIJA_SCHEDULE_REPORTING_DLQ_RETRY:*/30 * * * * *}  # 报表死信重投
     file-purge: ${ZIJA_SCHEDULE_FILE_PURGE:0 20 3 * * *}               # 附件回收站保留期清除
+    knowledge-prepare: ${ZIJA_SCHEDULE_KNOWLEDGE_PREPARE:*/10 * * * * *}  # 知识来源异步准备/重试扫描
 
-  # SMTP 邮件（MailCapabilityConfig 直接读取 zija.smtp.*，与 spring.mail.* 二选一即可）
+  # 发信配置。host 默认 false：@ConditionalOnProperty 把 false 视为关闭，不会创建发送器。
+  # 不要改成空字符串。设置 ZIJA_SMTP_HOST 后 MailCapabilityConfig 才创建 JavaMailSender。
   smtp:
-    host: ${ZIJA_SMTP_HOST:}
+    host: ${ZIJA_SMTP_HOST:false}
     port: ${ZIJA_SMTP_PORT:587}
     username: ${ZIJA_SMTP_USERNAME:}
     password: ${ZIJA_SMTP_PASSWORD:}

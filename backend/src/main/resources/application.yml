@@ -11,6 +11,8 @@ spring:
     hikari:
       maximum-pool-size: 10
       minimum-idle: 1
+      connection-timeout: 30000
+      max-lifetime: 1800000
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -34,8 +36,11 @@ spring:
       max-request-size: 21MB
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  # host 不写在这里。${ZIJA_SMTP_HOST:} 在未设置时会变成空字符串，
+  # MailSenderAutoConfiguration 仍会把它当成已配置。设置 ZIJA_SMTP_HOST 后，
+  # relaxed binding 会填上 spring.mail.host，启动摘要用它判断邮件是否配置。
+  # 真正发信读取 zija.smtp.*。
   mail:
-    host: ${ZIJA_SMTP_HOST:}
     port: ${ZIJA_SMTP_PORT:587}
     username: ${ZIJA_SMTP_USERNAME:}
     password: ${ZIJA_SMTP_PASSWORD:}
@@ -92,9 +97,12 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,db
+          include:
+            - readinessState
+            - db
         liveness:
-          include: livenessState
+          include:
+            - livenessState
       show-details: never
 
 mybatis-plus:
@@ -162,3 +170,13 @@ zija:
       ip-threshold: ${ZIJA_RATE_LIMIT_IP_THRESHOLD:50}
       ip-window-minutes: ${ZIJA_RATE_LIMIT_IP_WINDOW_MINUTES:5}
       max-entries: ${ZIJA_RATE_LIMIT_MAX_ENTRIES:1000}
+
+  # 发信配置。host 默认 false：@ConditionalOnProperty 把 false 视为关闭，不会创建发送器。
+  # 不要改成空字符串。设置 ZIJA_SMTP_HOST 后 MailCapabilityConfig 才创建 JavaMailSender。
+  smtp:
+    host: ${ZIJA_SMTP_HOST:false}
+    port: ${ZIJA_SMTP_PORT:587}
+    username: ${ZIJA_SMTP_USERNAME:}
+    password: ${ZIJA_SMTP_PASSWORD:}
+    from: ${ZIJA_SMTP_FROM:}
+    tls: ${ZIJA_SMTP_TLS:true}
