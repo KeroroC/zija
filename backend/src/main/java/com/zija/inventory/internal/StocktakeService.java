@@ -21,6 +21,8 @@ import com.zija.inventory.internal.persistence.StocktakeItemWithDetails;
 import com.zija.inventory.internal.persistence.StocktakeMapper;
 import com.zija.location.LocationApi;
 import com.zija.system.SystemApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +35,8 @@ import java.util.UUID;
 
 @Service
 class StocktakeService {
+
+    private static final Logger log = LoggerFactory.getLogger(StocktakeService.class);
 
     private final StocktakeMapper stocktakeMapper;
     private final StocktakeItemMapper stocktakeItemMapper;
@@ -259,6 +263,7 @@ class StocktakeService {
                 SystemApi.AuditAction.INVENTORY_STOCKTAKE_CANCEL, ZijaAuditOutcome.SUCCESS,
                 householdId, null, null, null, null,
                 Map.of("stocktakeId", stocktakeId)));
+        log.info("盘点已取消: stocktakeId={}", stocktakeId);
     }
 
     /**
@@ -391,6 +396,7 @@ class StocktakeService {
                 householdId, accountId, null, null, null,
                 Map.of("stocktakeId", stocktakeId, "adjustedCount", adjustedCount)));
 
+        log.info("盘点已确认: stocktakeId={} adjustedCount={}", stocktakeId, adjustedCount);
         return new ConfirmResult(stocktakeId, adjustedCount);
     }
 

@@ -5,6 +5,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -36,8 +37,8 @@ import com.zija.SharedPostgres;
  * <p>本测试作为代码纪律守卫——如果开发者在登录失败时 log.info(password)，
  * 或在恢复流程中 log.info(token)，此测试将捕获回归。</p>
  *
- * <p>采用 Logback {@link ListAppender} 捕获根日志器输出，
- * 在每次 HTTP 交互后断言敏感字面量不存在于日志消息中。</p>
+ * <p>采用 Logback {@link ListAppender} 捕获根日志器输出，并把 {@code com.zija} 临时调到 DEBUG
+ * （开发环境级别），在每次 HTTP 交互后断言敏感字面量不存在于日志消息中。</p>
  *
  * <p>使用 Testcontainers 提供真实 PostgreSQL，通过 {@code @ServiceConnection} 自动配置数据源。
  * 在 {@code @BeforeAll} 中执行 household bootstrap 创建 Owner 账号，
@@ -63,6 +64,8 @@ class SensitiveValueLogTest {
 
     private ListAppender<ILoggingEvent> logAppender;
     private Logger rootLogger;
+    private Logger appLogger;
+    private Level originalAppLevel;
 
     /**
      * 整个测试类只执行一次：bootstrap 家庭并创建 Owner 账号，随后登出。
@@ -87,6 +90,9 @@ class SensitiveValueLogTest {
     @BeforeEach
     void captureLogs() {
         rootLogger = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+        appLogger = (Logger) LoggerFactory.getLogger("com.zija");
+        originalAppLevel = appLogger.getLevel();
+        appLogger.setLevel(Level.DEBUG);
         logAppender = new ListAppender<>();
         logAppender.start();
         rootLogger.addAppender(logAppender);
@@ -96,6 +102,7 @@ class SensitiveValueLogTest {
     void stopCapturing() {
         rootLogger.detachAppender(logAppender);
         logAppender.stop();
+        appLogger.setLevel(originalAppLevel);
     }
 
     private String allLogMessages() {
@@ -168,9 +175,36 @@ class SensitiveValueLogTest {
                 .doesNotContain(rawToken);
     }
 
+    @Test
+    void invitationTokenAndPasswordNotLogged() throws Exception {
+        String rawToken = "invite-token-def456uvw000";
+        String password = "InvitePass123!";
+
+        mvc.perform(post("/api/v1/invitations/inspect")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new InspectPayload(rawToken))));
+        mvc.perform(post("/api/v1/invitations/redeem")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new RedeemPayload(rawToken, "newbie", password, "新成员", null))))
+                .andExpect(status().isBadRequest());
+
+        assertThat(allLogMessages())
+                .as("invitation endpoints must log neither raw token nor password")
+                .contains("邀请兑换失败")
+                .doesNotContain(rawToken)
+                .doesNotContain(password);
+    }
+
     /** Login request body record. */
     private record LoginPayload(String username, String password) {}
 
     /** Recovery inspect request body record. */
     private record InspectPayload(String token) {}
+
+    /** Invitation redeem request body record. */
+    private record RedeemPayload(String token, String username, String password,
+                                 String displayName, String email) {}
 }

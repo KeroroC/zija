@@ -19,7 +19,7 @@
 ### 2. 会话管理
 
 - 使用 Spring Session JDBC，会话表由 Flyway 管理迁移，生产配置 `spring.session.jdbc.initialize-schema=never`，禁止应用启动时自动建表。
-- Cookie 名固定为 `ZIJA_SESSION`，`HttpOnly=true`、`SameSite=Lax`、`Path=/`，生产环境（`prod` profile）`Secure=true`。
+- Cookie 名固定为 `ZIJA_SESSION`，`HttpOnly=true`、`SameSite=Lax`、`Path=/`。`Secure` 不在 `prod` profile 里写死：自定义 `CookieSerializer` 未显式设置时跟随 `request.isSecure()`，即 TLS 反代透传的 `X-Forwarded-Proto: https`。纯 HTTP 部署不带 Secure，否则浏览器会拒收 Cookie。
 - 允许同一账户多会话（多设备登录）；停用成员、修改密码和所有权转移时清理该账户全部会话。
 - 默认空闲超时 24 小时。
 - Pinia 只保存当前页面生命周期的会话状态，不长期缓存服务端业务数据；不在浏览器中存储长期访问令牌。
@@ -31,7 +31,7 @@
 
 ### 4. 登录限流
 
-- 双桶设计：账户桶（同一规范化用户名 5 分钟内失败 5 次 → 锁 5 分钟）和 IP 桶（同一来源 IP 5 分钟内失败 20 次 → 锁 5 分钟），分别计算。
+- 双桶设计：账户桶（同一规范化用户名 5 分钟内失败 5 次 → 锁 5 分钟）和 IP 桶（同一来源 IP 5 分钟内失败 50 次 → 锁 5 分钟，`ZIJA_RATE_LIMIT_IP_THRESHOLD`），分别计算。阈值可经环境变量调整。
 - 单实例内存限流，有界容量 + TTL 防止内存无限增长。当前 Compose 只有一个应用实例，无需 Redis。未来多实例时必须替换为共享限流存储。
 
 ### 5. 家庭单例与所有权

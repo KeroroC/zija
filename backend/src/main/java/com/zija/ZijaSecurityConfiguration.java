@@ -5,6 +5,8 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import com.zija.shared.ZijaAuditOutcome;
 import com.zija.system.SystemApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -43,6 +45,8 @@ import java.util.Map;
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
 public class ZijaSecurityConfiguration {
+
+    private static final Logger log = LoggerFactory.getLogger(ZijaSecurityConfiguration.class);
 
     private static final String SESSION_COOKIE = "ZIJA_SESSION";
     private static final String XSRF_COOKIE = "XSRF-TOKEN";
@@ -88,6 +92,7 @@ public class ZijaSecurityConfiguration {
                         .deleteCookies(SESSION_COOKIE, XSRF_COOKIE)
                         .logoutSuccessHandler((request, response, auth) -> {
                             if (auth != null && auth.getPrincipal() instanceof ZijaPrincipal principal) {
+                                log.info("登出: accountId={}", principal.getAccountId());
                                 systemApi.recordAudit(new SystemApi.AuditEvent(
                                         SystemApi.AuditAction.LOGOUT, ZijaAuditOutcome.SUCCESS, null,
                                         principal.getAccountId(), null,

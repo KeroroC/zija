@@ -321,7 +321,7 @@ describe("QaView", () => {
     expect(mockFetchKnowledgeSources).toHaveBeenCalledOnce();
   });
 
-  it("summarizes household-mounted knowledge sources when no item is selected", async () => {
+  it("summarizes all selected knowledge sources when no item is selected", async () => {
     mockFetchKnowledgeSources.mockResolvedValue([
       knowledgeSource("h1", "AVAILABLE", { mountType: "HOUSEHOLD", mountId: "hh-1" }),
       knowledgeSource("h2", "PROCESSING", { mountType: "HOUSEHOLD", mountId: "hh-1" }),
@@ -335,7 +335,25 @@ describe("QaView", () => {
     expect(prep).toContain("知识准备状态");
     expect(prep).toContain("处理中 1");
     expect(prep).toContain("可用 1");
-    expect(prep).toContain("失败 0");
+    expect(prep).toContain("失败 1");
+  });
+
+  it("counts an item-mounted available manual when opened from the sidebar", async () => {
+    mockFetchKnowledgeSources.mockResolvedValue([
+      knowledgeSource("ocr", "AVAILABLE", { mountType: "ITEM", mountId: "item-sennheiser" }),
+      knowledgeSource("scan", "FAILED", {
+        mountType: "ITEM",
+        mountId: "item-sennheiser",
+        failureCode: "TEXT_NOT_EXTRACTABLE",
+      }),
+    ]);
+    const wrapper = mountV();
+    await flushPromises();
+
+    const prep = wrapper.get('[data-testid="qa-knowledge-prep"]').text();
+    expect(prep).toContain("处理中 0");
+    expect(prep).toContain("可用 1");
+    expect(prep).toContain("失败 1");
   });
 
   it("still allows household-fact questions when status APIs fail", async () => {
@@ -721,6 +739,46 @@ describe("QaView", () => {
     });
   });
 
+  it("movement jump with only a location passes the location filter", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      jumps: [
+        { type: "MOVEMENT", label: "查看流水", locationId: "loc-1" },
+      ],
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("这个月厨房进出了什么？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    await jumpByLabel(wrapper, "查看流水").trigger("click");
+    expect(pushMock).toHaveBeenCalledWith({
+      name: "report-movements",
+      query: { locationId: "loc-1" },
+    });
+  });
+
+  it("movement jump with item and location passes both filters", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      jumps: [
+        { type: "MOVEMENT", label: "查看流水", itemId: "item-1", locationId: "loc-1" },
+      ],
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("这个月厨房的牛奶进出了什么？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    await jumpByLabel(wrapper, "查看流水").trigger("click");
+    expect(pushMock).toHaveBeenCalledWith({
+      name: "report-movements",
+      query: { itemId: "item-1", locationId: "loc-1" },
+    });
+  });
+
   it("renders pending reminder tasks and jumps to the reminder center", async () => {
     mockAsk.mockResolvedValue({
       ...answerFixture,
@@ -804,6 +862,28 @@ describe("QaView", () => {
     expect(wrapper.findAll(".qa-summary").filter(
       (summary) => summary.text().includes("AI 模型当前不可用")
     )).toHaveLength(1);
+  });
+
+  it("renders a Chinese badge and structured table for partial household facts", async () => {
+    mockAsk.mockResolvedValue({
+      ...answerFixture,
+      reasonCode: "PARTIAL_HOUSEHOLD_FACTS",
+      summary: "只查到这一部分，请缩小范围。",
+    });
+    const wrapper = mountV();
+
+    await wrapper.find("textarea").setValue("家里总共有多少件东西？");
+    await wrapper.find(".qa-composer-footer .el-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='qa-partial']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='qa-partial'] .zj-badge").text())
+      .toBe("只查到部分家庭事实，请缩小范围");
+    expect(wrapper.text()).not.toContain("PARTIAL_HOUSEHOLD_FACTS");
+    expect(wrapper.find(".qa-unavailable").exists()).toBe(false);
+    expect(wrapper.find(".qa-result-table").exists()).toBe(true);
+    expect(wrapper.text()).toContain("「牛奶」库存分布");
+    expect(wrapper.find(".qa-jump").exists()).toBe(true);
   });
 
   it("keeps the question out of the thread when the server rate-limits it", async () => {

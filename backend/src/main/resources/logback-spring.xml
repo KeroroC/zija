@@ -1,23 +1,69 @@
 <configuration>
-  <springProperty name="appName" source="spring.application.name" defaultValue="zija"/>
+  <!--
+    级别由 application*.yml 的 logging.level 控制（ZIJA_LOG_LEVEL / ZIJA_LOG_SQL_LEVEL）；
+    这里只定义输出目的地、格式与滚动策略。
+  -->
+  <springProperty name="logPath" source="zija.log.path" defaultValue="logs"/>
+  <springProperty name="maxHistory" source="zija.log.max-history" defaultValue="14"/>
+  <springProperty name="totalSizeCap" source="zija.log.total-size-cap" defaultValue="1GB"/>
+
+  <property name="FILE_PATTERN"
+            value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{requestId:--} %X{accountId:--}] %logger{40} - %msg%n"/>
 
   <springProfile name="prod">
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder>
-        <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{requestId:-}] %logger{40} - %msg%n</pattern>
+        <pattern>${FILE_PATTERN}</pattern>
       </encoder>
     </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+      <file>${logPath}/zija.log</file>
+      <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+        <fileNamePattern>${logPath}/archive/zija.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+        <maxFileSize>50MB</maxFileSize>
+        <maxHistory>${maxHistory}</maxHistory>
+        <totalSizeCap>${totalSizeCap}</totalSizeCap>
+        <cleanHistoryOnStart>true</cleanHistoryOnStart>
+      </rollingPolicy>
+      <encoder>
+        <pattern>${FILE_PATTERN}</pattern>
+      </encoder>
+    </appender>
+
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+      <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+        <level>WARN</level>
+      </filter>
+      <file>${logPath}/error.log</file>
+      <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+        <fileNamePattern>${logPath}/archive/error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+        <maxFileSize>50MB</maxFileSize>
+        <maxHistory>30</maxHistory>
+        <totalSizeCap>200MB</totalSizeCap>
+        <cleanHistoryOnStart>true</cleanHistoryOnStart>
+      </rollingPolicy>
+      <encoder>
+        <pattern>${FILE_PATTERN}</pattern>
+      </encoder>
+    </appender>
+
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+      <appender-ref ref="FILE"/>
+      <appender-ref ref="ERROR_FILE"/>
+    </root>
   </springProfile>
 
   <springProfile name="!prod">
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder>
-        <pattern>%d{HH:mm:ss.SSS} %-5level [%X{requestId:-}] %logger{40} - %msg%n</pattern>
+        <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] [%X{requestId:--} %X{accountId:--}] %cyan(%logger{40}) - %msg%n</pattern>
       </encoder>
     </appender>
-  </springProfile>
 
-  <root level="INFO">
-    <appender-ref ref="CONSOLE"/>
-  </root>
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
 </configuration>

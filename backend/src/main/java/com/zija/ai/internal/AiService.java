@@ -2,17 +2,23 @@ package com.zija.ai.internal;
 
 import com.zija.ai.AiApi;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 @Service
 class AiService implements AiApi {
+
+    private static final Logger log = LoggerFactory.getLogger(AiService.class);
 
     static final int EMBEDDING_DIMENSIONS = 1024;
 
@@ -20,6 +26,8 @@ class AiService implements AiApi {
     private final List<AiModelProvider> providers;
     private final List<AiQaModelProvider> qaProviders;
     private final AiRequestGuard requestGuard;
+    /** 最近一次探测到的可用性状态码；状态变化时才输出 WARN/INFO，未变化只记 DEBUG。 */
+    private final AtomicReference<String> lastAvailability = new AtomicReference<>();
     private final ExecutorService providerExecutor = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "zija-ai-provider");
         thread.setDaemon(true);
@@ -169,14 +177,33 @@ class AiService implements AiApi {
             ProviderSelection selection
     ) {
         if (selection.provider() == null) {
+            recordAvailability(false, selection.reasonCode());
             return status(configuration, false, selection.reasonCode(), selection.detail(), null, null);
         }
         try {
             var probe = selection.provider().probe(toProviderConfiguration(configuration));
+            recordAvailability(probe.available(), probe.reasonCode());
             return status(configuration, probe.available(), probe.reasonCode(), probe.detail(),
                     probe.chatModel(), probe.embeddingModel());
         } catch (RuntimeException ex) {
+            recordAvailability(false, "PROVIDER_UNREACHABLE");
             return status(configuration, false, "PROVIDER_UNREACHABLE", "provider is unavailable", null, null);
+        }
+    }
+
+    private void recordAvailability(boolean available, String reasonCode) {
+        String current = available ? "AVAILABLE" : reasonCode;
+        String previous = lastAvailability.getAndSet(current);
+        if (Objects.equals(previous, current)) {
+            log.debug("AI 可用性未变化: {}", current);
+        } else if (available) {
+            log.info("AI 模型服务可用{}", previous == null ? "" : "（此前: " + previous + "）");
+        } else if ("AI_DISABLED".equals(current)) {
+            log.info("AI 已在设置中关闭");
+        } else if ("EMBEDDING_DIMENSION_MISMATCH".equals(current)) {
+            log.error("AI embedding 模型维度不是 {}，知识问答不可用，请更换模型", EMBEDDING_DIMENSIONS);
+        } else {
+            log.warn("AI 模型服务不可用: reason={}", current);
         }
     }
 

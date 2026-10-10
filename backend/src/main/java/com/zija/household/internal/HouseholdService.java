@@ -12,6 +12,8 @@ import com.zija.household.internal.persistence.MemberEntity;
 import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.identity.IdentityApi;
 import com.zija.system.SystemApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +31,8 @@ import java.util.UUID;
  */
 @Service
 class HouseholdService implements HouseholdApi {
+
+    private static final Logger log = LoggerFactory.getLogger(HouseholdService.class);
 
     private final HouseholdMapper householdMapper;
     private final MemberMapper memberMapper;
@@ -98,6 +102,7 @@ class HouseholdService implements HouseholdApi {
         try {
             householdMapper.insertSingleton(household);
         } catch (DuplicateKeyException ex) {
+            log.warn("重复初始化被拒绝：家庭已存在");
             throw new HouseholdAlreadyInitializedException();
         }
 
@@ -119,6 +124,7 @@ class HouseholdService implements HouseholdApi {
                 household.getId(), account.id(), account.id(),
                 null, null, null));
 
+        log.info("家庭初始化完成: householdId={} ownerAccountId={}", household.getId(), account.id());
         return new HouseholdInfo(household.getId(), household.getName(), household.getTimezone());
     }
 

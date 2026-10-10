@@ -12,6 +12,8 @@ import com.zija.household.internal.persistence.InvitationMapper;
 import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.identity.IdentityApi;
 import com.zija.system.SystemApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,8 @@ import java.util.UUID;
  */
 @Service
 class InvitationService {
+
+    private static final Logger log = LoggerFactory.getLogger(InvitationService.class);
 
     private final InvitationMapper invitationMapper;
     private final MemberMapper memberMapper;
@@ -98,6 +102,8 @@ class InvitationService {
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 SystemApi.AuditAction.INVITATION_CREATED, ZijaAuditOutcome.SUCCESS, householdId, createdBy, null,
                 null, null, null));
+        log.info("邀请已创建: invitationId={} role={} createdBy={} expiresAt={}",
+                entity.getId(), role, createdBy, entity.getExpiresAt());
         return new CreateResult(entity.getId(), rawToken, digest, role, entity.getExpiresAt());
     }
 
@@ -116,11 +122,14 @@ class InvitationService {
     public void redeem(String rawToken, RedeemCommand command,
                        IdentityApi identityApi, MemberService memberService) {
         var digest = sha256Hex(rawToken);
-        var invitation = invitationMapper.selectByDigestForUpdate(digest)
-                .orElseThrow(InvalidInvitationException::new);
-
+        var invitation = invitationMapper.selectByDigestForUpdate(digest).orElse(null);
+        if (invitation == null) {
+            log.warn("邀请兑换失败：邀请码不存在");
+            throw new InvalidInvitationException();
+        }
         if (invitation.getConsumedAt() != null
                 || invitation.getExpiresAt().isBefore(OffsetDateTime.now(ZoneOffset.UTC))) {
+            log.warn("邀请兑换失败：邀请已使用或已过期 invitationId={}", invitation.getId());
             throw new InvalidInvitationException();
         }
 
@@ -136,6 +145,8 @@ class InvitationService {
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 SystemApi.AuditAction.INVITATION_REDEEMED, ZijaAuditOutcome.SUCCESS, invitation.getHouseholdId(),
                 account.id(), account.id(), null, null, null));
+        log.info("邀请已兑换，新成员加入: invitationId={} accountId={} role={}",
+                invitation.getId(), account.id(), invitation.getRole());
     }
 
     /**

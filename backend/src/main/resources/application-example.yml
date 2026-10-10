@@ -48,15 +48,20 @@ spring:
     encoding:
       charset: UTF-8
       force: true
+    # 附件与封面上传上限
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
 
   # ---------- 优雅停机 ----------
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
   # ---------- 邮件 (SMTP，可选) ----------
-  # 不配置则 MailCapabilityConfig 不创建 JavaMailSender，邮件功能静默禁用
+  # host 不写在这里。${ZIJA_SMTP_HOST:} 在未设置时会变成空字符串，
+  # MailSenderAutoConfiguration 仍会把它当成已配置。
+  # 发信与启动摘要都读下方 zija.smtp.host；false 或空白视为未配置。
   mail:
-    host: ${ZIJA_SMTP_HOST:}
     port: ${ZIJA_SMTP_PORT:587}
     username: ${ZIJA_SMTP_USERNAME:}
     password: ${ZIJA_SMTP_PASSWORD:}
@@ -105,8 +110,8 @@ server:
         name: ZIJA_SESSION
         http-only: true
         same-site: lax
-        # 注意：secure 不在此处配置。应用注册了自定义 CookieSerializer，该属性不会生效；
-        # Secure 标志由传输层决定（request.isSecure()，经 X-Forwarded-Proto 透传），
+        # 自定义 CookieSerializer 会读取 name、http-only、same-site。
+        # secure 不在此处配置，未设置时跟随 request.isSecure()（经 X-Forwarded-Proto 透传），
         # TLS 反代透传 X-Forwarded-Proto: https 后自动生效（见 deploy/nginx/default.conf）。
 
 # ---------- 应用信息（系统信息页展示） ----------
@@ -126,9 +131,12 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,db
+          include:
+            - readinessState
+            - db
         liveness:
-          include: livenessState
+          include:
+            - livenessState
       show-details: never
 
 # ---------- MyBatis-Plus ----------
@@ -138,10 +146,19 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     default-statement-timeout: 10
+    # Mapper 语句日志统一挂在 "sql.*" 下，由 logging.level.sql 控制
+    log-prefix: "sql."
   global-config:
     banner: false
     db-config:
       id-type: assign_uuid
+
+# ---------- 日志（Logback，非审计日志）----------
+# 开发：仅控制台，com.zija 默认 DEBUG；prod：控制台 + 滚动文件，com.zija 默认 INFO
+logging:
+  level:
+    com.zija: ${ZIJA_LOG_LEVEL:DEBUG}
+    sql: ${ZIJA_LOG_SQL_LEVEL:INFO}
 
 # ---------- SpringDoc (OpenAPI / Swagger) ----------
 # prod profile 下无论此值如何均强制关闭（见 application-prod.yml）
@@ -154,11 +171,19 @@ springdoc:
 
 # ---------- 业务配置 ----------
 zija:
+  # prod 下 zija.log / error.log 的目录与滚动清理策略（见 logback-spring.xml）
+  log:
+    path: ${ZIJA_LOG_PATH:logs}
+    max-history: ${ZIJA_LOG_MAX_HISTORY:14}
+    total-size-cap: ${ZIJA_LOG_TOTAL_SIZE_CAP:1GB}
+    slow-request-ms: ${ZIJA_LOG_SLOW_REQUEST_MS:1000}
   setup:
     token: ${ZIJA_SETUP_TOKEN:}
   # 文件存储根目录（容器内挂载卷路径）
   file:
     storage-path: ${ZIJA_FILE_STORAGE_PATH:/var/lib/zija/files}
+    # 附件回收站保留期（天）：保留期满后由清除任务物理删除
+    retention-days: ${ZIJA_FILE_RETENTION_DAYS:30}
   ai:
     knowledge:
       similarity-threshold: ${ZIJA_AI_KNOWLEDGE_SIMILARITY_THRESHOLD:0.30}
@@ -180,10 +205,12 @@ zija:
     dead-letter-retry: ${ZIJA_SCHEDULE_DEAD_LETTER_RETRY:*/30 * * * * *}   # 事件死信重投
     reporting-dead-letter-retry: ${ZIJA_SCHEDULE_REPORTING_DLQ_RETRY:*/30 * * * * *}  # 报表死信重投
     file-purge: ${ZIJA_SCHEDULE_FILE_PURGE:0 20 3 * * *}               # 附件回收站保留期清除
+    knowledge-prepare: ${ZIJA_SCHEDULE_KNOWLEDGE_PREPARE:*/10 * * * * *}  # 知识来源异步准备/重试扫描
 
-  # SMTP 邮件（MailCapabilityConfig 直接读取 zija.smtp.*，与 spring.mail.* 二选一即可）
+  # 发信配置。host 为 false 或空白时不创建发送器。
+  # 将 ZIJA_SMTP_HOST 设为实际主机名后，MailCapabilityConfig 才创建 JavaMailSender。
   smtp:
-    host: ${ZIJA_SMTP_HOST:}
+    host: ${ZIJA_SMTP_HOST:false}
     port: ${ZIJA_SMTP_PORT:587}
     username: ${ZIJA_SMTP_USERNAME:}
     password: ${ZIJA_SMTP_PASSWORD:}

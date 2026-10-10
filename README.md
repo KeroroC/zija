@@ -4,12 +4,13 @@
 
 ![Alt](https://repobeats.axiom.co/api/embed/b5549e5a100a32c5946e4946037a784bec797f82.svg "Repobeats analytics image")
 
-知家是面向单个家庭、多位成员的私有化物品与库存管理系统。记录日常耐用品与消耗品的批次、位置与库存数量，所有变更以不可变流水作为事实来源，支持盘点、过期提醒、报表与 CSV 导出、文件完整性检查。
+知家是面向单个家庭、多位成员的私有化物品与库存管理系统。记录日常耐用品与消耗品的批次、位置与库存数量，所有变更以不可变流水作为事实来源，支持盘点、过期提醒、附件、报表与 CSV 导出，以及可选的家庭问答（本地 Ollama + pgvector）。
 
-- 模块化单体架构（Spring Modulith），按业务能力划分 9 个模块
-- 私有部署友好的单机 Docker Compose 方案
-- 单容器自包含的腾讯云 CloudBase 云托管方案，免运维
-- 完整的备份 / 恢复 / 所有者账户恢复机制
+- 模块化单体（Spring Modulith），11 个模块（含 `shared` 与 `ai`）
+- 单机 Docker Compose 私有部署（PostgreSQL 17 + pgvector）
+- 单容器腾讯云 CloudBase 云托管，免自建服务器
+- 备份、恢复，以及所有者账户恢复
+- 未配置 Ollama 时，库存、附件等核心业务仍可使用
 
 ---
 
@@ -31,23 +32,23 @@
 
 | 场景 | 方式 | 复杂度 | 适合谁 |
 |---|---|---|---|
-| 本机开发与调试 | [方式一](#方式一本地开发运行) | 低 | 开发者，二次贡献者 |
-| 家庭服务器 / NAS 长期托管 | [方式二](#方式二docker-compose-私有部署) | 中 | 想完全掌控自己的数据 |
-| 不愿意运维服务器 | [方式三](#方式三cloudbase-云托管) | 低 | 只想要一个稳定运行的家端实例 |
+| 本机开发与调试 | [方式一](#方式一本地开发运行) | 低 | 开发者和贡献者 |
+| 家庭服务器 / NAS 长期托管 | [方式二](#方式二docker-compose-私有部署) | 中 | 希望数据留在自己的机器上 |
+| 不想自己维护服务器 | [方式三](#方式三cloudbase-云托管) | 低 | 只需要一个稳定的家用实例 |
 
 ---
 
 ## 方式一：本地开发运行
 
-需要 JDK 25、Node.js 24、Docker Engine（含 Compose v2）。
+需要 JDK 25、Node.js ≥ 24、Docker Engine（含 Compose v2）。若要本地试用家庭问答，另需本机 [Ollama](https://ollama.com/) 并拉取默认模型（见 `.env.example` 中 `ZIJA_AI_*`）。
 
 ```bash
 # 1. 准备环境
-cp .env.example .env              # 按需修改密码
+cp .env.example .env              # 按需修改密码；AI 相关变量可保持默认
 npm --prefix frontend install
 npm --prefix frontend exec -- playwright install chromium
 
-# 2. 启动数据库
+# 2. 启动数据库（PostgreSQL 17 + pgvector）
 make dev-db
 
 # 3. 在两个终端分别启动后端与前端
@@ -55,9 +56,11 @@ make dev-backend                 # Spring Boot，http://localhost:8080
 make dev-frontend                # Vite，http://localhost:5173
 ```
 
-浏览器访问 <http://localhost:5173>，首次访问会自动进入家庭初始化流程。
+浏览器访问 <http://localhost:5173>，首次访问会进入家庭初始化。
 
-数据隔离预期：Postgres 17 容器由 `make dev-db` 启动，存储在临时卷中，停容器即丢——适合开发，不适合长期保存。
+`make dev-db` 使用 Compose 命名卷 `postgres-data`，与方式二是同一份数据。停下容器后数据仍在；`docker compose down -v` 会删除该卷。本机调试不要和长期部署共用这一份库。
+
+可选 AI：先启动 Ollama，并拉取 `ZIJA_AI_CHAT_MODEL` 与 `ZIJA_AI_EMBEDDING_MODEL`（默认 `qwen2.5:7b` 和 `qwen3-embedding:0.6b`，embedding 须为 1024 维）。家庭初始化后，由 Owner 或 Admin 在「家庭设置 → AI 能力」中启用。未启动 Ollama 不影响核心业务。
 
 ---
 
@@ -68,7 +71,7 @@ make dev-frontend                # Vite，http://localhost:5173
 ### 硬件建议
 
 - CPU 2 核+
-- 内存 4 GB+
+- 内存 4 GB+（同机运行 Ollama 时，按模型大小另计内存）
 - 磁盘 20 GB+（数据库 + 文件存储，按家庭物品数量估算）
 
 ### 部署步骤
@@ -96,6 +99,7 @@ docker compose ps                # 三个服务应均为 healthy
 - **`ZIJA_PROFILES_ACTIVE=prod`**：生产环境必须设置。关闭 Swagger UI；会话 Cookie 的 `Secure` 标志由传输层自动决定（TLS 反代透传 `X-Forwarded-Proto: https` 时生效，见下）。
 - **`ZIJA_POSTGRES_PASSWORD` 与 `ZIJA_DB_PASSWORD`**：须改为强随机值并保持一致。
 - **`ZIJA_DB_URL`** 用 `postgres:5432`（Compose 服务名），不要改。
+- **`ZIJA_AI_*`（可选）**：指向可达的 Ollama；Compose 会透传到 app 容器。未配置或不可达时核心业务仍可用。启用步骤与网络注意点见 [`docs/deploy/deploy.md`](docs/deploy/deploy.md)。
 - **TLS 反向代理**：知家应用本身不处理 TLS 终止，需在前面部署 Nginx / Caddy / Traefik（并透传 `X-Forwarded-Proto: https`、下发 HSTS）。详见 [`docs/deploy/deploy.md`](docs/deploy/deploy.md) §5。
 
 ### 升级
@@ -157,6 +161,8 @@ CloudBase 节点是 amd64。在 Apple Silicon Mac 上直接 `docker build` 会�
    MANAGEMENT_HEALTH_MAIL_ENABLED=false
    ```
 
+   这组变量不包含 Ollama。容器内没有模型服务时家庭问答不可用，库存和附件不受影响。若要启用，把 `ZIJA_AI_OLLAMA_BASE_URL` 指到容器能访问的地址，见 [`docs/deploy/cloudbase.md`](docs/deploy/cloudbase.md)。
+
 4. 部署完成后访问公网域名，自动跳转 `/bootstrap` 完成家庭初始化。
 
 ### 数据持久化
@@ -212,11 +218,13 @@ make recover-owner
 - 物品（Item）描述「是什么」；批次（Lot）描述某次购入或独立资产，独立到期与库存
 - 库存位（Stock Position）是某批次在某位置的当前数量，由不可变流水（Movement）作为事实来源
 - 流水类型：入库 / 领用 / 报损 / 盘点调整 / 移位 / 冲正
+- 附件：挂载在家庭 / 物品 / 批次，支持改挂与回收站；物品可指定封面
 - 提醒规则：最低库存阈值、过期提醒等，由后台定时扫描触发
-- 报表与 CSV 导出：报表模块通过只读查询端口提供数据
+- 报表与 CSV 导出：读取报表模块自己的读模型，不直接修改库存
+- 家庭问答（可选）：只读，回答必须带依据；可查家庭事实，也可检索选定的知识来源（附件）
 - 文件完整性：`GET /api/v1/files/integrity-report`（仅 Owner）
 
-完整功能定义见 [`CONTEXT.md`](CONTEXT.md)。
+完整功能与领域术语见 [`CONTEXT.md`](CONTEXT.md)；AI 能力边界见 [`docs/design/ai-capabilities-spec.md`](docs/design/ai-capabilities-spec.md)。
 
 ---
 
@@ -239,7 +247,7 @@ make compose-smoke           # Docker Compose 全栈健康检查（启动 → �
 make e2e-smoke               # Playwright 浏览器烟雾测试
 ```
 
-`make verify` 适合开发者与 CI；`make compose-smoke` 适合部署后快速验证。两者都会创建临时卷并在结束时清理。
+`make verify` 在本机跑测试和构建，不启动部署栈。`make compose-smoke` 会拉起一套临时 Compose 项目，结束时删除临时卷。
 
 ---
 
@@ -257,11 +265,12 @@ make e2e-smoke               # Playwright 浏览器烟雾测试
 
 - [开发者指南](docs/developer/developers.md)（技术栈、模块架构、测试、CI、代码风格）
 - [架构与模块划分](docs/developer/architecture.md)
-- 架构决策记录（ADR）：[`docs/adr/`](docs/adr/)（15 份）
+- 架构决策记录（ADR）：[`docs/adr/`](docs/adr/)（24 份）
 - 领域词汇表：[`CONTEXT.md`](CONTEXT.md)
 - 系统设计：[`docs/design/system-design.md`](docs/design/system-design.md)
+- AI 能力规格：[`docs/design/ai-capabilities-spec.md`](docs/design/ai-capabilities-spec.md)
 - 视觉规范：[`docs/design/redesign-visual-spec.md`](docs/design/redesign-visual-spec.md)
-- AI 协作约定：[`CLAUDE.md`](CLAUDE.md)
+- AI 协作约定：[`CLAUDE.md`](CLAUDE.md)（与 [`AGENTS.md`](AGENTS.md) 同内容）
 
 ---
 

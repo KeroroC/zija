@@ -215,4 +215,29 @@ describe("MovementsView 数量符号", () => {
       expect.objectContaining({ itemId: "i1" }),
     );
   });
+
+  it("initializes the location filter from route query locationId", async () => {
+    routeQuery.locationId = "loc1";
+    wrapper = mountV();
+    await flushPromises();
+
+    const treeSelect = wrapper.findComponent({ name: "ElTreeSelect" });
+    expect(treeSelect.props("modelValue")).toBe("loc1");
+    expect(mockGetReport).toHaveBeenCalledWith(
+      "movements",
+      expect.objectContaining({ locationId: "loc1" }),
+    );
+  });
+
+  it("applies both item and location filters from the route query", async () => {
+    routeQuery.itemId = "i1";
+    routeQuery.locationId = "loc1";
+    wrapper = mountV();
+    await flushPromises();
+
+    expect(mockGetReport).toHaveBeenCalledWith(
+      "movements",
+      expect.objectContaining({ itemId: "i1", locationId: "loc1" }),
+    );
+  });
 });

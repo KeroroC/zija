@@ -44,6 +44,13 @@ public interface ItemMapper extends BaseMapper<ItemEntity> {
             @Param("limit") int limit
     );
 
+    List<ItemEntity> searchActiveItemsByNameBrandOrTag(
+            @Param("householdId") UUID householdId,
+            @Param("keyword") String keyword,
+            @Param("itemId") UUID itemId,
+            @Param("limit") int limit
+    );
+
     List<ItemEntity> findActiveItemsNamedInQuestion(
             @Param("householdId") UUID householdId,
             @Param("question") String question,

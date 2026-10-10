@@ -132,6 +132,36 @@ class InventoryApiQaQueryPortIsolationTest {
     }
 
     @Test
+    void searchLotsByNumberOrSerialStaysInsideHouseholdAndIgnoresBlankSerial() {
+        var bySerial = inventoryApi.searchLotsByNumberOrSerial(householdA, "sn-coffee", null, null, 10);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(serialA);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::itemId).containsExactly(itemA);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::itemName).containsExactly("牛奶");
+
+        var byLotNumber = inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT-A-EXP", null, null, 10);
+        assertThat(byLotNumber).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(expiringA);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT-B-EXP", null, null, 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN-COFFEE", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .doesNotContain(serialB);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "厨房还有多少东西？", null, null, 10))
+                .isEmpty();
+
+        var bounded = inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT-A", null, null, 1);
+        assertThat(bounded).hasSize(1);
+        assertThat(bounded).extracting(InventoryApi.LotQuestionMatch::lotId).doesNotContain(serialB, expiringB);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN-COFFEE", itemB, null, 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN-COFFEE", null, expiringA, 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "  ", null, null, 2))
+                .hasSize(2)
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .doesNotContain(expiringB, serialB);
+    }
+
+    @Test
     void findLotsMatchingQuestionDoesNotReturnOtherHouseholdOrBlankSerial() {
         var serialHits = inventoryApi.findLotsMatchingQuestion(householdA, "序列号 SN-COFFEE 在哪？", 10);
         assertThat(serialHits).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(serialA);
@@ -186,13 +216,237 @@ class InventoryApiQaQueryPortIsolationTest {
     }
 
     @Test
-    void findRecentMovementsOfItemDoesNotReturnOtherHousehold() {
-        var hits = inventoryApi.findRecentMovementsOfItem(householdA, itemA, null, null, 10);
+    void findStockPositionsInLocationsTreatsLikeWildcardsInItemNameAsLiterals() {
+        UUID unitA = UUID.fromString("31000000-0000-0000-0000-00000000000a");
+        UUID unitB = UUID.fromString("31000000-0000-0000-0000-00000000000b");
+        UUID underscoreItem = UUID.fromString("41000000-0000-0000-0000-0000000000a1");
+        UUID lookalikeItem = UUID.fromString("41000000-0000-0000-0000-0000000000a2");
+        UUID percentItem = UUID.fromString("41000000-0000-0000-0000-0000000000a3");
+        UUID foreignItem = UUID.fromString("41000000-0000-0000-0000-0000000000b1");
+        UUID underscoreLot = UUID.fromString("51000000-0000-0000-0000-0000000000c1");
+        UUID lookalikeLot = UUID.fromString("51000000-0000-0000-0000-0000000000c2");
+        UUID percentLot = UUID.fromString("51000000-0000-0000-0000-0000000000c3");
+        UUID foreignLot = UUID.fromString("51000000-0000-0000-0000-0000000000c4");
 
-        assertThat(hits).extracting(InventoryApi.MovementInfo::id).containsExactly(movementA);
-        assertThat(inventoryApi.findRecentMovementsOfItem(householdB, itemB, null, null, 10))
+        insertItem(underscoreItem, householdA, unitA, "酸奶_1", "DISABLED", null);
+        insertItem(lookalikeItem, householdA, unitA, "酸奶X1", "DISABLED", null);
+        insertItem(percentItem, householdA, unitA, "奶粉%装", "DISABLED", null);
+        insertItem(foreignItem, householdB, unitB, "外家_%酸奶", "DISABLED", null);
+        insertLot(underscoreLot, householdA, underscoreItem, "LOT-U", null, TODAY.plusDays(10));
+        insertLot(lookalikeLot, householdA, lookalikeItem, "LOT-X", null, TODAY.plusDays(10));
+        insertLot(percentLot, householdA, percentItem, "LOT-P", null, TODAY.plusDays(10));
+        insertLot(foreignLot, householdB, foreignItem, "LOT-F", null, TODAY.plusDays(10));
+        insertPosition(householdA, underscoreLot, locA, "1");
+        insertPosition(householdA, lookalikeLot, locA, "1");
+        insertPosition(householdA, percentLot, locA, "1");
+        insertPosition(householdB, foreignLot, locB, "1");
+
+        assertThat(inventoryApi.findStockPositionsInLocations(householdA, List.of(locA, locB), "酸奶_1", 20))
+                .extracting(InventoryApi.LocationStockPositionSnapshot::lotId)
+                .containsExactly(underscoreLot);
+        assertThat(inventoryApi.findStockPositionsInLocations(householdA, List.of(locA, locB), "_", 20))
+                .extracting(InventoryApi.LocationStockPositionSnapshot::lotId)
+                .containsExactly(underscoreLot);
+        assertThat(inventoryApi.findStockPositionsInLocations(householdA, List.of(locA, locB), "%", 20))
+                .extracting(InventoryApi.LocationStockPositionSnapshot::lotId)
+                .containsExactly(percentLot);
+    }
+
+    @Test
+    void findMovementsKeepsTimeWindowAndLocationInsideHousehold() {
+        UUID pantry = UUID.fromString("61000000-0000-0000-0000-0000000000a2");
+        insertLocation(pantry, householdA, "储藏室");
+
+        UUID consumeFromKitchen = UUID.fromString("81000000-0000-0000-0000-0000000000c1");
+        UUID oldInbound = UUID.fromString("81000000-0000-0000-0000-0000000000c2");
+        UUID pantryInbound = UUID.fromString("81000000-0000-0000-0000-0000000000c3");
+        UUID expiredLotInbound = UUID.fromString("81000000-0000-0000-0000-0000000000c4");
+        UUID atExclusiveEnd = UUID.fromString("81000000-0000-0000-0000-0000000000c5");
+
+        insertDirectionalMovement(consumeFromKitchen, householdA, expiringA, itemA, "CONSUME",
+                locA, null, OffsetDateTime.parse("2026-09-10T08:00:00+08:00"));
+        insertDirectionalMovement(oldInbound, householdA, expiringA, itemA, "INBOUND",
+                null, locA, OffsetDateTime.parse("2026-06-01T08:00:00+08:00"));
+        insertDirectionalMovement(pantryInbound, householdA, expiringA, itemA, "INBOUND",
+                null, pantry, OffsetDateTime.parse("2026-09-08T09:00:00+08:00"));
+        insertDirectionalMovement(expiredLotInbound, householdA, expiredA, itemA, "INBOUND",
+                null, locA, OffsetDateTime.parse("2026-09-09T09:00:00+08:00"));
+        insertDirectionalMovement(atExclusiveEnd, householdA, expiringA, itemA, "INBOUND",
+                null, locA, OffsetDateTime.parse("2026-09-11T00:00:00+08:00"));
+
+        var from = OffsetDateTime.parse("2026-09-01T00:00:00+08:00");
+        var to = OffsetDateTime.parse("2026-09-11T00:00:00+08:00");
+
+        assertThat(inventoryApi.findMovements(householdA, itemA, null, List.of(locA), from, to, 10))
+                .extracting(InventoryApi.MovementInfo::id)
+                .containsExactly(consumeFromKitchen, expiredLotInbound, movementA);
+        assertThat(inventoryApi.findMovements(householdA, itemA, expiredA, List.of(locA), from, to, 10))
+                .extracting(InventoryApi.MovementInfo::id)
+                .containsExactly(expiredLotInbound);
+        assertThat(inventoryApi.findMovements(householdA, null, null, List.of(pantry), from, to, 10))
+                .extracting(InventoryApi.MovementInfo::id)
+                .containsExactly(pantryInbound);
+        assertThat(inventoryApi.findMovements(householdA, itemA, null, null, from, to, 1))
+                .extracting(InventoryApi.MovementInfo::id)
+                .containsExactly(consumeFromKitchen);
+
+        assertThat(inventoryApi.findMovements(householdA, null, null, List.of(locB), from, to, 10)).isEmpty();
+        assertThat(inventoryApi.findMovements(householdA, itemB, null, null, from, to, 10)).isEmpty();
+        assertThat(inventoryApi.findMovements(householdA, null, null, List.of(), from, to, 10)).isEmpty();
+        assertThat(inventoryApi.findMovements(householdA, null, null, null, null, null, 10)).isEmpty();
+        assertThat(inventoryApi.findMovements(householdB, itemB, null, null, from, to, 10))
                 .extracting(InventoryApi.MovementInfo::id)
                 .containsExactly(movementB);
+    }
+
+    @Test
+    void locationFilteredExpiryQueriesCountOnlyThosePlacesAndStayInsideHousehold() {
+        UUID pantry = UUID.fromString("61000000-0000-0000-0000-0000000000a2");
+        insertLocation(pantry, householdA, "储藏室");
+        insertPosition(householdA, expiringA, pantry, "5");
+        insertPosition(householdA, expiredA, pantry, "4");
+
+        var expiringHere = inventoryApi.findExpiringLotsInLocations(
+                householdA, TODAY, TODAY.plusDays(7), List.of(locA), 10);
+        assertThat(expiringHere).extracting(InventoryApi.LotQuantitySnapshot::lotId).containsExactly(expiringA);
+        assertThat(expiringHere.getFirst().quantity()).isEqualByComparingTo("2");
+        assertThat(expiringHere.getFirst().unitName()).isEqualTo("瓶");
+
+        var expiringMixedIds = inventoryApi.findExpiringLotsInLocations(
+                householdA, TODAY, TODAY.plusDays(7), List.of(locA, locB), 10);
+        assertThat(expiringMixedIds).extracting(InventoryApi.LotQuantitySnapshot::lotId).containsExactly(expiringA);
+        assertThat(expiringMixedIds.getFirst().quantity()).isEqualByComparingTo("2");
+
+        assertThat(inventoryApi.findExpiringLotsInLocations(
+                householdA, TODAY, TODAY.plusDays(7), List.of(locB), 10)).isEmpty();
+        assertThat(inventoryApi.findExpiringLotsInLocations(
+                householdA, TODAY, TODAY.plusDays(7), List.of(), 10)).isEmpty();
+
+        var expiringHousehold = inventoryApi.findExpiringLots(
+                householdA, TODAY, TODAY.plusDays(7), null, null, 10);
+        assertThat(expiringHousehold).extracting(InventoryApi.LotQuantitySnapshot::lotId).containsExactly(expiringA);
+        assertThat(expiringHousehold.getFirst().quantity()).isEqualByComparingTo("7");
+
+        var expiredHere = inventoryApi.findExpiredLotsInLocations(householdA, TODAY, List.of(locA), 10);
+        assertThat(expiredHere).extracting(InventoryApi.LotQuantitySnapshot::lotId).containsExactly(expiredA);
+        assertThat(expiredHere.getFirst().quantity()).isEqualByComparingTo("3");
+        assertThat(expiredHere.getFirst().lotNumber()).isEqualTo("LOT-A-OLD");
+
+        assertThat(inventoryApi.findExpiredLotsInLocations(householdA, TODAY, List.of(locB), 10)).isEmpty();
+        assertThat(inventoryApi.findExpiredLots(householdA, TODAY, null, null, 10).getFirst().quantity())
+                .isEqualByComparingTo("7");
+    }
+
+    @Test
+    void searchLotsByNumberOrSerialInLocationsStaysInsideHouseholdAndPlace() {
+        UUID pantry = UUID.fromString("61000000-0000-0000-0000-0000000000a2");
+        UUID bedroom = UUID.fromString("61000000-0000-0000-0000-0000000000a3");
+        insertLocation(pantry, householdA, "储藏室");
+        insertLocation(bedroom, householdA, "卧室");
+
+        UUID inPantry = UUID.fromString("51000000-0000-0000-0000-0000000000aa");
+        UUID alsoInPantry = UUID.fromString("51000000-0000-0000-0000-0000000000ad");
+        UUID inBedroom = UUID.fromString("51000000-0000-0000-0000-0000000000ab");
+        UUID zeroInPantry = UUID.fromString("51000000-0000-0000-0000-0000000000ac");
+        UUID foreign = UUID.fromString("51000000-0000-0000-0000-0000000000ba");
+
+        insertLot(inPantry, householdA, itemA, "LOT-PLACE-IN", "SN-ONLY-IN", TODAY.plusDays(10));
+        insertLot(alsoInPantry, householdA, itemA, "LOT-PLACE-IN-2", "SN-PLACE-IN-2", TODAY.plusDays(10));
+        insertLot(inBedroom, householdA, itemA, "LOT-PLACE-OUT", "SN-PLACE-OUT", TODAY.plusDays(10));
+        insertLot(zeroInPantry, householdA, itemA, "LOT-PLACE-ZERO", "SN-PLACE-ZERO", TODAY.plusDays(10));
+        insertLot(foreign, householdB, itemB, "LOT-PLACE-B", "SN-ONLY-IN", TODAY.plusDays(10));
+
+        insertPosition(householdA, inPantry, pantry, "3");
+        insertPosition(householdA, alsoInPantry, pantry, "1");
+        insertPosition(householdA, inBedroom, bedroom, "4");
+        insertPosition(householdA, zeroInPantry, pantry, "0");
+        insertPosition(householdB, foreign, locB, "8");
+
+        var inPlace = inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE", List.of(pantry), 10);
+        assertThat(inPlace).extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(inPantry, alsoInPantry);
+        assertThat(inPlace).extracting(InventoryApi.LotQuestionMatch::lotNumber)
+                .containsExactly("LOT-PLACE-IN", "LOT-PLACE-IN-2");
+        assertThat(inPlace).extracting(InventoryApi.LotQuestionMatch::serialNumber)
+                .containsExactly("SN-ONLY-IN", "SN-PLACE-IN-2");
+        assertThat(inPlace.getFirst().itemName()).isEqualTo("牛奶");
+
+        var bySerial = inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "sn-only-in", List.of(pantry, locB), 10);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(inPantry);
+        assertThat(bySerial).extracting(InventoryApi.LotQuestionMatch::serialNumber)
+                .containsExactly("SN-ONLY-IN");
+
+        var bounded = inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE", List.of(pantry), 1);
+        assertThat(bounded).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(inPantry);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE", List.of(), 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "SN-ONLY-IN", List.of(locB), 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE-OUT", List.of(pantry), 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT-PLACE-OUT", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(inBedroom);
+
+        UUID fridge = UUID.fromString("61000000-0000-0000-0000-0000000000a4");
+        UUID inFridge = UUID.fromString("51000000-0000-0000-0000-0000000000ae");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0)
+                """, fridge, householdA, pantry);
+        insertLot(inFridge, householdA, itemA, "LOT-PLACE-CHILD", "SN-CHILD", TODAY.plusDays(10));
+        insertPosition(householdA, inFridge, fridge, "5");
+
+        var inChild = inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE-CHILD", List.of(pantry, fridge), 10);
+        assertThat(inChild).extracting(InventoryApi.LotQuestionMatch::lotId).containsExactly(inFridge);
+        assertThat(inChild).extracting(InventoryApi.LotQuestionMatch::lotNumber)
+                .containsExactly("LOT-PLACE-CHILD");
+        assertThat(inChild).extracting(InventoryApi.LotQuestionMatch::serialNumber)
+                .containsExactly("SN-CHILD");
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE-CHILD", List.of(pantry), 10)).isEmpty();
+        assertThat(inventoryApi.searchLotsByNumberOrSerialInLocations(
+                householdA, "LOT-PLACE-CHILD", List.of(bedroom), 10)).isEmpty();
+    }
+
+    @Test
+    void searchLotsByNumberOrSerialTreatsLikeWildcardsAsLiteralsAndStaysInsideHousehold() {
+        UUID underscoreA = UUID.fromString("51000000-0000-0000-0000-0000000000a6");
+        UUID lookalikeA = UUID.fromString("51000000-0000-0000-0000-0000000000a7");
+        UUID percentLotA = UUID.fromString("51000000-0000-0000-0000-0000000000a8");
+        UUID percentSerialA = UUID.fromString("51000000-0000-0000-0000-0000000000a9");
+        UUID underscoreB = UUID.fromString("51000000-0000-0000-0000-0000000000b3");
+        UUID percentB = UUID.fromString("51000000-0000-0000-0000-0000000000b4");
+
+        insertLot(underscoreA, householdA, itemA, "LOT_01", "SN_A1", TODAY.plusDays(10));
+        insertLot(lookalikeA, householdA, itemA, "LOTX01", "SNXA1", TODAY.plusDays(10));
+        insertLot(percentLotA, householdA, itemA, "LOT%A", null, TODAY.plusDays(10));
+        insertLot(percentSerialA, householdA, itemA, "NOPCT-A", "SN%1", TODAY.plusDays(10));
+        insertLot(underscoreB, householdB, itemB, "XLOT_01", "SN_A1", TODAY.plusDays(10));
+        insertLot(percentB, householdB, itemB, "BLOT%1", "SN%1", TODAY.plusDays(10));
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "LOT_01", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(underscoreA);
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "lot_01", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(underscoreA);
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN_A1", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(underscoreA);
+
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "%", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(percentLotA, percentSerialA);
+        assertThat(inventoryApi.searchLotsByNumberOrSerial(householdA, "SN%", null, null, 10))
+                .extracting(InventoryApi.LotQuestionMatch::lotId)
+                .containsExactly(percentSerialA);
     }
 
     @Test
@@ -250,13 +504,26 @@ class InventoryApiQaQueryPortIsolationTest {
     private void insertMovement(
             UUID id, UUID householdId, UUID lotId, UUID itemId, UUID toLocation, OffsetDateTime businessTime
     ) {
+        insertDirectionalMovement(id, householdId, lotId, itemId, "INBOUND", null, toLocation, businessTime);
+    }
+
+    private void insertDirectionalMovement(
+            UUID id,
+            UUID householdId,
+            UUID lotId,
+            UUID itemId,
+            String type,
+            UUID fromLocation,
+            UUID toLocation,
+            OffsetDateTime businessTime
+    ) {
         jdbc.update("""
                 INSERT INTO inventory_movement
                     (id, household_id, lot_id, item_id, type, quantity, from_location_id,
                      to_location_id, reason, operator_account_id, business_time,
                      created_at, idempotency_key)
-                VALUES (?, ?, ?, ?, 'INBOUND', '1', NULL, ?, '购入', ?, ?, ?, ?)
-                """, id, householdId, lotId, itemId, toLocation, operatorId,
+                VALUES (?, ?, ?, ?, ?, '1', ?, ?, '购入', ?, ?, ?, ?)
+                """, id, householdId, lotId, itemId, type, fromLocation, toLocation, operatorId,
                 Timestamp.from(businessTime.toInstant()), Timestamp.from(businessTime.toInstant()),
                 id.toString());
     }

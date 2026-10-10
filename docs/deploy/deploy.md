@@ -62,6 +62,11 @@ cp .env.example .env
 | `ZIJA_SMTP_PASSWORD` | 否 | | SMTP 密码 |
 | `ZIJA_SMTP_FROM` | 否 | | 发件人地址 |
 | `ZIJA_SMTP_TLS` | 否 | `true` | 是否启用 STARTTLS |
+| `ZIJA_LOG_LEVEL` | 否 | `INFO`（prod） | `com.zija` 日志级别；排障时可临时设为 `DEBUG`。不要留空赋值 |
+| `ZIJA_LOG_SQL_LEVEL` | 否 | `INFO` | 设为 `DEBUG` 输出 MyBatis SQL 与参数（量大，仅排障） |
+| `ZIJA_LOG_MAX_HISTORY` | 否 | `14` | `zija.log` 归档保留天数 |
+| `ZIJA_LOG_TOTAL_SIZE_CAP` | 否 | `1GB` | `zija.log` 归档总量上限，超出后最旧归档自动删除 |
+| `ZIJA_LOG_SLOW_REQUEST_MS` | 否 | `1000` | 慢请求阈值（毫秒），超过记 WARN |
 
 上述 AI 环境变量定义部署中安装的 Ollama 适配器。部署完成后，Owner/Admin 还需在「家庭设置 → AI
 能力」中启用 AI 并保存提供方、凭据、出网开关和资源限制。凭据不会通过读取 API 回显；运行设置存入
@@ -93,6 +98,16 @@ ZIJA_HTTP_PORT=8088
 | 配置项 | 效果 |
 |---|---|
 | `springdoc.swagger-ui.enabled=false` | 关闭 Swagger UI（生产环境不暴露 API 文档） |
+| `logging.level.com.zija=INFO` | 精简运行日志；同时启用滚动日志文件（见下） |
+
+prod 下运行日志除输出到控制台（`docker compose logs app`）外，还写入 `zija-logs` 卷（容器内
+`/var/lib/zija/logs`）：
+
+- `zija.log`：INFO 及以上；按天或 50MB 滚动，gz 归档到 `archive/`，默认保留 14 天、总量 1GB；
+- `error.log`：仅 WARN 及以上，保留 30 天、总量 200MB，排障时优先看它。
+
+过期归档由 Logback 自动删除；该卷不纳入 `make backup-test`。容器 stdout 日志另由 Compose 的
+json-file 驱动限制为 10MB × 5 个文件。非 prod 部署只输出控制台。
 
 **Secure Cookie 由传输层自动决定**，prod profile 不强制设置 `cookie.secure`（应用注册了自定义
 `CookieSerializer`，`server.servlet.session.cookie.secure` 不会生效；Secure 标志跟随

@@ -34,8 +34,21 @@ services:
       ZIJA_AI_OLLAMA_BASE_URL: ${ZIJA_AI_OLLAMA_BASE_URL:-http://localhost:11434}
       ZIJA_AI_CHAT_MODEL: ${ZIJA_AI_CHAT_MODEL:-qwen2.5:7b}
       ZIJA_AI_EMBEDDING_MODEL: ${ZIJA_AI_EMBEDDING_MODEL:-qwen3-embedding:0.6b}
+      ZIJA_LOG_PATH: /var/lib/zija/logs
+      # 不给值：仅当 .env 设置时才传入，未设置时级别跟随 profile（开发 DEBUG / prod INFO）
+      ZIJA_LOG_LEVEL:
+      ZIJA_LOG_SQL_LEVEL: ${ZIJA_LOG_SQL_LEVEL:-INFO}
+      ZIJA_LOG_MAX_HISTORY: ${ZIJA_LOG_MAX_HISTORY:-14}
+      ZIJA_LOG_TOTAL_SIZE_CAP: ${ZIJA_LOG_TOTAL_SIZE_CAP:-1GB}
+      ZIJA_LOG_SLOW_REQUEST_MS: ${ZIJA_LOG_SLOW_REQUEST_MS:-1000}
     volumes:
       - zija-files:/var/lib/zija/files
+      - zija-logs:/var/lib/zija/logs
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,3 +82,4 @@ services:
 volumes:
   postgres-data:
   zija-files:
+  zija-logs:

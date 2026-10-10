@@ -7,6 +7,8 @@ import com.zija.ZijaSessionInvalidator;
 import com.zija.ai.AiApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
@@ -33,10 +35,12 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -158,6 +162,500 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.structuredResults[1].kind").value("ITEM_STOCK_TOTAL"))
                 .andExpect(jsonPath("$.structuredResults[1].rows[0].当前总库存").value("5"))
                 .andExpect(jsonPath("$.jumps[*].type").isNotEmpty());
+    }
+
+    @Test
+    void confirmedItemSnapshotAnswersFromASingleToolCall() throws Exception {
+        var toolResponse = new AtomicReference<String>();
+        chatModel.script(
+                "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
+                response -> {
+                    toolResponse.set(response);
+                    return response.contains("UNAVAILABLE")
+                            ? "暂时无法确认。"
+                            : "牛奶还有 5 瓶，放在厨房，低于低库存阈值。";
+                });
+
+        String nearestExpiry = LocalDate.now().plusDays(30).format(DateTimeFormatter.ISO_LOCAL_DATE);
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "还有多少、放在哪里？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value("牛奶还有 5 瓶，放在厨房，低于低库存阈值。"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].位置").value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].批次号").value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].当前总库存")
+                        .value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].单位").value("瓶"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].低库存")
+                        .value("true"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].阈值").value("10"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].最近到期")
+                        .value(nearestExpiry))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows[0].类型").value("INBOUND"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows[0].原因").value("购入"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows[0].操作人").value("户主"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows[0].到").value("厨房"))
+                .andExpect(jsonPath("$.jumps[*].type",
+                        org.hamcrest.Matchers.hasItems("ITEM", "LOT", "LOCATION", "MOVEMENT")));
+
+        assertThat(chatModel.toolDispatchCount()).isEqualTo(1);
+        assertThat(toolResponse.get()).contains("\"lowStock\":true");
+        assertThat(toolResponse.get()).contains("\"lowStockThreshold\":\"10\"");
+    }
+
+    @Test
+    void itemSearchHitsBrandAndReportsLowStockWithoutListingOtherItems() throws Exception {
+        UUID brandId = UUID.fromString("90000000-0000-0000-0000-000000000011");
+        jdbc.update("""
+                INSERT INTO catalog_brand(id, household_id, name, name_normalized, status, version)
+                VALUES (?, ?, '伊利', '伊利', 'ACTIVE', 1)
+                """, brandId, HOUSEHOLD_ID);
+        jdbc.update("UPDATE catalog_item SET brand_id = ? WHERE id = ?", brandId, ITEM_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '豆浆', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, SECOND_ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
+
+        var toolResponse = new AtomicReference<String>();
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"伊利\",\"limit\":10}",
+                response -> {
+                    toolResponse.set(response);
+                    return response.contains("牛奶") ? "伊利的牛奶还有 5 瓶。" : "没有找到。";
+                });
+
+        var result = mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "帮我查一下",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value("伊利的牛奶还有 5 瓶。"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].itemId").value(ITEM_ID.toString()))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].名称").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].单位").value("瓶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].当前总库存").value("5"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].低库存").value("true"))
+                .andReturn();
+
+        assertThat(chatModel.toolDispatchCount()).isEqualTo(1);
+        assertThat(toolResponse.get()).contains("\"lowStock\":true");
+        assertThat(result.getResponse().getContentAsString()).doesNotContain("豆浆");
+    }
+
+    @Test
+    void itemSearchHitsTagWithoutListingUntaggedItems() throws Exception {
+        UUID tagId = UUID.fromString("90000000-0000-0000-0000-000000000012");
+        jdbc.update("""
+                INSERT INTO catalog_tag(id, household_id, name, name_normalized, status, version)
+                VALUES (?, ?, '乳制品', '乳制品', 'ACTIVE', 1)
+                """, tagId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '酸奶', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, SECOND_ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
+        UUID breadId = UUID.fromString("40000000-0000-0000-0000-000000000099");
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '面包', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, breadId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item_tag(household_id, item_id, tag_id)
+                VALUES (?, ?, ?), (?, ?, ?)
+                """, HOUSEHOLD_ID, ITEM_ID, tagId, HOUSEHOLD_ID, SECOND_ITEM_ID, tagId);
+
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"乳制品\",\"limit\":10}",
+                response -> response.contains("牛奶") && response.contains("酸奶")
+                        ? "乳制品有牛奶和酸奶。" : "没有找到。");
+
+        var result = mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "帮我查一下",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value("乳制品有牛奶和酸奶。"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(2))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].名称").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[1].名称").value("酸奶"))
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString()).doesNotContain("面包");
+    }
+
+    @Test
+    void confirmedLotSnapshotKeepsPositionsAndLatestMovementOnThatLot() throws Exception {
+        UUID otherLotId = UUID.fromString("50000000-0000-0000-0000-000000000099");
+        UUID otherPositionId = UUID.fromString("70000000-0000-0000-0000-000000000099");
+        UUID otherMovementId = UUID.fromString("80000000-0000-0000-0000-000000000099");
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, expiry_date, lot_number, version)
+                VALUES (?, ?, ?, ?, 'LOT-OTHER', 1)
+                """, otherLotId, HOUSEHOLD_ID, ITEM_ID, LocalDate.now().plusDays(90));
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '8', 0)
+                """, otherPositionId, HOUSEHOLD_ID, otherLotId, KITCHEN_ID);
+        jdbc.update("""
+                INSERT INTO inventory_movement
+                    (id, household_id, lot_id, item_id, type, quantity, from_location_id,
+                     to_location_id, reason, operator_account_id, business_time,
+                     created_at, idempotency_key)
+                VALUES (?, ?, ?, ?, 'CONSUME', '2', ?, NULL, '领用', ?,
+                        ?, ?, ?)
+                """, otherMovementId, HOUSEHOLD_ID, otherLotId, ITEM_ID, KITCHEN_ID,
+                OWNER_ACCOUNT_ID, Timestamp.from(OffsetDateTime.now().plusHours(2).toInstant()),
+                Timestamp.from(OffsetDateTime.now().plusHours(2).toInstant()),
+                UUID.randomUUID().toString());
+
+        var toolResponse = new AtomicReference<String>();
+        chatModel.script(
+                "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
+                response -> {
+                    toolResponse.set(response);
+                    return response.contains("LOT-001") ? "这个批次还有 5 瓶。" : "串到了其他批次。";
+                });
+
+        var result = mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个批次还有多少？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOT", "id": "%s"}
+                                }
+                                """.formatted(LOT_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value("这个批次还有 5 瓶。"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].批次号")
+                        .value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].当前总库存")
+                        .value("13"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].批次数量")
+                        .value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].低库存")
+                        .value("false"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows[0].原因").value("购入"))
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        assertThat(body).doesNotContain("LOT-OTHER");
+        assertThat(body).doesNotContain("领用");
+        assertThat(toolResponse.get()).contains("\"scopedStock\":\"5\"");
+        assertThat(toolResponse.get()).contains("\"totalStock\":\"13\"");
+    }
+
+    @Test
+    void lotNumberSearchThenSnapshotKeepsPositionsAndLatestMovementOnThatLot() throws Exception {
+        UUID otherLotId = seedSiblingLot();
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool(
+                        "searchLots", "{\"keyword\":\"LOT-001\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool(
+                        "itemStock",
+                        "{\"itemId\":\"%s\",\"lotId\":\"%s\",\"limit\":10}".formatted(ITEM_ID, LOT_ID))
+        ), steps -> {
+            String response = steps.payload(0);
+            return response.contains("LOT-001")
+                    && response.contains(LOT_ID.toString())
+                    && !response.contains("LOT-OTHER")
+                    ? "LOT-001 还有 5 瓶，放在厨房。"
+                    : "串到了其他批次。";
+        });
+
+        String expiry = LocalDate.now().plusDays(30).format(DateTimeFormatter.ISO_LOCAL_DATE);
+        var result = mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "帮我核对一下编号",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value("LOT-001 还有 5 瓶，放在厨房。"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'LOT_SEARCH')].rows[0].批次号")
+                        .value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'LOT_SEARCH')].rows[0].物品")
+                        .value("牛奶"))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOT')].lotId",
+                        org.hamcrest.Matchers.hasItem(LOT_ID.toString())))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].批次号")
+                        .value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].到期日").value(expiry))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].批次数量")
+                        .value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK_TOTAL')].rows[0].当前总库存")
+                        .value("13"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows[0].原因").value("购入"))
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        assertThat(body).doesNotContain("LOT-OTHER");
+        assertThat(body).doesNotContain("领用");
+        assertThat(body).doesNotContain(otherLotId.toString());
+        assertThat(chatModel.toolDispatchCount()).isEqualTo(2);
+    }
+
+    @Test
+    void lotNumberSearchThenSnapshotReturnsScopedStockAndItemTotalToTheModel() throws Exception {
+        seedSiblingLot();
+        var returnedToModel = new AtomicReference<ScriptedChatModel.ToolPayloadsByStep>();
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool(
+                        "searchLots", "{\"keyword\":\"LOT-001\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool(
+                        "itemStock",
+                        "{\"itemId\":\"%s\",\"lotId\":\"%s\",\"limit\":10}".formatted(ITEM_ID, LOT_ID))
+        ), steps -> {
+            returnedToModel.set(steps);
+            String snapshot = steps.size() > 1 ? steps.payload(1) : "";
+            return snapshot.contains("\"scopedStock\":\"5\"")
+                    && snapshot.contains("\"totalStock\":\"13\"")
+                    ? "LOT-001 范围内还有 5，整件物品一共 13。"
+                    : "快照没有把范围数量和总库存交给模型。";
+        });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "帮我核对一下编号",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value("LOT-001 范围内还有 5，整件物品一共 13。"));
+
+        ScriptedChatModel.ToolPayloadsByStep steps = returnedToModel.get();
+        assertThat(steps.size()).isEqualTo(2);
+        assertThat(steps.payload(0)).contains(LOT_ID.toString());
+        assertThat(steps.payload(0)).doesNotContain("\"scopedStock\"");
+        assertThat(steps.payload(1)).contains("\"scopedStock\":\"5\"")
+                .contains("\"totalStock\":\"13\"");
+    }
+
+    @Test
+    void serialNumberSearchThenSnapshotKeepsPositionsAndLatestMovementOnThatLot() throws Exception {
+        UUID otherLotId = seedSiblingLot();
+        jdbc.update("UPDATE inventory_lot SET serial_number = 'SN-COFFEE' WHERE id = ?", LOT_ID);
+
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool(
+                        "searchLots", "{\"keyword\":\"SN-COFFEE\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool(
+                        "itemStock",
+                        "{\"itemId\":\"%s\",\"lotId\":\"%s\",\"limit\":10}".formatted(ITEM_ID, LOT_ID))
+        ), steps -> {
+            String response = steps.payload(0);
+            return response.contains("SN-COFFEE")
+                    && response.contains(LOT_ID.toString())
+                    && !response.contains("LOT-OTHER")
+                    ? "序列号 SN-COFFEE 还有 5 瓶，放在厨房。"
+                    : "串到了其他批次。";
+        });
+
+        var result = mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "帮我核对一下编号",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value("序列号 SN-COFFEE 还有 5 瓶，放在厨房。"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'LOT_SEARCH')].rows[0].序列号")
+                        .value("SN-COFFEE"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'LOT_SEARCH')].rows[0].批次号")
+                        .value("LOT-001"))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOT')].lotId",
+                        org.hamcrest.Matchers.hasItem(LOT_ID.toString())))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].批次号")
+                        .value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'ITEM_STOCK')].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[?(@.kind == 'MOVEMENTS')].rows[0].原因").value("购入"))
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        assertThat(body).doesNotContain("LOT-OTHER");
+        assertThat(body).doesNotContain("领用");
+        assertThat(body).doesNotContain(otherLotId.toString());
+    }
+
+    @Test
+    void snapshotRejectsAnotherHouseholdLotWithoutLeakingItsSerial() throws Exception {
+        UUID otherHousehold = UUID.fromString("10000000-0000-0000-0000-000000000099");
+        UUID otherUnit = UUID.fromString("30000000-0000-0000-0000-000000000099");
+        UUID otherItem = UUID.fromString("40000000-0000-0000-0000-000000000098");
+        UUID otherLot = UUID.fromString("50000000-0000-0000-0000-000000000098");
+        jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+        try {
+            jdbc.update("""
+                    INSERT INTO household(singleton_key, id, name, timezone)
+                    VALUES (2, ?, '外家', 'Asia/Shanghai')
+                    """, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO catalog_unit(id, household_id, name, name_normalized, decimal_scale, status)
+                    VALUES (?, ?, '罐', '罐', 0, 'ACTIVE')
+                    """, otherUnit, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO catalog_item
+                        (id, household_id, name, management_type, unit_id, status, version)
+                    VALUES (?, ?, '外家茶叶', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                    """, otherItem, otherHousehold, otherUnit);
+            jdbc.update("""
+                    INSERT INTO inventory_lot(id, household_id, item_id, lot_number, serial_number, version)
+                    VALUES (?, ?, ?, 'LOT-FOREIGN', 'SN-FOREIGN', 1)
+                    """, otherLot, otherHousehold, otherItem);
+
+            chatModel.script(
+                    "itemStock",
+                    "{\"itemId\":\"%s\",\"lotId\":\"%s\",\"limit\":10}".formatted(ITEM_ID, otherLot),
+                    response -> response.contains("UNAVAILABLE")
+                            ? "暂时无法确认：该批次不属于当前家庭。"
+                            : "外家茶叶序列号 SN-FOREIGN 还有库存。");
+
+            var result = mvc.perform(post("/api/v1/ai/qa")
+                            .with(auth())
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "question": "帮我核对一下编号",
+                                      "answerScope": "HOUSEHOLD_FACT"
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                    .andExpect(jsonPath("$.summary").value(
+                            org.hamcrest.Matchers.containsString("暂时无法确认")))
+                    .andExpect(jsonPath("$.structuredResults").isEmpty())
+                    .andReturn();
+
+            String body = result.getResponse().getContentAsString();
+            assertThat(body).doesNotContain("外家茶叶");
+            assertThat(body).doesNotContain("SN-FOREIGN");
+            assertThat(body).doesNotContain("LOT-FOREIGN");
+        } finally {
+            jdbc.update("DELETE FROM inventory_lot WHERE id = ?", otherLot);
+            jdbc.update("DELETE FROM catalog_item WHERE id = ?", otherItem);
+            jdbc.update("DELETE FROM catalog_unit WHERE id = ?", otherUnit);
+            jdbc.update("DELETE FROM household WHERE id = ?", otherHousehold);
+            jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+            jdbc.execute("""
+                    ALTER TABLE household
+                    ADD CONSTRAINT ck_household_singleton CHECK (singleton_key = 1)
+                    """);
+        }
+    }
+
+    @Test
+    void itemSnapshotRejectsAnotherHouseholdItemWithoutLeakingItsName() throws Exception {
+        UUID otherHousehold = UUID.fromString("10000000-0000-0000-0000-000000000099");
+        UUID otherUnit = UUID.fromString("30000000-0000-0000-0000-000000000099");
+        UUID otherItem = UUID.fromString("40000000-0000-0000-0000-000000000098");
+        jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+        try {
+            jdbc.update("""
+                    INSERT INTO household(singleton_key, id, name, timezone)
+                    VALUES (2, ?, '外家', 'Asia/Shanghai')
+                    """, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO catalog_unit(id, household_id, name, name_normalized, decimal_scale, status)
+                    VALUES (?, ?, '罐', '罐', 0, 'ACTIVE')
+                    """, otherUnit, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO catalog_item
+                        (id, household_id, name, management_type, unit_id, status, version)
+                    VALUES (?, ?, '外家酱油', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                    """, otherItem, otherHousehold, otherUnit);
+
+            chatModel.script(
+                    "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(otherItem),
+                    response -> response.contains("UNAVAILABLE")
+                            ? "暂时无法确认：该物品不属于当前家庭。"
+                            : "外家酱油还有库存。");
+
+            var result = mvc.perform(post("/api/v1/ai/qa")
+                            .with(auth())
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "question": "这件东西还有多少？",
+                                      "answerScope": "HOUSEHOLD_FACT"
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                    .andExpect(jsonPath("$.summary").value(
+                            org.hamcrest.Matchers.containsString("暂时无法确认")))
+                    .andExpect(jsonPath("$.structuredResults").isEmpty())
+                    .andReturn();
+
+            assertThat(result.getResponse().getContentAsString()).doesNotContain("外家酱油");
+        } finally {
+            jdbc.update("DELETE FROM catalog_item WHERE id = ?", otherItem);
+            jdbc.update("DELETE FROM catalog_unit WHERE id = ?", otherUnit);
+            jdbc.update("DELETE FROM household WHERE id = ?", otherHousehold);
+            jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+            jdbc.execute("""
+                    ALTER TABLE household
+                    ADD CONSTRAINT ck_household_singleton CHECK (singleton_key = 1)
+                    """);
+        }
     }
 
     @Test
@@ -567,6 +1065,769 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void unconfirmedLocationIsFoundByNameThenStockIncludesChildren() throws Exception {
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000010");
+        UUID yogurtId = UUID.fromString("40000000-0000-0000-0000-000000000010");
+        UUID yogurtLotId = UUID.fromString("50000000-0000-0000-0000-000000000010");
+        LocalDate yogurtExpiry = LocalDate.of(2026, 10, 3);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '酸奶', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, yogurtId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, expiry_date, lot_number, version)
+                VALUES (?, ?, ?, ?, 'LOT-YOGURT', 1)
+                """, yogurtLotId, HOUSEHOLD_ID, yogurtId, yogurtExpiry);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '2', 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, yogurtLotId, fridgeId);
+
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool(
+                        "searchLocations", "{\"keyword\":\"厨房\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool(
+                        "locationStock",
+                        "{\"locationId\":\"%s\",\"itemKeyword\":\"\",\"limit\":10}".formatted(KITCHEN_ID))
+        ), response -> "厨房和冰箱里的库存见表格。");
+
+        String milkExpiry = LocalDate.now().plusDays(30).format(DateTimeFormatter.ISO_LOCAL_DATE);
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "家里有哪些柜子？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.targetScope").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOCATION_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].名称",
+                        org.hamcrest.Matchers.hasItems("厨房", "冰箱")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].路径",
+                        org.hamcrest.Matchers.hasItems("厨房", "厨房 / 冰箱")))
+                .andExpect(jsonPath("$.structuredResults[1].kind").value("LOCATION_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[1].title").value(
+                        org.hamcrest.Matchers.containsString("厨房")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[*].物品",
+                        org.hamcrest.Matchers.hasItems("牛奶", "酸奶")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[?(@.物品 == '牛奶')].批次号")
+                        .value(org.hamcrest.Matchers.hasItem("LOT-001")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[?(@.物品 == '牛奶')].位置")
+                        .value(org.hamcrest.Matchers.hasItem("厨房")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[?(@.物品 == '牛奶')].数量")
+                        .value(org.hamcrest.Matchers.hasItem("5")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[?(@.物品 == '牛奶')].到期日")
+                        .value(org.hamcrest.Matchers.hasItem(milkExpiry)))
+                .andExpect(jsonPath("$.structuredResults[1].rows[?(@.物品 == '酸奶')].批次号")
+                        .value(org.hamcrest.Matchers.hasItem("LOT-YOGURT")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[?(@.物品 == '酸奶')].位置")
+                        .value(org.hamcrest.Matchers.hasItem("厨房 / 冰箱")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[?(@.物品 == '酸奶')].数量")
+                        .value(org.hamcrest.Matchers.hasItem("2")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[?(@.物品 == '酸奶')].到期日")
+                        .value(org.hamcrest.Matchers.hasItem("2026-10-03")))
+                .andExpect(jsonPath("$.jumps[*].type",
+                        org.hamcrest.Matchers.hasItems("ITEM", "LOT", "LOCATION")))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOCATION')].locationId",
+                        org.hamcrest.Matchers.hasItems(KITCHEN_ID.toString(), fridgeId.toString())))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'ITEM')].itemId",
+                        org.hamcrest.Matchers.hasItems(ITEM_ID.toString(), yogurtId.toString())))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOT')].lotId",
+                        org.hamcrest.Matchers.hasItems(LOT_ID.toString(), yogurtLotId.toString())));
+
+        assertThat(chatModel.toolDispatchCount()).isEqualTo(2);
+    }
+
+    @Test
+    void confirmedLocationLotSearchReturnsLotsStockedInThatPlaceAndChildren() throws Exception {
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000077");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-000000000078");
+        UUID inScopeLotId = UUID.fromString("50000000-0000-0000-0000-000000000077");
+        UUID outsideLotId = UUID.fromString("50000000-0000-0000-0000-000000000078");
+        UUID zeroLotId = UUID.fromString("50000000-0000-0000-0000-000000000079");
+        UUID sharedSerialOutsideLotId = UUID.fromString("50000000-0000-0000-0000-00000000007a");
+        UUID otherHousehold = UUID.fromString("10000000-0000-0000-0000-000000000077");
+        UUID otherUnit = UUID.fromString("30000000-0000-0000-0000-000000000077");
+        UUID otherItem = UUID.fromString("40000000-0000-0000-0000-000000000077");
+        UUID otherLocation = UUID.fromString("60000000-0000-0000-0000-000000000079");
+        UUID foreignLotId = UUID.fromString("50000000-0000-0000-0000-00000000007b");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0),
+                       (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot
+                    (id, household_id, item_id, lot_number, serial_number, version)
+                VALUES (?, ?, ?, 'LOT-2024-01', 'SN-SHARED-77', 1),
+                       (?, ?, ?, 'LOT-2024-01-BED', 'SN-BED-77', 1),
+                       (?, ?, ?, 'LOT-2024-01-ZERO', 'SN-ZERO-77', 1),
+                       (?, ?, ?, 'LOT-BED-77', 'SN-SHARED-77', 1)
+                """, inScopeLotId, HOUSEHOLD_ID, ITEM_ID,
+                outsideLotId, HOUSEHOLD_ID, ITEM_ID,
+                zeroLotId, HOUSEHOLD_ID, ITEM_ID,
+                sharedSerialOutsideLotId, HOUSEHOLD_ID, ITEM_ID);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '2', 0),
+                       (?, ?, ?, ?, '4', 0),
+                       (?, ?, ?, ?, '0', 0),
+                       (?, ?, ?, ?, '6', 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, inScopeLotId, fridgeId,
+                UUID.randomUUID(), HOUSEHOLD_ID, outsideLotId, bedroomId,
+                UUID.randomUUID(), HOUSEHOLD_ID, zeroLotId, fridgeId,
+                UUID.randomUUID(), HOUSEHOLD_ID, sharedSerialOutsideLotId, bedroomId);
+        jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+        try {
+            jdbc.update("""
+                    INSERT INTO household(singleton_key, id, name, timezone)
+                    VALUES (2, ?, '外家', 'Asia/Shanghai')
+                    """, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO catalog_unit(id, household_id, name, name_normalized, decimal_scale, status)
+                    VALUES (?, ?, '罐', '罐', 0, 'ACTIVE')
+                    """, otherUnit, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO catalog_item
+                        (id, household_id, name, management_type, unit_id, status, version)
+                    VALUES (?, ?, '外家黄豆', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                    """, otherItem, otherHousehold, otherUnit);
+            jdbc.update("""
+                    INSERT INTO location
+                        (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                    VALUES (?, ?, NULL, '外家厨房', '外家厨房', 0, false, 0)
+                    """, otherLocation, otherHousehold);
+            jdbc.update("""
+                    INSERT INTO inventory_lot
+                        (id, household_id, item_id, lot_number, serial_number, version)
+                    VALUES (?, ?, ?, 'LOT-2024-01-FOREIGN', 'SN-SHARED-77', 1)
+                    """, foreignLotId, otherHousehold, otherItem);
+            jdbc.update("""
+                    INSERT INTO inventory_stock_position
+                        (id, household_id, lot_id, location_id, quantity, revision)
+                    VALUES (?, ?, ?, ?, '9', 0)
+                    """, UUID.randomUUID(), otherHousehold, foreignLotId, otherLocation);
+
+            var lotToolResponse = new AtomicReference<String>();
+            chatModel.script(
+                    "searchLots", "{\"keyword\":\"LOT-2024-01\",\"limit\":10}",
+                    response -> {
+                        lotToolResponse.set(response);
+                        return response.contains("LOT-2024-01")
+                                && response.contains("SN-SHARED-77")
+                                && response.contains(inScopeLotId.toString())
+                                && !response.contains("LOT-2024-01-BED")
+                                && !response.contains("SN-BED-77")
+                                && !response.contains("LOT-2024-01-ZERO")
+                                && !response.contains("SN-ZERO-77")
+                                && !response.contains("LOT-BED-77")
+                                && !response.contains("LOT-2024-01-FOREIGN")
+                                && !response.contains("外家黄豆")
+                                && !response.contains(outsideLotId.toString())
+                                && !response.contains(zeroLotId.toString())
+                                && !response.contains(sharedSerialOutsideLotId.toString())
+                                && !response.contains(foreignLotId.toString())
+                                ? "冰箱里的 LOT-2024-01 对得上。"
+                                : "暂时无法确认。";
+                    });
+
+            var lotResult = mvc.perform(post("/api/v1/ai/qa")
+                            .with(auth())
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "question": "LOT-2024-01 还有多少",
+                                      "answerScope": "HOUSEHOLD_FACT",
+                                      "scope": {"type": "LOCATION", "id": "%s"}
+                                    }
+                                    """.formatted(KITCHEN_ID)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                    .andExpect(jsonPath("$.summary").value("冰箱里的 LOT-2024-01 对得上。"))
+                    .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                    .andExpect(jsonPath("$.targetScope.type").value("LOCATION"))
+                    .andExpect(jsonPath("$.targetScope.id").value(KITCHEN_ID.toString()))
+                    .andExpect(jsonPath("$.sources[0].dataTime").isNotEmpty())
+                    .andExpect(jsonPath("$.structuredResults[0].kind").value("LOT_SEARCH"))
+                    .andExpect(jsonPath("$.structuredResults[0].title").value("批次搜索结果"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-2024-01"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].序列号").value("SN-SHARED-77"))
+                    .andExpect(jsonPath("$.jumps[?(@.type == 'LOT')].lotId",
+                            org.hamcrest.Matchers.contains(inScopeLotId.toString())))
+                    .andExpect(jsonPath("$.jumps[?(@.type == 'LOT')].label",
+                            org.hamcrest.Matchers.contains("牛奶 · LOT-2024-01")))
+                    .andReturn();
+
+            String lotBody = lotResult.getResponse().getContentAsString();
+            assertThat(lotBody).doesNotContain("LOT-2024-01-BED");
+            assertThat(lotBody).doesNotContain("SN-BED-77");
+            assertThat(lotBody).doesNotContain("LOT-2024-01-ZERO");
+            assertThat(lotBody).doesNotContain("SN-ZERO-77");
+            assertThat(lotBody).doesNotContain("LOT-BED-77");
+            assertThat(lotBody).doesNotContain("LOT-2024-01-FOREIGN");
+            assertThat(lotBody).doesNotContain("外家黄豆");
+            assertThat(lotBody).doesNotContain(outsideLotId.toString());
+            assertThat(lotBody).doesNotContain(zeroLotId.toString());
+            assertThat(lotBody).doesNotContain(sharedSerialOutsideLotId.toString());
+            assertThat(lotBody).doesNotContain(foreignLotId.toString());
+            assertThat(lotToolResponse.get()).contains("\"lotNumber\":\"LOT-2024-01\"");
+            assertThat(lotToolResponse.get()).contains("\"serialNumber\":\"SN-SHARED-77\"");
+            assertThat(lotToolResponse.get()).doesNotContain("LOT-2024-01-BED");
+            assertThat(lotToolResponse.get()).doesNotContain("SN-BED-77");
+            assertThat(lotToolResponse.get()).doesNotContain("LOT-2024-01-ZERO");
+            assertThat(lotToolResponse.get()).doesNotContain("SN-ZERO-77");
+            assertThat(lotToolResponse.get()).doesNotContain("LOT-BED-77");
+            assertThat(lotToolResponse.get()).doesNotContain("LOT-2024-01-FOREIGN");
+            assertThat(lotToolResponse.get()).doesNotContain("外家黄豆");
+
+            chatModel.reset();
+            var serialToolResponse = new AtomicReference<String>();
+            chatModel.script(
+                    "searchLots", "{\"keyword\":\"SN-SHARED-77\",\"limit\":10}",
+                    response -> {
+                        serialToolResponse.set(response);
+                        return response.contains("SN-SHARED-77")
+                                && response.contains(inScopeLotId.toString())
+                                && !response.contains("LOT-BED-77")
+                                && !response.contains("LOT-2024-01-FOREIGN")
+                                && !response.contains("外家黄豆")
+                                && !response.contains(sharedSerialOutsideLotId.toString())
+                                && !response.contains(foreignLotId.toString())
+                                ? "序列号只对上冰箱里的那一批。"
+                                : "暂时无法确认。";
+                    });
+
+            var serialResult = mvc.perform(post("/api/v1/ai/qa")
+                            .with(auth())
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "question": "这个位置里序列号对得上的批次",
+                                      "answerScope": "HOUSEHOLD_FACT",
+                                      "scope": {"type": "LOCATION", "id": "%s"}
+                                    }
+                                    """.formatted(KITCHEN_ID)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                    .andExpect(jsonPath("$.summary").value("序列号只对上冰箱里的那一批。"))
+                    .andExpect(jsonPath("$.dataTime").isNotEmpty())
+                    .andExpect(jsonPath("$.structuredResults[0].kind").value("LOT_SEARCH"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-2024-01"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[0].序列号").value("SN-SHARED-77"))
+                    .andExpect(jsonPath("$.jumps[?(@.type == 'LOT')].lotId",
+                            org.hamcrest.Matchers.contains(inScopeLotId.toString())))
+                    .andReturn();
+
+            String serialBody = serialResult.getResponse().getContentAsString();
+            assertThat(serialBody).doesNotContain("LOT-BED-77");
+            assertThat(serialBody).doesNotContain("LOT-2024-01-BED");
+            assertThat(serialBody).doesNotContain("SN-BED-77");
+            assertThat(serialBody).doesNotContain("LOT-2024-01-ZERO");
+            assertThat(serialBody).doesNotContain("SN-ZERO-77");
+            assertThat(serialBody).doesNotContain("LOT-2024-01-FOREIGN");
+            assertThat(serialBody).doesNotContain("外家黄豆");
+            assertThat(serialBody).doesNotContain(outsideLotId.toString());
+            assertThat(serialBody).doesNotContain(zeroLotId.toString());
+            assertThat(serialBody).doesNotContain(sharedSerialOutsideLotId.toString());
+            assertThat(serialBody).doesNotContain(foreignLotId.toString());
+            assertThat(serialToolResponse.get()).contains("\"lotNumber\":\"LOT-2024-01\"");
+            assertThat(serialToolResponse.get()).doesNotContain("LOT-BED-77");
+            assertThat(serialToolResponse.get()).doesNotContain("LOT-2024-01-FOREIGN");
+            assertThat(serialToolResponse.get()).doesNotContain("外家黄豆");
+        } finally {
+            jdbc.update("DELETE FROM inventory_stock_position WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM inventory_lot WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM location WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM catalog_item WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM catalog_unit WHERE household_id = ?", otherHousehold);
+            jdbc.update("DELETE FROM household WHERE id = ?", otherHousehold);
+            jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+            jdbc.execute("""
+                    ALTER TABLE household
+                    ADD CONSTRAINT ck_household_singleton CHECK (singleton_key = 1)
+                    """);
+        }
+    }
+
+    @Test
+    void confirmedLocationLotSearchThenSnapshotCountsStockAndMovementsInChildPlaces() throws Exception {
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000177");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-000000000178");
+        UUID fridgeLotId = UUID.fromString("50000000-0000-0000-0000-000000000177");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0),
+                       (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-FRIDGE-77', 1)
+                """, fridgeLotId, HOUSEHOLD_ID, ITEM_ID);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '3', 0),
+                       (?, ?, ?, ?, '4', 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, fridgeLotId, fridgeId,
+                UUID.randomUUID(), HOUSEHOLD_ID, fridgeLotId, bedroomId);
+        var fridgeTime = Timestamp.from(OffsetDateTime.now().plusHours(1).toInstant());
+        var bedroomTime = Timestamp.from(OffsetDateTime.now().plusHours(2).toInstant());
+        jdbc.update("""
+                INSERT INTO inventory_movement
+                    (id, household_id, lot_id, item_id, type, quantity, from_location_id,
+                     to_location_id, reason, operator_account_id, business_time,
+                     created_at, idempotency_key)
+                VALUES (?, ?, ?, ?, 'INBOUND', '3', NULL, ?, '放进冰箱', ?, ?, ?, ?),
+                       (?, ?, ?, ?, 'INBOUND', '4', NULL, ?, '放进卧室', ?, ?, ?, ?)
+                """,
+                UUID.randomUUID(), HOUSEHOLD_ID, fridgeLotId, ITEM_ID, fridgeId,
+                OWNER_ACCOUNT_ID, fridgeTime, fridgeTime, UUID.randomUUID().toString(),
+                UUID.randomUUID(), HOUSEHOLD_ID, fridgeLotId, ITEM_ID, bedroomId,
+                OWNER_ACCOUNT_ID, bedroomTime, bedroomTime, UUID.randomUUID().toString());
+
+        var lotSteps = new AtomicReference<ScriptedChatModel.ToolPayloadsByStep>();
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool(
+                        "searchLots", "{\"keyword\":\"LOT-FRIDGE-77\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool(
+                        "itemStock",
+                        "{\"itemId\":\"%s\",\"lotId\":\"%s\",\"limit\":10}".formatted(ITEM_ID, fridgeLotId))
+        ), steps -> {
+            lotSteps.set(steps);
+            return "冰箱里的 LOT-FRIDGE-77 还有 3 瓶。";
+        });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "LOT-FRIDGE-77 还有多少",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOT_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[1].kind").value("ITEM_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[1].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[1].rows[0].位置").value("厨房 / 冰箱"))
+                .andExpect(jsonPath("$.structuredResults[1].rows[0].数量").value("3"))
+                .andExpect(jsonPath("$.structuredResults[2].kind").value("ITEM_STOCK_TOTAL"))
+                .andExpect(jsonPath("$.structuredResults[2].rows[0].当前总库存").value("12"))
+                .andExpect(jsonPath("$.structuredResults[2].rows[0].批次数量").value("3"))
+                .andExpect(jsonPath("$.structuredResults[3].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[3].rows[0].原因").value("放进冰箱"))
+                .andExpect(jsonPath("$.structuredResults[3].rows[0].到").value("厨房 / 冰箱"));
+
+        var steps = lotSteps.get();
+        assertThat(steps.size()).isEqualTo(2);
+        assertThat(steps.payload(0)).contains(fridgeLotId.toString());
+        assertThat(steps.payload(1))
+                .contains("\"scopedStock\":\"3\"")
+                .contains("\"totalStock\":\"12\"")
+                .contains("厨房 / 冰箱")
+                .contains("放进冰箱")
+                .doesNotContain("卧室");
+
+        chatModel.reset();
+        var itemResponse = new AtomicReference<String>();
+        chatModel.script(
+                "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
+                response -> {
+                    itemResponse.set(response);
+                    return "厨房和冰箱里一共 8 瓶。";
+                });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶在这里还有多少",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(2))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].位置",
+                        org.hamcrest.Matchers.containsInAnyOrder("厨房", "厨房 / 冰箱")))
+                .andExpect(jsonPath("$.structuredResults[1].rows[0].位置内数量").value("8"))
+                .andExpect(jsonPath("$.structuredResults[1].rows[0].当前总库存").value("12"))
+                .andExpect(jsonPath("$.structuredResults[2].rows[0].原因").value("放进冰箱"));
+        assertThat(itemResponse.get())
+                .contains("\"scopedStock\":\"8\"")
+                .doesNotContain("卧室");
+    }
+
+    @Test
+    void confirmedLocationExpiringLotsStayInsideThatPlaceAndChildren() throws Exception {
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000011");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-000000000012");
+        UUID yogurtId = UUID.fromString("40000000-0000-0000-0000-000000000011");
+        UUID breadId = UUID.fromString("40000000-0000-0000-0000-000000000012");
+        UUID splitLotId = UUID.fromString("50000000-0000-0000-0000-000000000011");
+        UUID bedroomLotId = UUID.fromString("50000000-0000-0000-0000-000000000012");
+        LocalDate today = LocalDate.now(HOUSEHOLD_ZONE);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0),
+                       (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '酸奶', 'CONSUMABLE', ?, 'ACTIVE', 1),
+                       (?, ?, '面包', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, yogurtId, HOUSEHOLD_ID, UNIT_ID, breadId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, expiry_date, lot_number, version)
+                VALUES (?, ?, ?, ?, 'LOT-SPLIT', 1),
+                       (?, ?, ?, ?, 'LOT-BED', 1)
+                """, splitLotId, HOUSEHOLD_ID, yogurtId, today.plusDays(5),
+                bedroomLotId, HOUSEHOLD_ID, breadId, today.plusDays(2));
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '2', 0),
+                       (?, ?, ?, ?, '5', 0),
+                       (?, ?, ?, ?, '4', 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, splitLotId, fridgeId,
+                UUID.randomUUID(), HOUSEHOLD_ID, splitLotId, bedroomId,
+                UUID.randomUUID(), HOUSEHOLD_ID, bedroomLotId, bedroomId);
+
+        chatModel.script(
+                "expiringLots", "{\"withinDays\":30,\"limit\":10}",
+                response -> "临期批次见表格。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置快过期的",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.targetScope.type").value("LOCATION"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRING_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].批次号",
+                        org.hamcrest.Matchers.hasItems("LOT-SPLIT", "LOT-001")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].批次号",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("LOT-BED"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.批次号 == 'LOT-SPLIT')].数量")
+                        .value(org.hamcrest.Matchers.hasItem("2")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.批次号 == 'LOT-SPLIT')].物品")
+                        .value(org.hamcrest.Matchers.hasItem("酸奶")))
+                .andExpect(jsonPath("$.jumps[*].type",
+                        org.hamcrest.Matchers.hasItems("ITEM", "LOT")));
+
+        chatModel.reset();
+        chatModel.script(
+                "expiringLots", "{\"withinDays\":30,\"limit\":10}",
+                response -> "全家庭临期见表格。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "哪些批次快到期了？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetScope").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRING_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].批次号",
+                        org.hamcrest.Matchers.hasItems("LOT-BED", "LOT-SPLIT", "LOT-001")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.批次号 == 'LOT-SPLIT')].数量")
+                        .value(org.hamcrest.Matchers.hasItem("7")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.批次号 == 'LOT-BED')].数量")
+                        .value(org.hamcrest.Matchers.hasItem("4")))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRED_LOTS"))));
+    }
+
+    @Test
+    void confirmedLocationExpiredLotsStayInsideThatPlaceAndStaySeparateFromExpiring() throws Exception {
+        seedExpiredLot();
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000013");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-000000000014");
+        UUID yogurtId = UUID.fromString("40000000-0000-0000-0000-000000000013");
+        UUID jamId = UUID.fromString("40000000-0000-0000-0000-000000000014");
+        UUID splitLotId = UUID.fromString("50000000-0000-0000-0000-000000000013");
+        UUID bedroomLotId = UUID.fromString("50000000-0000-0000-0000-000000000014");
+        UUID fridgeOnlyLotId = UUID.fromString("50000000-0000-0000-0000-000000000015");
+        LocalDate today = LocalDate.now(HOUSEHOLD_ZONE);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0),
+                       (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '酸奶', 'CONSUMABLE', ?, 'ACTIVE', 1),
+                       (?, ?, '果酱', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, yogurtId, HOUSEHOLD_ID, UNIT_ID, jamId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, expiry_date, lot_number, version)
+                VALUES (?, ?, ?, ?, 'LOT-OLD-SPLIT', 1),
+                       (?, ?, ?, ?, 'LOT-JAM', 1),
+                       (?, ?, ?, ?, 'LOT-CHEESE', 1)
+                """, splitLotId, HOUSEHOLD_ID, yogurtId, today.minusDays(2),
+                bedroomLotId, HOUSEHOLD_ID, jamId, today.minusDays(4),
+                fridgeOnlyLotId, HOUSEHOLD_ID, yogurtId, today.minusDays(1));
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '2', 0),
+                       (?, ?, ?, ?, '5', 0),
+                       (?, ?, ?, ?, '6', 0),
+                       (?, ?, ?, ?, '1', 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, splitLotId, fridgeId,
+                UUID.randomUUID(), HOUSEHOLD_ID, splitLotId, bedroomId,
+                UUID.randomUUID(), HOUSEHOLD_ID, bedroomLotId, bedroomId,
+                UUID.randomUUID(), HOUSEHOLD_ID, fridgeOnlyLotId, fridgeId);
+
+        chatModel.script(
+                "expiredLots", "{\"limit\":10}",
+                response -> "已过期批次见表格。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置已经过期的",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRED_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].批次号",
+                        org.hamcrest.Matchers.hasItems("LOT-EXPIRED", "LOT-OLD-SPLIT", "LOT-CHEESE")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].批次号",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("LOT-JAM"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].批次号",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("LOT-001"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.批次号 == 'LOT-OLD-SPLIT')].数量")
+                        .value(org.hamcrest.Matchers.hasItem("2")))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRING_LOTS"))));
+
+        chatModel.reset();
+        chatModel.script(
+                "expiredLots", "{\"limit\":10}",
+                response -> "全家庭已过期见表格。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "有没有已经过期还留着的",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetScope").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRED_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].批次号",
+                        org.hamcrest.Matchers.hasItems("LOT-JAM", "LOT-EXPIRED", "LOT-OLD-SPLIT")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.批次号 == 'LOT-OLD-SPLIT')].数量")
+                        .value(org.hamcrest.Matchers.hasItem("7")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.批次号 == 'LOT-JAM')].数量")
+                        .value(org.hamcrest.Matchers.hasItem("6")))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRING_LOTS"))));
+    }
+
+    @Test
+    void locationIdOutsideHouseholdOrConfirmedScopeIsUnavailable() throws Exception {
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-000000000021");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-000000000022");
+        UUID yogurtId = UUID.fromString("40000000-0000-0000-0000-000000000021");
+        UUID breadId = UUID.fromString("40000000-0000-0000-0000-000000000022");
+        UUID yogurtLotId = UUID.fromString("50000000-0000-0000-0000-000000000021");
+        UUID breadLotId = UUID.fromString("50000000-0000-0000-0000-000000000022");
+        UUID foreignHouseholdId = UUID.fromString("10000000-0000-0000-0000-0000000000b1");
+        UUID foreignUnitId = UUID.fromString("30000000-0000-0000-0000-0000000000b1");
+        UUID foreignItemId = UUID.fromString("40000000-0000-0000-0000-0000000000b1");
+        UUID foreignLocationId = UUID.fromString("60000000-0000-0000-0000-0000000000b1");
+        UUID foreignLotId = UUID.fromString("50000000-0000-0000-0000-0000000000b1");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0),
+                       (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '酸奶', 'CONSUMABLE', ?, 'ACTIVE', 1),
+                       (?, ?, '面包', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, yogurtId, HOUSEHOLD_ID, UNIT_ID, breadId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-YOGURT', 1),
+                       (?, ?, ?, 'LOT-BREAD', 1)
+                """, yogurtLotId, HOUSEHOLD_ID, yogurtId, breadLotId, HOUSEHOLD_ID, breadId);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '2', 0),
+                       (?, ?, ?, ?, '4', 0)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, yogurtLotId, fridgeId,
+                UUID.randomUUID(), HOUSEHOLD_ID, breadLotId, bedroomId);
+
+        jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+        try {
+            jdbc.update("""
+                    INSERT INTO household(singleton_key, id, name, timezone)
+                    VALUES (2, ?, '外家', 'Asia/Shanghai')
+                    """, foreignHouseholdId);
+            jdbc.update("""
+                    INSERT INTO catalog_unit(id, household_id, name, name_normalized, decimal_scale, status)
+                    VALUES (?, ?, '盒', '盒', 0, 'ACTIVE')
+                    """, foreignUnitId, foreignHouseholdId);
+            jdbc.update("""
+                    INSERT INTO catalog_item
+                        (id, household_id, name, management_type, unit_id, status, version)
+                    VALUES (?, ?, '外家饼干', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                    """, foreignItemId, foreignHouseholdId, foreignUnitId);
+            jdbc.update("""
+                    INSERT INTO location
+                        (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                    VALUES (?, ?, NULL, '外家厨房', '外家厨房', 0, false, 0)
+                    """, foreignLocationId, foreignHouseholdId);
+            jdbc.update("""
+                    INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                    VALUES (?, ?, ?, 'LOT-FOREIGN', 1)
+                    """, foreignLotId, foreignHouseholdId, foreignItemId);
+            jdbc.update("""
+                    INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                    VALUES (?, ?, ?, ?, '9', 0)
+                    """, UUID.randomUUID(), foreignHouseholdId, foreignLotId, foreignLocationId);
+
+            chatModel.script(
+                    "locationStock",
+                    "{\"locationId\":\"%s\",\"itemKeyword\":\"\",\"limit\":10}".formatted(fridgeId),
+                    response -> "冰箱库存见表格。");
+            mvc.perform(post("/api/v1/ai/qa")
+                            .with(auth())
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "question": "这个位置里有什么",
+                                      "answerScope": "HOUSEHOLD_FACT",
+                                      "scope": {"type": "LOCATION", "id": "%s"}
+                                    }
+                                    """.formatted(KITCHEN_ID)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                    .andExpect(jsonPath("$.structuredResults[0].kind").value("LOCATION_STOCK"))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[*].物品",
+                            org.hamcrest.Matchers.hasItem("酸奶")))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[*].物品",
+                            org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("牛奶"))))
+                    .andExpect(jsonPath("$.structuredResults[0].rows[*].物品",
+                            org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("面包"))))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(
+                            org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("外家饼干"))));
+
+            chatModel.reset();
+            chatModel.script(
+                    "locationStock",
+                    "{\"locationId\":\"%s\",\"itemKeyword\":\"\",\"limit\":10}".formatted(bedroomId),
+                    response -> response.contains("UNAVAILABLE")
+                            ? "暂时无法确认。"
+                            : "错误地返回了卧室库存。");
+            mvc.perform(post("/api/v1/ai/qa")
+                            .with(auth())
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "question": "这个位置里有什么",
+                                      "answerScope": "HOUSEHOLD_FACT",
+                                      "scope": {"type": "LOCATION", "id": "%s"}
+                                    }
+                                    """.formatted(KITCHEN_ID)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                    .andExpect(jsonPath("$.structuredResults").isEmpty())
+                    .andExpect(jsonPath("$.sources[0].available").value(false))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(
+                            org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("面包"))))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(
+                            org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("外家饼干"))));
+
+            chatModel.reset();
+            chatModel.script(
+                    "locationStock",
+                    "{\"locationId\":\"%s\",\"itemKeyword\":\"\",\"limit\":10}".formatted(foreignLocationId),
+                    response -> response.contains("UNAVAILABLE")
+                            ? "暂时无法确认。"
+                            : "错误地返回了外家库存。");
+            mvc.perform(post("/api/v1/ai/qa")
+                            .with(auth())
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "question": "家里有哪些柜子？",
+                                      "answerScope": "HOUSEHOLD_FACT"
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.targetScope").value(org.hamcrest.Matchers.nullValue()))
+                    .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                    .andExpect(jsonPath("$.structuredResults").isEmpty())
+                    .andExpect(jsonPath("$.sources[0].available").value(false))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(
+                            org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("外家饼干"))));
+        } finally {
+            TestDb.cleanAll(jdbc);
+            jdbc.execute("ALTER TABLE household DROP CONSTRAINT IF EXISTS ck_household_singleton");
+            jdbc.execute("ALTER TABLE household ADD CONSTRAINT ck_household_singleton CHECK (singleton_key = 1)");
+        }
+    }
+
+    @Test
     void confirmedLotScopeRejectsModelRequestsForAnotherItem() throws Exception {
         jdbc.update("""
                 INSERT INTO catalog_item
@@ -662,6 +1923,234 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void modelUnavailableConfirmedLocationMovementQuestionReturnsRecentMovementsIncludingChildren()
+            throws Exception {
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-0000000000e1");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-0000000000e2");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '2', 0)
+                """, UUID.fromString("70000000-0000-0000-0000-0000000000e1"), HOUSEHOLD_ID, LOT_ID, fridgeId);
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, fridgeId, "6", "冷藏入库",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusHours(1));
+        insertQaMovement(ITEM_ID, LOT_ID, "LOSS", KITCHEN_ID, null, "1", "灶台报损",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusHours(2));
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, bedroomId, "4", "卧室入库",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusMinutes(10));
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置最近的流水",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「厨房」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("LOCATION_STOCK"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].物品")
+                        .value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].类型")
+                        .value("INBOUND"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].数量")
+                        .value("6"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].到")
+                        .value("厨房 / 冰箱"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冷藏入库')].操作人")
+                        .value("户主"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '灶台报损')].类型")
+                        .value("LOSS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '灶台报损')].数量")
+                        .value("1"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '灶台报损')].从")
+                        .value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("卧室入库"))))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOCATION')].locationId",
+                        org.hamcrest.Matchers.hasItem(KITCHEN_ID.toString())))
+                .andExpect(jsonPath("$.jumps[*].type",
+                        org.hamcrest.Matchers.hasItem("MOVEMENT")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"进出", "入库", "领用", "报损"})
+    void modelUnavailableConfirmedLocationMovementKeywordReturnsRecentMovements(String keyword)
+            throws Exception {
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置%s",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(keyword, KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「厨房」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("LOCATION_STOCK"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].物品")
+                        .value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].类型")
+                        .value("INBOUND"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].数量")
+                        .value("5"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].到")
+                        .value("厨房"))
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOCATION')].locationId",
+                        org.hamcrest.Matchers.hasItem(KITCHEN_ID.toString())))
+                .andExpect(jsonPath("$.jumps[*].type",
+                        org.hamcrest.Matchers.hasItem("MOVEMENT")));
+    }
+
+    @Test
+    void modelUnavailableConfirmedLocationQuestionWithoutMovementKeywordReturnsLocationStock()
+            throws Exception {
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "6", "冷藏入库",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusHours(1));
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置里有什么",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOCATION_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「厨房」当前库存"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("MOVEMENTS"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].物品").value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].位置").value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因").doesNotExist())
+                .andExpect(jsonPath("$.jumps[?(@.type == 'LOCATION')].locationId",
+                        org.hamcrest.Matchers.hasItem(KITCHEN_ID.toString())));
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "这个位置的数量变化，操作人是谁",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("LOCATION_STOCK"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("5"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("MOVEMENTS"))));
+    }
+
+    @Test
+    void modelUnavailableConfirmedItemMovementQuestionStillReturnsThatItemsMovements() throws Exception {
+        UUID riceId = UUID.fromString("40000000-0000-0000-0000-0000000000e3");
+        UUID riceLot = UUID.fromString("50000000-0000-0000-0000-0000000000e3");
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '大米', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, riceId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-RICE-ITEM', 1)
+                """, riceLot, HOUSEHOLD_ID, riceId);
+        insertQaMovement(riceId, riceLot, "INBOUND", null, KITCHEN_ID, "2", "大米入库",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).minusMinutes(5));
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "最近的流水呢？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「牛奶」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '购入')].数量")
+                        .value("5"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("大米入库"))));
+    }
+
+    @Test
+    void modelUnavailableConfirmedLotMovementQuestionStillReturnsThatLotsMovements() throws Exception {
+        UUID otherLotId = UUID.fromString("50000000-0000-0000-0000-0000000000e4");
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-NOT-FALLBACK', 1)
+                """, otherLotId, HOUSEHOLD_ID, ITEM_ID);
+        insertQaMovement(ITEM_ID, otherLotId, "CONSUME", KITCHEN_ID, null, "1", "另一批领用",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).plusMinutes(5));
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "最近的领用呢？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOT", "id": "%s"}
+                                }
+                                """.formatted(LOT_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.hasItem("购入")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("另一批领用"))));
+    }
+
+    @Test
     void configuredProviderControlsWhichQaClientCanReceiveHouseholdData() throws Exception {
         jdbc.update("""
                 UPDATE ai_provider_setting
@@ -733,6 +2222,419 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void movementWindowKeepsOnlyThatItemInsideHouseholdZoneDates() throws Exception {
+        LocalDate from = LocalDate.of(2026, 9, 15);
+        LocalDate to = LocalDate.of(2026, 9, 21);
+        UUID riceId = UUID.fromString("40000000-0000-0000-0000-0000000000aa");
+        UUID riceLot = UUID.fromString("50000000-0000-0000-0000-0000000000aa");
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '大米', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, riceId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-RICE', 1)
+                """, riceLot, HOUSEHOLD_ID, riceId);
+
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "3", "上周入库",
+                from.atTime(1, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "4", "周末入库",
+                to.atTime(23, 30).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "8", "窗口外",
+                from.atStartOfDay(HOUSEHOLD_ZONE).minusMinutes(30).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "9", "窗口后",
+                to.plusDays(1).atTime(0, 30).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(riceId, riceLot, "INBOUND", null, KITCHEN_ID, "2", "大米入库",
+                from.atTime(12, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+
+        chatModel.script(
+                "itemMovements",
+                """
+                {"itemId":"%s","limit":10,"fromDate":"2026-09-15","toDate":"2026-09-21"}
+                """.formatted(ITEM_ID),
+                response -> {
+                    assertThat(response).contains("2026-09-15", "2026-09-21");
+                    return "上周牛奶有入库。";
+                });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"上周牛奶入库了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title",
+                        org.hamcrest.Matchers.containsString("2026-09-15")))
+                .andExpect(jsonPath("$.structuredResults[0].title",
+                        org.hamcrest.Matchers.containsString("2026-09-21")))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(2))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("周末入库"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("4"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].类型").value("INBOUND"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].操作人").value("户主"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[1].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[1].结束日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[1].原因").value("上周入库"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("窗口外"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("窗口后"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("大米入库"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("购入"))));
+
+        assertThat(chatModel.firstPrompt()).contains(
+                "今天是 " + LocalDate.now(HOUSEHOLD_ZONE), HOUSEHOLD_ZONE.getId());
+    }
+
+    @Test
+    void locationMovementQueryDoesNotRequireAnItemAndIncludesChildPlaces() throws Exception {
+        LocalDate today = LocalDate.now(HOUSEHOLD_ZONE);
+        LocalDate monthStart = today.withDayOfMonth(1);
+        UUID fridgeId = UUID.fromString("60000000-0000-0000-0000-0000000000f1");
+        UUID bedroomId = UUID.fromString("60000000-0000-0000-0000-0000000000f2");
+        UUID riceId = UUID.fromString("40000000-0000-0000-0000-0000000000ab");
+        UUID riceLot = UUID.fromString("50000000-0000-0000-0000-0000000000ab");
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, ?, '冰箱', '冰箱', 0, false, 0)
+                """, fridgeId, HOUSEHOLD_ID, KITCHEN_ID);
+        jdbc.update("""
+                INSERT INTO location
+                    (id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
+                VALUES (?, ?, NULL, '卧室', '卧室', 1, false, 0)
+                """, bedroomId, HOUSEHOLD_ID);
+        jdbc.update("""
+                INSERT INTO catalog_item
+                    (id, household_id, name, management_type, unit_id, status, version)
+                VALUES (?, ?, '大米', 'CONSUMABLE', ?, 'ACTIVE', 1)
+                """, riceId, HOUSEHOLD_ID, UNIT_ID);
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-RICE-MONTH', 1)
+                """, riceLot, HOUSEHOLD_ID, riceId);
+
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, fridgeId, "6", "冰箱入库",
+                today.atTime(8, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(riceId, riceLot, "INBOUND", null, KITCHEN_ID, "2", "大米入库",
+                today.atTime(9, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "CONSUME", fridgeId, null, "1", "冰箱领用",
+                today.atTime(12, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, bedroomId, "4", "卧室入库",
+                today.atTime(10, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "7", "上月入库",
+                today.minusMonths(1).atTime(10, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+
+        chatModel.script(
+                "itemMovements",
+                """
+                {"locationId":"%s","limit":10,"fromDate":"%s","toDate":"%s"}
+                """.formatted(KITCHEN_ID, monthStart, today),
+                response -> {
+                    assertThat(response).contains(monthStart.toString(), today.toString());
+                    return "这个月厨房有这些进出。";
+                });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"这个月厨房进出了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value(
+                        "「厨房」流水（" + monthStart + " 至 " + today + "）"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.hasItems("冰箱入库", "大米入库", "冰箱领用")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冰箱入库')].物品")
+                        .value("牛奶"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冰箱入库')].到")
+                        .value("厨房 / 冰箱"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '冰箱领用')].从")
+                        .value("厨房 / 冰箱"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[?(@.原因 == '大米入库')].物品")
+                        .value("大米"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("卧室入库"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("上月入库"))))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist())
+                .andExpect(jsonPath("$.jumps[*].type", org.hamcrest.Matchers.hasItem("LOCATION")));
+    }
+
+    @Test
+    void movementWindowTruncatesToNinetyHouseholdDays() throws Exception {
+        LocalDate today = LocalDate.now(HOUSEHOLD_ZONE);
+        LocalDate requestedFrom = today.minusDays(120);
+        LocalDate actualFrom = today.minusDays(89);
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "4", "窗内",
+                today.minusDays(10).atTime(9, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "1", "窗口起点",
+                actualFrom.atTime(1, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "8", "窗口前一天",
+                actualFrom.minusDays(1).atTime(23, 0).atZone(HOUSEHOLD_ZONE).toOffsetDateTime());
+
+        chatModel.script(
+                "itemMovements",
+                """
+                {"itemId":"%s","limit":10,"fromDate":"%s","toDate":"%s"}
+                """.formatted(ITEM_ID, requestedFrom, today),
+                response -> {
+                    assertThat(response).contains(actualFrom.toString(), today.toString());
+                    assertThat(response).doesNotContain(requestedFrom.toString());
+                    return "见表格中的入库记录。";
+                });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"牛奶从很早到今天入库了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value(
+                        "「牛奶」流水（" + actualFrom + " 至 " + today + "）"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.hasItems("窗内", "窗口起点", "购入")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("窗口前一天"))))
+                .andExpect(jsonPath("$.summary").value("见表格中的入库记录。"));
+    }
+
+    @Test
+    void lotFilterKeepsOnlyThatLotsMovementsInsideTheWindow() throws Exception {
+        UUID otherLotId = UUID.fromString("50000000-0000-0000-0000-0000000000ac");
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-OTHER-WEEK', 1)
+                """, otherLotId, HOUSEHOLD_ID, ITEM_ID);
+        insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "3", "本批入库",
+                OffsetDateTime.parse("2026-09-16T10:00:00+08:00"));
+        insertQaMovement(ITEM_ID, otherLotId, "INBOUND", null, KITCHEN_ID, "8", "另一批入库",
+                OffsetDateTime.parse("2026-09-18T10:00:00+08:00"));
+
+        chatModel.script(
+                "itemMovements",
+                """
+                {"itemId":"%s","lotId":"%s","limit":10,"fromDate":"2026-09-15","toDate":"2026-09-21"}
+                """.formatted(ITEM_ID, otherLotId),
+                response -> "另一批有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"上周牛奶入库了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("另一批入库"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("8"));
+    }
+
+    @Test
+    void completeMovementListHittingTheLimitStaysPartial() throws Exception {
+        for (int i = 0; i < 9; i++) {
+            insertQaMovement(ITEM_ID, LOT_ID, "INBOUND", null, KITCHEN_ID, "1", "补流水-" + i,
+                    OffsetDateTime.now(HOUSEHOLD_ZONE).minusHours(i + 1));
+        }
+        chatModel.script(
+                "itemMovements",
+                "{\"itemId\":\"%s\",\"limit\":10}".formatted(ITEM_ID),
+                response -> "一共就这 10 笔，已经加总完了。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"把牛奶的全部流水都列出来\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("PARTIAL_HOUSEHOLD_FACTS"))
+                .andExpect(jsonPath("$.summary").value("查询未完成，只查到这一部分，请缩小范围。"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("一共就这 10"))))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("加总"))))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(10))
+                .andExpect(jsonPath("$.sources[0].available").value(true));
+    }
+
+    @Test
+    void confirmedTargetSuppliesTheMissingMovementAnchor() throws Exception {
+        chatModel.script(
+                "itemMovements",
+                "{\"limit\":10}",
+                response -> "最近有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "最近的流水呢？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "ITEM", "id": "%s"}
+                                }
+                                """.formatted(ITEM_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「牛奶」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].原因").value("购入"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist());
+
+        chatModel.reset();
+        chatModel.script(
+                "itemMovements",
+                "{\"limit\":10}",
+                response -> "厨房最近有进出。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "最近的流水呢？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOCATION", "id": "%s"}
+                                }
+                                """.formatted(KITCHEN_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].title").value("「厨房」最近流水"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].到").value("厨房"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].起始日期").doesNotExist())
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].结束日期").doesNotExist());
+    }
+
+    @Test
+    void movementQueryWithoutItemOrLocationIsUnavailable() throws Exception {
+        chatModel.script(
+                "itemMovements",
+                "{\"limit\":10}",
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认。"
+                        : "一共 100 笔。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些流水？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                .andExpect(jsonPath("$.structuredResults").isEmpty())
+                .andExpect(jsonPath("$.sources[0].available").value(false));
+    }
+
+    @Test
+    void movementQueryRejectsLocationOutsideTheHousehold() throws Exception {
+        String foreignLocation = "60000000-0000-0000-0000-0000000000ff";
+        chatModel.script(
+                "itemMovements",
+                "{\"locationId\":\"%s\",\"limit\":10}".formatted(foreignLocation),
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认。"
+                        : "厨房有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些流水？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                .andExpect(jsonPath("$.structuredResults").isEmpty())
+                .andExpect(jsonPath("$.sources[0].available").value(false));
+    }
+
+    @Test
+    void movementQueryRejectsLotOnlyAndAOneSidedDate() throws Exception {
+        chatModel.script(
+                "itemMovements",
+                "{\"lotId\":\"%s\",\"limit\":10}".formatted(LOT_ID),
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认。"
+                        : "查到了流水。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"有哪些流水？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                .andExpect(jsonPath("$.structuredResults").isEmpty());
+
+        chatModel.reset();
+        chatModel.script(
+                "itemMovements",
+                "{\"itemId\":\"%s\",\"limit\":10,\"fromDate\":\"2026-09-15\"}".formatted(ITEM_ID),
+                response -> response.contains("UNAVAILABLE")
+                        ? "暂时无法确认。"
+                        : "上周有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"上周牛奶入库了什么？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("暂时无法确认")))
+                .andExpect(jsonPath("$.structuredResults").isEmpty());
+    }
+
+    @Test
+    void confirmedLotSuppliesItsItemForRecentMovements() throws Exception {
+        UUID otherLotId = UUID.fromString("50000000-0000-0000-0000-0000000000ad");
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, lot_number, version)
+                VALUES (?, ?, ?, 'LOT-NOT-TARGET', 1)
+                """, otherLotId, HOUSEHOLD_ID, ITEM_ID);
+        insertQaMovement(ITEM_ID, otherLotId, "CONSUME", KITCHEN_ID, null, "1", "另一批领用",
+                OffsetDateTime.now(HOUSEHOLD_ZONE).plusMinutes(5));
+
+        chatModel.script(
+                "itemMovements",
+                "{\"limit\":10}",
+                response -> "这一批最近有入库。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "最近的流水呢？",
+                                  "answerScope": "HOUSEHOLD_FACT",
+                                  "scope": {"type": "LOT", "id": "%s"}
+                                }
+                                """.formatted(LOT_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("MOVEMENTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.hasItem("购入")))
+                .andExpect(jsonPath("$.structuredResults[0].rows[*].原因",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("另一批领用"))));
+    }
+
+    @Test
     void expiringLotsToolReturnsBoundStructuredFacts() throws Exception {
         seedExpiredLot();
         chatModel.script(
@@ -801,6 +2703,43 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-EXPIRED"))
                 .andExpect(jsonPath("$.structuredResults[0].rows[0].数量").value("3"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRING_LOTS"))));
+    }
+
+    @Test
+    void modelUnavailableSoonExpiringQuestionReturnsExpiringLotsNotExpiredStock() throws Exception {
+        seedExpiredLot();
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"快过期了\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelAvailable").value(false))
+                .andExpect(jsonPath("$.reasonCode").value("STRUCTURED_FACTS_FALLBACK"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRING_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(1))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-001"))
+                .andExpect(jsonPath("$.structuredResults[*].kind",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRED_LOTS"))));
+    }
+
+    @Test
+    void modelUnavailableAlreadyExpiredQuestionStillReturnsExpiredLots() throws Exception {
+        seedExpiredLot();
+        jdbc.update("UPDATE ai_provider_setting SET enabled = FALSE WHERE singleton_key = 1");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"已经过期\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("EXPIRED_LOTS"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].批次号").value("LOT-EXPIRED"))
                 .andExpect(jsonPath("$.structuredResults[*].kind",
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("EXPIRING_LOTS"))));
     }
@@ -1127,6 +3066,117 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     @Test
+    void fiveHouseholdFactToolCallsKeepTheFirstFourResultsAsPartialFacts() throws Exception {
+        String requestId = "qa-partial-tool-budget";
+        String sensitiveQuestion = "家里库存、临期、缺货和提醒都看看？不要写入审计";
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool("searchItems", "{\"keyword\":\"\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool("expiringLots", "{\"withinDays\":30,\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool("lowStock", "{\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool("openReminderTasks", "{\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool("expiredLots", "{\"limit\":10}")
+        ), response -> "家里所有物品一共就这些，已经查完了。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .header("X-Request-Id", requestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "%s",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """.formatted(sensitiveQuestion)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("PARTIAL_HOUSEHOLD_FACTS"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("查询未完成")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("只查到这一部分")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("请缩小范围")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("已经查完了"))))
+                .andExpect(jsonPath("$.structuredResults[*].kind", org.hamcrest.Matchers.hasItems(
+                        "ITEM_SEARCH", "EXPIRING_LOTS", "LOW_STOCK", "REMINDER_TASKS")))
+                .andExpect(jsonPath("$.structuredResults[*].kind", org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.hasItem("EXPIRED_LOTS"))))
+                .andExpect(jsonPath("$.jumps").isNotEmpty())
+                .andExpect(jsonPath("$.sources[0].category").value("HOUSEHOLD_FACT"))
+                .andExpect(jsonPath("$.sources[0].available").value(true));
+
+        assertThat(chatModel.toolDispatchCount()).isEqualTo(5);
+
+        Map<String, Object> audit = jdbc.queryForMap("""
+                SELECT outcome, detail::text AS detail
+                FROM audit_log
+                WHERE action = 'AI_HOUSEHOLD_QA'
+                  AND request_id = ?
+                """, requestId);
+        assertThat(audit.get("outcome")).isEqualTo("SUCCESS");
+        assertThat(String.valueOf(audit.get("detail")))
+                .contains("\"reasonCode\": \"PARTIAL_HOUSEHOLD_FACTS\"")
+                .doesNotContain(sensitiveQuestion, "已经查完了", "question", "answer");
+    }
+
+    @Test
+    void completeSetQuestionHittingListLimitReturnsPartialFactsInsteadOfATotal() throws Exception {
+        seedExtraActiveItems(10);
+        chatModel.script(
+                "searchItems", "{\"keyword\":\"\",\"limit\":10}",
+                response -> "家里总共有 10 件东西。");
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "家里总共有多少件东西？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("PARTIAL_HOUSEHOLD_FACTS"))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.containsString("请缩小范围")))
+                .andExpect(jsonPath("$.summary").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("总共有 10"))))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[0].rows.length()").value(10))
+                .andExpect(jsonPath("$.sources[0].available").value(true));
+    }
+
+    @Test
+    void successfulHouseholdFactsStayAvailableWhenALaterToolFails() throws Exception {
+        String unknownItem = UUID.randomUUID().toString();
+        chatModel.scriptSequence(List.of(
+                new ScriptedChatModel.ScriptedTool("searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}"),
+                new ScriptedChatModel.ScriptedTool(
+                        "itemStock", "{\"itemId\":\"%s\",\"limit\":10}".formatted(unknownItem))
+        ), steps -> {
+            String response = steps.payload(0);
+            return response.contains("UNAVAILABLE")
+                    ? "物品搜索结果见表格；该未知物品库存暂时无法确认。"
+                    : "编造了未知物品库存。";
+        });
+
+        mvc.perform(post("/api/v1/ai/qa")
+                        .with(auth())
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "question": "牛奶还有多少？另外那件东西呢？",
+                                  "answerScope": "HOUSEHOLD_FACT"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasonCode").value("ANSWERED"))
+                .andExpect(jsonPath("$.structuredResults[0].kind").value("ITEM_SEARCH"))
+                .andExpect(jsonPath("$.structuredResults[0].rows[0].名称").value("牛奶"))
+                .andExpect(jsonPath("$.jumps[0].type").value("ITEM"))
+                .andExpect(jsonPath("$.sources[0].available").value(true));
+    }
+
+    @Test
     void modelTimeoutFallsBackToControlledStructuredFacts() throws Exception {
         jdbc.update("""
                 UPDATE ai_provider_setting
@@ -1190,6 +3240,28 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 """, ITEM_ID, HOUSEHOLD_ID, UNIT_ID);
     }
 
+    private void insertQaMovement(
+            UUID itemId,
+            UUID lotId,
+            String type,
+            UUID fromLocationId,
+            UUID toLocationId,
+            String quantity,
+            String reason,
+            OffsetDateTime businessTime
+    ) {
+        jdbc.update("""
+                INSERT INTO inventory_movement
+                    (id, household_id, lot_id, item_id, type, quantity, from_location_id,
+                     to_location_id, reason, operator_account_id, business_time,
+                     created_at, idempotency_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), HOUSEHOLD_ID, lotId, itemId, type, new BigDecimal(quantity),
+                fromLocationId, toLocationId, reason, OWNER_ACCOUNT_ID,
+                Timestamp.from(businessTime.toInstant()), Timestamp.from(businessTime.toInstant()),
+                UUID.randomUUID().toString());
+    }
+
     private void seedInventory() {
         jdbc.update("""
                 INSERT INTO location(id, household_id, parent_id, name, name_normalized, sort_order, ever_referenced, version)
@@ -1214,6 +3286,42 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 OWNER_ACCOUNT_ID, Timestamp.from(OffsetDateTime.now().toInstant()),
                 Timestamp.from(OffsetDateTime.now().toInstant()),
                 UUID.randomUUID().toString());
+    }
+
+    private void seedExtraActiveItems(int count) {
+        for (int i = 1; i <= count; i++) {
+            jdbc.update("""
+                    INSERT INTO catalog_item
+                        (id, household_id, name, management_type, unit_id, status, version)
+                    VALUES (?, ?, ?, 'CONSUMABLE', ?, 'ACTIVE', 1)
+                    """, UUID.randomUUID(), HOUSEHOLD_ID, "备用物品-" + String.format("%02d", i), UNIT_ID);
+        }
+    }
+
+    private UUID seedSiblingLot() {
+        UUID otherLotId = UUID.fromString("50000000-0000-0000-0000-000000000099");
+        UUID otherPositionId = UUID.fromString("70000000-0000-0000-0000-000000000099");
+        UUID otherMovementId = UUID.fromString("80000000-0000-0000-0000-000000000099");
+        jdbc.update("""
+                INSERT INTO inventory_lot(id, household_id, item_id, expiry_date, lot_number, version)
+                VALUES (?, ?, ?, ?, 'LOT-OTHER', 1)
+                """, otherLotId, HOUSEHOLD_ID, ITEM_ID, LocalDate.now().plusDays(90));
+        jdbc.update("""
+                INSERT INTO inventory_stock_position(id, household_id, lot_id, location_id, quantity, revision)
+                VALUES (?, ?, ?, ?, '8', 0)
+                """, otherPositionId, HOUSEHOLD_ID, otherLotId, KITCHEN_ID);
+        jdbc.update("""
+                INSERT INTO inventory_movement
+                    (id, household_id, lot_id, item_id, type, quantity, from_location_id,
+                     to_location_id, reason, operator_account_id, business_time,
+                     created_at, idempotency_key)
+                VALUES (?, ?, ?, ?, 'CONSUME', '2', ?, NULL, '领用', ?,
+                        ?, ?, ?)
+                """, otherMovementId, HOUSEHOLD_ID, otherLotId, ITEM_ID, KITCHEN_ID,
+                OWNER_ACCOUNT_ID, Timestamp.from(OffsetDateTime.now().plusHours(2).toInstant()),
+                Timestamp.from(OffsetDateTime.now().plusHours(2).toInstant()),
+                UUID.randomUUID().toString());
+        return otherLotId;
     }
 
     private void seedExpiredLot() {
@@ -1371,19 +3479,22 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
     }
 
     /**
-     * 确定性假 {@link ChatModel}：第一次调用读取已注册工具并发出一次 {@code toolCall}，
-     * 后续调用（收到 {@link ToolResponseMessage} 后）根据工具结果产出最终摘要。
-     * 也是「最小假模型调用」的验证 seam。
+     * 确定性假 {@link ChatModel}：按脚本依次发出工具调用，Spring AI 执行真实工具后再回喂，
+     * 脚本耗尽后根据工具结果产出最终摘要。单步脚本的摘要回调只看到那一步的工具返回；
+     * 多步脚本按步骤拿到每一步返回给模型的内容。也是「最小假模型调用」的验证 seam。
      */
     static final class ScriptedChatModel implements ChatModel {
+
+        private static final ScriptedTool DEFAULT_TOOL =
+                new ScriptedTool("searchItems", "{\"keyword\":\"牛奶\",\"limit\":10}");
 
         private final AtomicInteger modelCalls = new AtomicInteger();
         private final AtomicInteger toolDispatchCount = new AtomicInteger();
         private final AtomicInteger interruptedCalls = new AtomicInteger();
 
-        private String toolName = "searchItems";
-        private String toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
+        private List<ScriptedTool> tools = List.of(DEFAULT_TOOL);
         private ToolConsumer finalText = response -> "完成。";
+        private SummaryFromSteps steppedFinalText;
         private String firstPrompt = "";
         private final java.util.concurrent.atomic.AtomicBoolean delayNextCall =
                 new java.util.concurrent.atomic.AtomicBoolean();
@@ -1400,12 +3511,16 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                 }
             }
             int call = modelCalls.incrementAndGet();
-            if (call == 1) {
-                firstPrompt = prompt.getContents();
+            int toolIndex = call - 1;
+            if (toolIndex < tools.size()) {
+                if (call == 1) {
+                    firstPrompt = prompt.getContents();
+                }
+                ScriptedTool tool = tools.get(toolIndex);
                 if (prompt.getOptions() instanceof ToolCallingChatOptions options
                         && options.getToolCallbacks() != null) {
                     boolean registered = options.getToolCallbacks().stream()
-                            .anyMatch(callback -> callback.getToolDefinition().name().equals(toolName));
+                            .anyMatch(callback -> callback.getToolDefinition().name().equals(tool.name()));
                     toolDispatchCount.addAndGet(registered ? 1 : 0);
                 }
                 return new ChatResponse(List.of(new Generation(
@@ -1413,22 +3528,27 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
                                 .toolCalls(List.of(new AssistantMessage.ToolCall(
                                         "tool-call-" + call,
                                         "function",
-                                        toolName,
-                                        toolArguments)))
+                                        tool.name(),
+                                        tool.arguments())))
                                 .build())));
             }
-            ToolResponseMessage toolResponse = prompt.getInstructions().stream()
-                    .filter(ToolResponseMessage.class::isInstance)
-                    .map(ToolResponseMessage.class::cast)
-                    .findFirst()
-                    .orElse(null);
-            String content = toolResponse != null
-                    ? toolResponse.getResponses().stream()
-                            .map(ToolResponseMessage.ToolResponse::responseData)
-                            .reduce("", (a, b) -> a + b)
-                    : "";
-            return new ChatResponse(List.of(new Generation(
-                    new AssistantMessage(finalText.apply(content)))));
+            String content;
+            if (steppedFinalText != null) {
+                content = steppedFinalText.apply(new ToolPayloadsByStep(toolPayloadsByStep(prompt)));
+            } else {
+                ToolResponseMessage toolResponse = prompt.getInstructions().stream()
+                        .filter(ToolResponseMessage.class::isInstance)
+                        .map(ToolResponseMessage.class::cast)
+                        .findFirst()
+                        .orElse(null);
+                String payload = toolResponse != null
+                        ? toolResponse.getResponses().stream()
+                                .map(ToolResponseMessage.ToolResponse::responseData)
+                                .reduce("", (a, b) -> a + b)
+                        : "";
+                content = finalText.apply(payload);
+            }
+            return new ChatResponse(List.of(new Generation(new AssistantMessage(content))));
         }
 
         @Override
@@ -1437,20 +3557,28 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
         }
 
         void script(String toolName, String toolArguments, ToolConsumer finalText) {
-            this.toolName = toolName;
-            this.toolArguments = toolArguments;
+            this.tools = List.of(new ScriptedTool(toolName, toolArguments));
             this.finalText = finalText;
+            this.steppedFinalText = null;
+        }
+
+        void scriptSequence(List<ScriptedTool> tools, SummaryFromSteps finalText) {
+            this.tools = List.copyOf(tools);
+            this.steppedFinalText = finalText;
         }
 
         void reset() {
             modelCalls.set(0);
             toolDispatchCount.set(0);
             interruptedCalls.set(0);
-            toolName = "searchItems";
-            toolArguments = "{\"keyword\":\"牛奶\",\"limit\":10}";
+            tools = List.of(DEFAULT_TOOL);
             finalText = response -> "完成。";
+            steppedFinalText = null;
             firstPrompt = "";
             delayNextCall.set(false);
+        }
+
+        record ScriptedTool(String name, String arguments) {
         }
 
         void delayNextCall() {
@@ -1475,6 +3603,35 @@ class HouseholdFactQaEndpointIntegrationTest extends AbstractMockMvcIntegrationT
 
         interface ToolConsumer {
             String apply(String toolResponse);
+        }
+
+        /** 多步摘要回调。参数按工具调用顺序给出每一步返回给模型的内容。 */
+        interface SummaryFromSteps {
+            String apply(ToolPayloadsByStep toolPayloadsByStep);
+        }
+
+        record ToolPayloadsByStep(List<String> payloads) {
+            ToolPayloadsByStep {
+                payloads = List.copyOf(payloads);
+            }
+
+            String payload(int stepIndex) {
+                return payloads.get(stepIndex);
+            }
+
+            int size() {
+                return payloads.size();
+            }
+        }
+
+        private static List<String> toolPayloadsByStep(Prompt prompt) {
+            return prompt.getInstructions().stream()
+                    .filter(ToolResponseMessage.class::isInstance)
+                    .map(ToolResponseMessage.class::cast)
+                    .map(message -> message.getResponses().stream()
+                            .map(ToolResponseMessage.ToolResponse::responseData)
+                            .reduce("", (left, right) -> left + right))
+                    .toList();
         }
     }
 }

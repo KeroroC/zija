@@ -8,6 +8,7 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 - **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
+- **引用提交**：在 issue、PR 正文或评论里写提交号时，不要用反引号或代码样式。直接写短 SHA，并且前后各留一个空格，GitHub 才会把它连到对应 commit 并可点击。例如：已在 dev 的 e2f9885 实现。不要写成 `` `e2f9885` ``。
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 

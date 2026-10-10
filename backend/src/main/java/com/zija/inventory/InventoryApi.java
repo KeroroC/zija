@@ -69,6 +69,32 @@ public interface InventoryApi {
     List<LotQuestionMatch> findLotsMatchingQuestion(UUID householdId, String question, int limit);
 
     /**
+     * 按批次号或序列号关键字有界搜索当前家庭、所属物品为 ACTIVE 的批次。
+     * 关键字按字面子串匹配，{@code %} 与 {@code _} 不是通配符。
+     * 空白批次号与空白序列号不参与匹配，因此无关问题不会因空序列号命中。
+     * 关键字为空白时只返回有界前 {@code limit} 条。
+     * {@code itemId}、{@code lotId} 非空时再收窄到该物品或该批次。
+     */
+    List<LotQuestionMatch> searchLotsByNumberOrSerial(
+            UUID householdId,
+            String keyword,
+            UUID itemId,
+            UUID lotId,
+            int limit
+    );
+
+    /**
+     * 按批次号或序列号搜索，且只保留在 {@code locationIds} 中数量为正的批次。
+     * 空集合或 null 返回空列表，不跨家庭。关键字规则与 {@link #searchLotsByNumberOrSerial} 相同。
+     */
+    List<LotQuestionMatch> searchLotsByNumberOrSerialInLocations(
+            UUID householdId,
+            String keyword,
+            Collection<UUID> locationIds,
+            int limit
+    );
+
+    /**
      * 临期批次：{@code today <= expiry <= horizon} 且数量为正。日期由调用方按 AI Clock 传入，本模块不自造时区。
      */
     List<LotQuantitySnapshot> findExpiringLots(
@@ -77,6 +103,17 @@ public interface InventoryApi {
             LocalDate horizon,
             UUID itemId,
             UUID lotId,
+            int limit
+    );
+
+    /**
+     * 临期批次，数量只累计 {@code locationIds} 中的库存位。空集合返回空列表，不跨家庭。
+     */
+    List<LotQuantitySnapshot> findExpiringLotsInLocations(
+            UUID householdId,
+            LocalDate today,
+            LocalDate horizon,
+            Collection<UUID> locationIds,
             int limit
     );
 
@@ -92,12 +129,23 @@ public interface InventoryApi {
     );
 
     /**
+     * 已过期批次，数量只累计 {@code locationIds} 中的库存位。空集合返回空列表，不跨家庭。
+     */
+    List<LotQuantitySnapshot> findExpiredLotsInLocations(
+            UUID householdId,
+            LocalDate today,
+            Collection<UUID> locationIds,
+            int limit
+    );
+
+    /**
      * 低库存：ACTIVE 且 {@code low_stock_mode='CUSTOM'}、当前总量低于阈值。
      */
     List<LowStockSnapshot> findLowStockItems(UUID householdId, UUID itemId, int limit);
 
     /**
      * 指定位置集合（含子位置 id）中的当前库存位，可选物品名称关键字，有界。
+     * 关键字按字面子串匹配，{@code %} 与 {@code _} 不是通配符。
      */
     List<LocationStockPositionSnapshot> findStockPositionsInLocations(
             UUID householdId,
@@ -107,13 +155,18 @@ public interface InventoryApi {
     );
 
     /**
-     * 某物品最近流水，按 business_time 降序有界；可选批次/位置过滤。
+     * 有界流水。物品、批次、位置（来源或目标任一命中）、业务时间窗均可选。
+     * 物品与位置都未给出时返回空列表，不扫全家流水。
+     * {@code locationIds} 为空集合时返回空列表；为 null 时不按位置过滤。
+     * {@code fromInclusive} / {@code toExclusive} 为 null 时不限制对应一侧。
      */
-    List<MovementInfo> findRecentMovementsOfItem(
+    List<MovementInfo> findMovements(
             UUID householdId,
             UUID itemId,
             UUID lotId,
-            UUID locationId,
+            Collection<UUID> locationIds,
+            OffsetDateTime fromInclusive,
+            OffsetDateTime toExclusive,
             int limit
     );
 

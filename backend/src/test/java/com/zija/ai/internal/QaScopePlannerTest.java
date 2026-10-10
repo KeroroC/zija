@@ -355,6 +355,13 @@ class QaScopePlannerTest {
         }
 
         @Override
+        public List<ItemInfo> searchActiveItemsByNameBrandOrTag(
+                UUID householdId, String keyword, UUID itemId, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public List<ItemInfo> searchActiveItemsByName(
                 UUID householdId, String nameContains, UUID itemId, int limit
         ) {
@@ -448,6 +455,20 @@ class QaScopePlannerTest {
         }
 
         @Override
+        public List<LotQuestionMatch> searchLotsByNumberOrSerial(
+                UUID householdId, String keyword, UUID itemId, UUID lotId, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<LotQuestionMatch> searchLotsByNumberOrSerialInLocations(
+                UUID householdId, String keyword, Collection<UUID> locationIds, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public List<LotQuestionMatch> findLotsMatchingQuestion(UUID householdId, String question, int limit) {
             findLotsMatchingQuestionCalls++;
             String normalized = question == null ? "" : question.toLowerCase(java.util.Locale.ROOT);
@@ -474,8 +495,23 @@ class QaScopePlannerTest {
         }
 
         @Override
+        public List<LotQuantitySnapshot> findExpiringLotsInLocations(
+                UUID householdId, java.time.LocalDate today, java.time.LocalDate horizon,
+                Collection<UUID> locationIds, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public List<LotQuantitySnapshot> findExpiredLots(
                 UUID householdId, java.time.LocalDate today, UUID itemId, UUID lotId, int limit
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<LotQuantitySnapshot> findExpiredLotsInLocations(
+                UUID householdId, java.time.LocalDate today, Collection<UUID> locationIds, int limit
         ) {
             throw new UnsupportedOperationException();
         }
@@ -493,8 +529,14 @@ class QaScopePlannerTest {
         }
 
         @Override
-        public List<MovementInfo> findRecentMovementsOfItem(
-                UUID householdId, UUID itemId, UUID lotId, UUID locationId, int limit
+        public List<MovementInfo> findMovements(
+                UUID householdId,
+                UUID itemId,
+                UUID lotId,
+                java.util.Collection<UUID> locationIds,
+                OffsetDateTime fromInclusive,
+                OffsetDateTime toExclusive,
+                int limit
         ) {
             throw new UnsupportedOperationException();
         }

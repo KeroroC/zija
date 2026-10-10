@@ -11,6 +11,8 @@ spring:
     hikari:
       maximum-pool-size: 10
       minimum-idle: 1
+      connection-timeout: 30000
+      max-lifetime: 1800000
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -34,8 +36,10 @@ spring:
       max-request-size: 21MB
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  # host 不写在这里。${ZIJA_SMTP_HOST:} 在未设置时会变成空字符串，
+  # MailSenderAutoConfiguration 仍会把它当成已配置。
+  # 发信与启动摘要都读 zija.smtp.host；false 或空白视为未配置。
   mail:
-    host: ${ZIJA_SMTP_HOST:}
     port: ${ZIJA_SMTP_PORT:587}
     username: ${ZIJA_SMTP_USERNAME:}
     password: ${ZIJA_SMTP_PASSWORD:}
@@ -76,6 +80,8 @@ server:
         name: ZIJA_SESSION
         http-only: true
         same-site: lax
+        # 自定义 CookieSerializer 读取 name、http-only、same-site。
+        # secure 不在此处配置，未设置时跟随 request.isSecure()。
 
 info:
   app:
@@ -92,9 +98,12 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,db
+          include:
+            - readinessState
+            - db
         liveness:
-          include: livenessState
+          include:
+            - livenessState
       show-details: never
 
 mybatis-plus:
@@ -103,6 +112,8 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     default-statement-timeout: 10
+    # Mapper 语句日志统一挂在 "sql.*" 下，由 logging.level.sql 单独控制
+    log-prefix: "sql."
   global-config:
     banner: false
     db-config:
@@ -115,7 +126,21 @@ springdoc:
     path: /swagger-ui.html
     enabled: ${ZIJA_SWAGGER_ENABLED:false}
 
+logging:
+  level:
+    # 开发默认 DEBUG；prod profile 覆盖为 INFO（application-prod.yml）
+    com.zija: ${ZIJA_LOG_LEVEL:DEBUG}
+    # MyBatis SQL 语句与参数；排查时设 ZIJA_LOG_SQL_LEVEL=DEBUG
+    sql: ${ZIJA_LOG_SQL_LEVEL:INFO}
+
 zija:
+  log:
+    # 仅 prod profile 写文件（logback-spring.xml）；开发只输出控制台
+    path: ${ZIJA_LOG_PATH:logs}
+    max-history: ${ZIJA_LOG_MAX_HISTORY:14}
+    total-size-cap: ${ZIJA_LOG_TOTAL_SIZE_CAP:1GB}
+    # 超过该耗时（毫秒）的请求在 prod 下记 WARN
+    slow-request-ms: ${ZIJA_LOG_SLOW_REQUEST_MS:1000}
   setup:
     # 家庭初始化口令；非空时 POST /api/v1/household/bootstrap 须携带 X-Zija-Setup-Token。
     # prod profile 下必须配置（见 HouseholdSetupTokenStartupValidator）。
@@ -146,3 +171,13 @@ zija:
       ip-threshold: ${ZIJA_RATE_LIMIT_IP_THRESHOLD:50}
       ip-window-minutes: ${ZIJA_RATE_LIMIT_IP_WINDOW_MINUTES:5}
       max-entries: ${ZIJA_RATE_LIMIT_MAX_ENTRIES:1000}
+
+  # 发信配置。host 为 false 或空白时不创建发送器。
+  # 将 ZIJA_SMTP_HOST 设为实际主机名后，MailCapabilityConfig 才创建 JavaMailSender。
+  smtp:
+    host: ${ZIJA_SMTP_HOST:false}
+    port: ${ZIJA_SMTP_PORT:587}
+    username: ${ZIJA_SMTP_USERNAME:}
+    password: ${ZIJA_SMTP_PASSWORD:}
+    from: ${ZIJA_SMTP_FROM:}
+    tls: ${ZIJA_SMTP_TLS:true}

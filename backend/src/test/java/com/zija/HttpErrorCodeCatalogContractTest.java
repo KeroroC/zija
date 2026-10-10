@@ -24,7 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>后端全集：
  * <ul>
  *   <li>各模块 {@code internal/ErrorCodes} 的每个 {@code static final String} 取值；</li>
- *   <li>{@link com.zija.shared.ZijaErrorCodes#VALIDATION_FAILED}（仅此一项；不扫整类）；</li>
+ *   <li>{@link com.zija.shared.ZijaErrorCodes#VALIDATION_FAILED} 与
+ *       {@link com.zija.shared.ZijaErrorCodes#INTERNAL_ERROR}（白名单；不扫整类）；</li>
  *   <li>安全层 {@link ZijaProblemHandlers} 中的 HTTP 错误码常量。</li>
  * </ul>
  *
@@ -47,8 +48,8 @@ class HttpErrorCodeCatalogContractTest {
      */
     private static final String EXCLUDED_DEAD_LETTER_NAME = "UnknownError";
 
-    /** {@link com.zija.shared.ZijaErrorCodes} 中唯一属于 HTTP {@code errorCode} 的常量。 */
-    private static final String SHARED_HTTP_ERROR_CODE = "VALIDATION_FAILED";
+    /** {@link com.zija.shared.ZijaErrorCodes} 中属于 HTTP {@code errorCode} 的常量。 */
+    private static final Set<String> SHARED_HTTP_ERROR_CODES = Set.of("VALIDATION_FAILED", "INTERNAL_ERROR");
 
     @Test
     void frontendHttpErrorCodeCatalogEqualsBackendHttpErrorCodeSet() throws IOException {
@@ -79,12 +80,14 @@ class HttpErrorCodeCatalogContractTest {
             }
         }
 
-        // 只纳入 VALIDATION_FAILED；UnknownError 是死信内部名，明确排除，不扫整文件以免误收非 HTTP 常量。
+        // 只纳入白名单中的 HTTP 码；UnknownError 是死信内部名，明确排除，不扫整文件以免误收非 HTTP 常量。
         Set<String> shared = parseJavaStringConstants(javaRoot.resolve("com/zija/shared/ZijaErrorCodes.java"));
         assertThat(shared)
-                .as("ZijaErrorCodes 应包含 VALIDATION_FAILED，且 UnknownError 仍保留在该类中（仅排除出 HTTP 集合）")
-                .contains(SHARED_HTTP_ERROR_CODE, EXCLUDED_DEAD_LETTER_NAME);
-        codes.add(SHARED_HTTP_ERROR_CODE);
+                .as("ZijaErrorCodes 应包含 %s，且 UnknownError 仍保留在该类中（仅排除出 HTTP 集合）",
+                        SHARED_HTTP_ERROR_CODES)
+                .containsAll(SHARED_HTTP_ERROR_CODES)
+                .contains(EXCLUDED_DEAD_LETTER_NAME);
+        codes.addAll(SHARED_HTTP_ERROR_CODES);
 
         codes.addAll(parseJavaStringConstants(javaRoot.resolve("com/zija/ZijaProblemHandlers.java")));
 

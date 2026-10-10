@@ -45,7 +45,8 @@ docker compose logs app --tail=50
 
 1. **生成**：`ZijaRequestIdFilter` 在请求进入时生成（或复用客户端提供的合法 ID）。
 2. **响应头**：同一 ID 写入响应头 `X-Request-Id`，前端可用此 ID 关联请求。
-3. **MDC**：写入 SLF4J MDC（key 为 `requestId`），日志中以 `[requestId]` 形式出现。
+3. **MDC**：写入 SLF4J MDC（key 为 `requestId`；已登录请求另有 `accountId`），日志中以 `[requestId accountId]` 形式出现。
+4. **500 响应**：未预期异常返回 `errorCode=INTERNAL_ERROR` 且带 `requestId`，对应一条含堆栈的 ERROR 日志。
 
 ### 排查步骤
 
@@ -56,15 +57,18 @@ curl -si http://localhost:8088/api/v1/system/info
 
 # 2. 在容器日志中搜索该 ID
 docker compose logs app | grep 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+
+# 3. prod 下也可搜索滚动日志文件（含已 gz 归档的历史）
+docker compose exec app sh -c "grep 'a1b2c3d4' /var/lib/zija/logs/*.log; zgrep 'a1b2c3d4' /var/lib/zija/logs/archive/*.gz"
 ```
 
 日志格式示例：
 
 ```
-2026-07-28 09:30:00.123 [http-nio-8080-exec-1] INFO  [a1b2c3d4-...] c.z.s.i.SystemController - ...
+2026-07-28 09:30:00.123 INFO  [http-nio-8080-exec-1] [a1b2c3d4-... 5f0c...] c.z.s.i.SystemController - ...
 ```
 
-方括号中的 `a1b2c3d4-...` 即为 requestId，可用于追踪同一次请求在过滤器、控制器、服务层的完整调用链。
+第二个方括号中的 `a1b2c3d4-...` 即为 requestId（其后是账户 UUID，未登录时为 `-`），可用于追踪同一次请求在过滤器、控制器、服务层的完整调用链。
 
 ### 注意事项
 
@@ -299,8 +303,8 @@ grep ZIJA_PROFILES_ACTIVE .env
 # 查看 Docker 卷占用
 docker system df
 
-# 查看应用日志大小
-docker compose logs --tail=0 --follow
+# 查看滚动日志文件占用（prod；超出 ZIJA_LOG_TOTAL_SIZE_CAP 的旧归档会自动删除）
+docker compose exec app du -sh /var/lib/zija/logs
 
 # 清理旧备份
 ls -lt ./backups/ | head -20

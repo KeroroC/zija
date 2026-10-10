@@ -151,6 +151,29 @@ class InventoryService implements InventoryApi {
 
     @Override
     @Transactional(readOnly = true)
+    public List<LotQuestionMatch> searchLotsByNumberOrSerial(
+            UUID householdId, String keyword, UUID itemId, UUID lotId, int limit
+    ) {
+        String needle = keyword == null ? "" : keyword.trim();
+        return lotMapper.searchLotsByNumberOrSerial(
+                householdId, needle, itemId, lotId, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LotQuestionMatch> searchLotsByNumberOrSerialInLocations(
+            UUID householdId, String keyword, Collection<UUID> locationIds, int limit
+    ) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return List.of();
+        }
+        String needle = keyword == null ? "" : keyword.trim();
+        return lotMapper.searchLotsByNumberOrSerialInLocations(
+                householdId, needle, locationIds, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<LotQuantitySnapshot> findExpiringLots(
             UUID householdId, LocalDate today, LocalDate horizon, UUID itemId, UUID lotId, int limit
     ) {
@@ -160,11 +183,39 @@ class InventoryService implements InventoryApi {
 
     @Override
     @Transactional(readOnly = true)
+    public List<LotQuantitySnapshot> findExpiringLotsInLocations(
+            UUID householdId,
+            LocalDate today,
+            LocalDate horizon,
+            Collection<UUID> locationIds,
+            int limit
+    ) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return List.of();
+        }
+        return itemStockAggregateMapper.findExpiringLotsInLocations(
+                householdId, today, horizon, locationIds, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<LotQuantitySnapshot> findExpiredLots(
             UUID householdId, LocalDate today, UUID itemId, UUID lotId, int limit
     ) {
         return itemStockAggregateMapper.findExpiredLots(
                 householdId, today, itemId, lotId, sqlLimit(limit));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LotQuantitySnapshot> findExpiredLotsInLocations(
+            UUID householdId, LocalDate today, Collection<UUID> locationIds, int limit
+    ) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return List.of();
+        }
+        return itemStockAggregateMapper.findExpiredLotsInLocations(
+                householdId, today, locationIds, sqlLimit(limit));
     }
 
     @Override
@@ -187,10 +238,23 @@ class InventoryService implements InventoryApi {
 
     @Override
     @Transactional(readOnly = true)
-    public List<MovementInfo> findRecentMovementsOfItem(
-            UUID householdId, UUID itemId, UUID lotId, UUID locationId, int limit
+    public List<MovementInfo> findMovements(
+            UUID householdId,
+            UUID itemId,
+            UUID lotId,
+            Collection<UUID> locationIds,
+            OffsetDateTime fromInclusive,
+            OffsetDateTime toExclusive,
+            int limit
     ) {
-        return movementMapper.findRecentByItem(householdId, itemId, lotId, locationId, sqlLimit(limit))
+        if (itemId == null && (locationIds == null || locationIds.isEmpty())) {
+            return List.of();
+        }
+        if (locationIds != null && locationIds.isEmpty()) {
+            return List.of();
+        }
+        return movementMapper.findMovements(
+                        householdId, itemId, lotId, locationIds, fromInclusive, toExclusive, sqlLimit(limit))
                 .stream()
                 .map(this::toMovementInfo)
                 .toList();

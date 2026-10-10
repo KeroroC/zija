@@ -12,6 +12,8 @@ import com.zija.household.internal.persistence.MemberEntity;
 import com.zija.household.internal.persistence.MemberMapper;
 import com.zija.identity.IdentityApi;
 import com.zija.system.SystemApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +28,8 @@ import java.util.UUID;
  */
 @Service
 class MemberService {
+
+    private static final Logger log = LoggerFactory.getLogger(MemberService.class);
 
     private final MemberMapper memberMapper;
     private final IdentityApi identityApi;
@@ -83,6 +87,7 @@ class MemberService {
                 SystemApi.AuditAction.ROLE_CHANGED, ZijaAuditOutcome.SUCCESS, target.getHouseholdId(),
                 actorAccountId, target.getAccountId(), null, null,
                 java.util.Map.of("oldRole", target.getRole(), "newRole", newRole)));
+        log.info("成员角色已变更: memberId={} {} -> {}", targetMemberId, target.getRole(), newRole);
     }
 
     /**
@@ -125,6 +130,8 @@ class MemberService {
                         ? SystemApi.AuditAction.MEMBER_DEACTIVATED : SystemApi.AuditAction.MEMBER_REACTIVATED,
                 ZijaAuditOutcome.SUCCESS, target.getHouseholdId(),
                 actorAccountId, target.getAccountId(), null, null, null));
+        log.info("成员状态已变更: memberId={} accountId={} status={}",
+                targetMemberId, target.getAccountId(), newStatus);
     }
 
     /**
@@ -162,6 +169,7 @@ class MemberService {
                 currentOwnerAccountId, target.getAccountId(), null, null,
                 java.util.Map.of("oldOwner", currentOwner.getAccountId().toString(),
                         "newOwner", target.getAccountId().toString())));
+        log.info("家庭所有权已转移: {} -> {}", currentOwner.getAccountId(), target.getAccountId());
     }
 
     private MemberEntity requireMember(UUID memberId) {

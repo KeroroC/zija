@@ -2,6 +2,8 @@ package com.zija.inventory.internal;
 
 import com.zija.inventory.internal.persistence.ConsistencyCheckMapper;
 import com.zija.inventory.internal.persistence.StockPositionEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +24,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ConsistencyCheckService {
+
+    private static final Logger log = LoggerFactory.getLogger(ConsistencyCheckService.class);
 
     private final ConsistencyCheckMapper consistencyCheckMapper;
 
@@ -79,6 +83,12 @@ public class ConsistencyCheckService {
             }
         }
 
+        if (discrepancies.isEmpty()) {
+            log.info("库存一致性检查通过: itemFilter={} positions={}", itemIdFilter, actualPositions.size());
+        } else {
+            log.error("库存一致性检查发现 {} 处不一致: itemFilter={} discrepancies={}",
+                    discrepancies.size(), itemIdFilter, discrepancies);
+        }
         return discrepancies;
     }
 

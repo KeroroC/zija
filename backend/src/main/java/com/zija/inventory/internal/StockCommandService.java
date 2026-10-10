@@ -14,6 +14,8 @@ import com.zija.inventory.internal.persistence.StockPositionEntity;
 import com.zija.inventory.internal.persistence.StockPositionMapper;
 import com.zija.location.LocationApi;
 import com.zija.system.SystemApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +29,8 @@ import java.util.UUID;
 
 @Service
 public class StockCommandService {
+
+    private static final Logger log = LoggerFactory.getLogger(StockCommandService.class);
 
     private final LotService lotService;
     private final LotMapper lotMapper;
@@ -510,6 +514,7 @@ public class StockCommandService {
                                                            String requestHash, UUID locationId) {
         var cached = idempotencyService.lockOrFind(householdId, idempotencyKey, requestHash);
         if (cached.isEmpty()) return java.util.Optional.empty();
+        log.debug("幂等回放命中，返回首次结果: idempotencyKey={}", idempotencyKey);
         var payload = cached.get().getResponsePayload();
         UUID cachedLotId = UUID.fromString(payload.get("lotId").toString());
         UUID cachedMovementId = UUID.fromString(payload.get("movementId").toString());

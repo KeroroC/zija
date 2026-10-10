@@ -15,6 +15,8 @@ import com.zija.system.SystemApi;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -46,6 +48,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/auth")
 class IdentityController {
+
+    private static final Logger log = LoggerFactory.getLogger(IdentityController.class);
 
     private final IdentityService identityService;
     private final LoginRateLimiter rateLimiter;
@@ -80,13 +84,19 @@ class IdentityController {
     ) {
         var normalized = request.username().trim().toLowerCase(Locale.ROOT);
         var ip = resolveClientIp(httpRequest);
-        rateLimiter.checkAllowed(normalized, ip);
+        try {
+            rateLimiter.checkAllowed(normalized, ip);
+        } catch (LoginRateLimitedException ex) {
+            log.warn("登录被限流拒绝: username={} ip={}", normalized, ip);
+            throw ex;
+        }
 
         try {
             var authentication = sessionAuth.authenticate(
                     normalized, request.password(), httpRequest, httpResponse);
             rateLimiter.recordSuccess(normalized);
             var principal = ZijaSessionAuthenticationSupport.requirePrincipal(authentication);
+            log.info("登录成功: accountId={} ip={}", principal.getAccountId(), ip);
             systemApi.recordAudit(new SystemApi.AuditEvent(
                     SystemApi.AuditAction.LOGIN_SUCCESS, ZijaAuditOutcome.SUCCESS, null,
                     principal.getAccountId(), null,
@@ -109,8 +119,11 @@ class IdentityController {
                     ip, Map.of("username", normalized)
             ));
             if (rateLimit != null) {
+                log.warn("登录失败并触发限流: username={} ip={} reason={}",
+                        normalized, ip, ex.getClass().getSimpleName());
                 throw rateLimit;
             }
+            log.warn("登录失败: username={} ip={} reason={}", normalized, ip, ex.getClass().getSimpleName());
             throw new InvalidCredentialsException();
         }
     }

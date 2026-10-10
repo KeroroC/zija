@@ -79,7 +79,7 @@ public class ReportingEventRetryService {
                         SystemApi.AuditAction.REPORTING_EVENT_ABANDONED, ZijaAuditOutcome.FAILURE, null, null, null, null, null,
                         Map.of("eventId", dl.getEventId().toString(),
                                "eventType", dl.getEventType())));
-                log.warn("Reporting dead-letter abandoned after {} failures: eventId={}",
+                log.error("Reporting dead-letter abandoned after {} failures: eventId={}",
                         newCount, dl.getEventId());
             } else {
                 long backoffSeconds = RETRY_DELAY_SECONDS * (1L << Math.min(newCount, MAX_BACKOFF_SHIFT));

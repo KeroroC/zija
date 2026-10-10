@@ -80,19 +80,9 @@ GET /api/v1/audit-logs
 
 ### 6. Action 中文映射（前端硬编码）
 
-| Action | 中文 |
-|--------|------|
-| LOGIN_SUCCESS | 登录成功 |
-| LOGIN_FAILURE | 登录失败 |
-| LOGOUT | 登出 |
-| PASSWORD_CHANGED | 修改密码 |
-| MEMBER_CREATED | 成员加入 |
-| MEMBER_ROLE_CHANGED | 角色变更 |
-| MEMBER_STATUS_CHANGED | 状态变更 |
-| INVITATION_CREATED | 创建邀请 |
-| INVITATION_REDEEMED | 兑现邀请 |
-| OWNERSHIP_TRANSFERRED | 转移所有权 |
-| OWNER_RECOVERY_USED | 所有者恢复 |
+动作常量以 `SystemApi.AuditAction` 为准，禁止各模块散落字符串。中文标签硬编码在 `frontend/src/types/audit.ts` 的 `ACTION_LABELS`，与常量一一对应，不在本 ADR 再维护一份会漂移的全表。
+
+早期身份/家庭动作名已改名，不再使用：`MEMBER_CREATED` → `MEMBER_JOINED`，`MEMBER_ROLE_CHANGED` → `ROLE_CHANGED`，`MEMBER_STATUS_CHANGED` → `MEMBER_DEACTIVATED` / `MEMBER_REACTIVATED`，`OWNER_RECOVERY_USED` → `OWNER_RECOVERY`。
 
 ### 7. 模块边界约束
 

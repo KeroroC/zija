@@ -59,4 +59,29 @@ com.zija.<module>/
 
 公共领域事件字段**只能追加，不可重排或删除**；消费者与序列化器必须容忍新键缺失。
 
+## 运行日志（Logback）与审计日志
+
+两者回答不同的问题，不要互相替代：
+
+| | 审计日志（`system` 模块，存数据库） | 运行日志（Logback，写控制台 / 文件） |
+|---|---|---|
+| 回答 | 谁在什么时候做了什么业务操作 | 系统为什么这样表现 |
+| 读者 | 家庭成员（审计页） | 部署者 / 开发者排障 |
+| 保留 | 随数据库备份长期保留 | prod 下按天滚动，默认保留 14 天、总量 1GB，超出自动删除；不纳入备份 |
+
+约定：
+
+- 已进入审计的业务操作，Logback 最多记一行 INFO 摘要（动作、实体 ID），不重复业务字段。
+- 每行日志经 MDC 自带 `[requestId accountId]`：`ZijaRequestIdFilter` 写 `requestId`，
+  `ZijaAccountMdcFilter` 在安全链之后写已认证账户 UUID（不写用户名）。
+- 级别：`com.zija` 开发默认 DEBUG、prod 默认 INFO（`ZIJA_LOG_LEVEL` 覆盖）；MyBatis SQL 通过
+  `log-prefix: "sql."` 归到 `sql` logger，默认 INFO，排障时 `ZIJA_LOG_SQL_LEVEL=DEBUG`。
+- `ZijaRequestLoggingFilter`：5xx 记 ERROR，403 与慢请求记 WARN，其余（含业务性 4xx）记 DEBUG；
+  只记路由模板，不记 query string，附带异常类名但不记异常消息（校验异常会回显被拒绝的字段值）。
+- `ZijaFallbackExceptionHandler`：未被任何处理器认领的异常记 ERROR（含堆栈），响应
+  `INTERNAL_ERROR` Problem Details，用户凭 `requestId` 反馈即可 grep 到。
+- **禁止写入日志**：密码、会话 ID、CSRF 令牌、邀请 / 恢复令牌、`ZIJA_SETUP_TOKEN`、SMTP 凭据。
+  AI 问答的提问与回答原文只在 DEBUG 输出，prod 只记耗时、范围、结果码等元数据。
+  `SensitiveValueLogTest` 以 DEBUG 级别守护这些约束。
+
 完整的架构决策记录见 [`docs/adr/`](../adr/)。

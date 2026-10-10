@@ -12,13 +12,17 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -31,6 +35,9 @@ import java.util.stream.Collectors;
  */
 @Component
 class HouseholdFactQueries {
+
+    /** 流水时间窗最长跨度（含首尾当天）。 */
+    static final int MAX_MOVEMENT_WINDOW_DAYS = 90;
 
     private final CatalogApi catalogApi;
     private final InventoryApi inventoryApi;
@@ -55,10 +62,10 @@ class HouseholdFactQueries {
         this.clock = clock;
     }
 
-    /** 按名称关键字搜索活跃物品，返回限量命中；不存在的物品不会出现在结果中。 */
+    /** 按名称、品牌或标签搜索活跃物品，返回限量命中；空白关键字只取前 {@code limit} 条。 */
     List<ItemHit> searchItems(UUID householdId, String keyword, int limit, UUID targetItemId) {
         String needle = keyword == null ? "" : keyword.trim();
-        var items = catalogApi.searchActiveItemsByName(householdId, needle, targetItemId, limit);
+        var items = catalogApi.searchActiveItemsByNameBrandOrTag(householdId, needle, targetItemId, limit);
         var unitIds = items.stream()
                 .map(CatalogApi.ItemInfo::unitId)
                 .filter(Objects::nonNull)
@@ -73,6 +80,33 @@ class HouseholdFactQueries {
                     inventoryApi.currentTotalStockOfItem(householdId, item.id())));
         }
         return hits;
+    }
+
+    /**
+     * 按批次号或序列号搜索当前家庭批次，返回可交给物品快照使用的 id。
+     * {@code locationIds} 为 null 时，{@code itemId}、{@code lotId} 非空则只保留该物品或该批次。
+     * {@code locationIds} 非 null 时只保留这些位置上数量为正的批次，不再按物品或批次 id 收窄。
+     */
+    List<LotHit> searchLots(
+            UUID householdId,
+            String keyword,
+            int limit,
+            UUID itemId,
+            UUID lotId,
+            Set<UUID> locationIds
+    ) {
+        var matches = locationIds == null
+                ? inventoryApi.searchLotsByNumberOrSerial(householdId, keyword, itemId, lotId, limit)
+                : inventoryApi.searchLotsByNumberOrSerialInLocations(
+                        householdId, keyword, locationIds, limit);
+        return matches.stream()
+                .map(lot -> new LotHit(
+                        lot.lotId(),
+                        lot.itemId(),
+                        lot.itemName() == null ? "" : lot.itemName(),
+                        lot.lotNumber() == null ? "" : lot.lotNumber(),
+                        lot.serialNumber() == null ? "" : lot.serialNumber()))
+                .toList();
     }
 
     /** 指定物品的库存分布：批次 + 位置 + 数量 + 到期日。 */
@@ -99,7 +133,31 @@ class HouseholdFactQueries {
         return new ItemStock(
                 item.id(), item.name(), unitName,
                 inventoryApi.currentTotalStockOfItem(householdId, itemId),
-                positions);
+                positions,
+                item.lowStockMode(),
+                item.lowStockThreshold());
+    }
+
+    /**
+     * 按名称或路径搜索当前位置树，返回有界命中。
+     * {@code scopeLocationId} 非空时只保留该位置及其子位置。
+     */
+    List<LocationHit> searchLocations(UUID householdId, String keyword, int limit, UUID scopeLocationId) {
+        String needle = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        Set<UUID> scope = scopeLocationId == null ? null : locationScopeIds(householdId, scopeLocationId);
+        List<LocationHit> hits = new ArrayList<>();
+        collectLocationHits(locationApi.tree(householdId).roots(), "", needle, scope, hits);
+        if (hits.size() <= limit) {
+            return List.copyOf(hits);
+        }
+        return List.copyOf(hits.subList(0, Math.max(limit, 0)));
+    }
+
+    /** 指定位置及其子位置的 id。位置不在当前家庭树中时为空。 */
+    Set<UUID> locationScopeIds(UUID householdId, UUID locationId) {
+        var scope = new LinkedHashSet<UUID>();
+        collectLocationScope(locationApi.tree(householdId).roots(), locationId, false, scope);
+        return scope;
     }
 
     /** 指定位置及其子位置中的当前库存，按物品与批次返回有界快照。 */
@@ -124,19 +182,26 @@ class HouseholdFactQueries {
         return new LocationStock(locationId, locationPaths.getOrDefault(locationId, ""), positions);
     }
 
-    /** 不限物品的临期批次快照（数量 > 0，到期日在窗口内）。 */
+    /**
+     * 临期批次快照（数量大于 0，到期日在窗口内）。
+     * {@code locationIds} 非空时只累计这些位置上的数量；为 null 时保持全家庭口径。
+     */
     List<ExpiringLot> expiringLots(
             UUID householdId,
             int withinDays,
             int limit,
             UUID targetItemId,
-            UUID targetLotId
+            UUID targetLotId,
+            Set<UUID> locationIds
     ) {
         LocalDate today = LocalDate.now(clock);
         LocalDate horizon = today.plusDays(Math.max(0, withinDays));
-        return inventoryApi.findExpiringLots(
+        List<InventoryApi.LotQuantitySnapshot> lots = locationIds == null
+                ? inventoryApi.findExpiringLots(
                         householdId, today, horizon, targetItemId, targetLotId, limit)
-                .stream()
+                : inventoryApi.findExpiringLotsInLocations(
+                        householdId, today, horizon, locationIds, limit);
+        return lots.stream()
                 .map(lot -> new ExpiringLot(
                         lot.lotId(), lot.itemId(), lot.itemName(),
                         lot.lotNumber() == null ? "" : lot.lotNumber(),
@@ -147,16 +212,22 @@ class HouseholdFactQueries {
                 .toList();
     }
 
-    /** 不限物品的已过期批次快照（数量 > 0，到期日早于今天）。 */
+    /**
+     * 已过期批次快照（数量大于 0，到期日早于今天）。
+     * {@code locationIds} 非空时只累计这些位置上的数量；为 null 时保持全家庭口径。
+     */
     List<ExpiringLot> expiredLots(
             UUID householdId,
             int limit,
             UUID targetItemId,
-            UUID targetLotId
+            UUID targetLotId,
+            Set<UUID> locationIds
     ) {
         LocalDate today = LocalDate.now(clock);
-        return inventoryApi.findExpiredLots(householdId, today, targetItemId, targetLotId, limit)
-                .stream()
+        List<InventoryApi.LotQuantitySnapshot> lots = locationIds == null
+                ? inventoryApi.findExpiredLots(householdId, today, targetItemId, targetLotId, limit)
+                : inventoryApi.findExpiredLotsInLocations(householdId, today, locationIds, limit);
+        return lots.stream()
                 .map(lot -> new ExpiringLot(
                         lot.lotId(), lot.itemId(), lot.itemName(),
                         lot.lotNumber() == null ? "" : lot.lotNumber(),
@@ -212,23 +283,86 @@ class HouseholdFactQueries {
         return results;
     }
 
-    /** 指定物品最近若干条不可变流水（原因、操作人、时间）。 */
+    /**
+     * 指定物品最近若干条不可变流水（原因、操作人、时间）。
+     * {@code locationIds} 非 null 时只保留来源或目标落在这些位置上的流水，调用方负责展开子位置。
+     */
     List<MovementFact> itemMovements(
             UUID householdId,
             UUID itemId,
             int limit,
             UUID targetLotId,
-            UUID targetLocationId
+            Set<UUID> locationIds
     ) {
         var item = catalogApi.requireItem(householdId, itemId);
+        var movements = inventoryApi.findMovements(
+                householdId, itemId, targetLotId, locationIds, null, null, limit);
+        return toMovementFacts(householdId, item.name(), movements);
+    }
+
+    /**
+     * 有界流水。物品与位置至少提供一个。位置展开为自身及子位置，来源或目标任一命中即出。
+     * 起止日期须同时提供，按家庭时区解析；超长则保留结束日并截断起始日，最长 90 个自然日。
+     */
+    MovementQuery queryMovements(
+            UUID householdId,
+            UUID itemId,
+            UUID lotId,
+            UUID locationId,
+            String fromDate,
+            String toDate,
+            int limit
+    ) {
+        if (itemId == null && locationId == null) {
+            throw new IllegalArgumentException("流水查询需要物品或位置");
+        }
+        String itemName = itemId == null ? null : catalogApi.requireItem(householdId, itemId).name();
+        String locationPath = "";
+        Set<UUID> locationIds = null;
+        if (locationId != null) {
+            locationIds = locationScopeIds(householdId, locationId);
+            if (locationIds.isEmpty()) {
+                throw new IllegalArgumentException("位置不存在或不属于当前家庭");
+            }
+            locationPath = locationPathMap(householdId).getOrDefault(locationId, "");
+        }
+        var window = resolveMovementWindow(fromDate, toDate);
+        var movements = inventoryApi.findMovements(
+                householdId,
+                itemId,
+                lotId,
+                locationIds,
+                window == null ? null : window.fromInclusive(),
+                window == null ? null : window.toExclusive(),
+                limit);
+        return new MovementQuery(
+                toMovementFacts(householdId, itemName, movements),
+                itemName == null ? "" : itemName,
+                locationPath,
+                window == null ? null : window.from(),
+                window == null ? null : window.to());
+    }
+
+    private List<MovementFact> toMovementFacts(
+            UUID householdId,
+            String forcedItemName,
+            List<InventoryApi.MovementInfo> movements
+    ) {
         var locationPaths = locationPathMap(householdId);
-        var movements = inventoryApi.findRecentMovementsOfItem(
-                householdId, itemId, targetLotId, targetLocationId, limit);
+        Map<UUID, String> itemNames = forcedItemName == null
+                ? catalogApi.itemNames(householdId, movements.stream()
+                        .map(InventoryApi.MovementInfo::itemId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet()))
+                : Map.of();
         var operatorNames = operatorNames(movements);
         List<MovementFact> facts = new ArrayList<>();
         for (var movement : movements) {
+            String itemName = forcedItemName != null
+                    ? forcedItemName
+                    : itemNames.getOrDefault(movement.itemId(), "");
             facts.add(new MovementFact(
-                    movement.id(), movement.lotId(), item.id(), item.name(),
+                    movement.id(), movement.lotId(), movement.itemId(), itemName,
                     movement.type(), movement.quantity(),
                     movement.reason(),
                     operatorNames.getOrDefault(movement.operatorAccountId(), ""),
@@ -238,6 +372,40 @@ class HouseholdFactQueries {
                     locationPaths.getOrDefault(movement.toLocationId(), "")));
         }
         return facts;
+    }
+
+    private ResolvedMovementWindow resolveMovementWindow(String fromDate, String toDate) {
+        LocalDate from = parseMovementDate(fromDate);
+        LocalDate to = parseMovementDate(toDate);
+        if (from == null && to == null) {
+            return null;
+        }
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("流水起止日期需要同时提供");
+        }
+        if (to.isBefore(from)) {
+            throw new IllegalArgumentException("流水结束日期早于起始日期");
+        }
+        if (ChronoUnit.DAYS.between(from, to) + 1 > MAX_MOVEMENT_WINDOW_DAYS) {
+            from = to.minusDays(MAX_MOVEMENT_WINDOW_DAYS - 1L);
+        }
+        ZoneId zone = clock.getZone();
+        return new ResolvedMovementWindow(
+                from,
+                to,
+                from.atStartOfDay(zone).toOffsetDateTime(),
+                to.plusDays(1).atStartOfDay(zone).toOffsetDateTime());
+    }
+
+    private static LocalDate parseMovementDate(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(raw.trim());
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("流水日期格式无效");
+        }
     }
 
     private String unitName(UUID householdId, UUID unitId) {
@@ -259,6 +427,32 @@ class HouseholdFactQueries {
             out.put(node.id(), path);
             collectLocationPaths(node.children(), path, out);
         }
+    }
+
+    private void collectLocationHits(
+            List<LocationApi.LocationNode> nodes,
+            String prefix,
+            String needle,
+            Set<UUID> scope,
+            List<LocationHit> out
+    ) {
+        for (var node : nodes) {
+            String path = prefix.isEmpty() ? node.name() : prefix + " / " + node.name();
+            boolean inScope = scope == null || scope.contains(node.id());
+            if (inScope && locationMatches(needle, node.name(), path)) {
+                out.add(new LocationHit(node.id(), node.name(), path));
+            }
+            collectLocationHits(node.children(), path, needle, scope, out);
+        }
+    }
+
+    private static boolean locationMatches(String needle, String name, String path) {
+        if (needle.isEmpty()) {
+            return true;
+        }
+        String nameText = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        String pathText = path == null ? "" : path.toLowerCase(Locale.ROOT);
+        return nameText.contains(needle) || pathText.contains(needle);
     }
 
     private void collectLocationScope(
@@ -297,6 +491,15 @@ class HouseholdFactQueries {
 
     // ---------- 只读事实记录 ----------
 
+    record LotHit(
+            UUID lotId,
+            UUID itemId,
+            String itemName,
+            String lotNumber,
+            String serialNumber
+    ) {
+    }
+
     record ItemHit(
             UUID itemId,
             String name,
@@ -313,8 +516,13 @@ class HouseholdFactQueries {
             String itemName,
             String unitName,
             BigDecimal totalStock,
-            List<Position> positions
+            List<Position> positions,
+            String lowStockMode,
+            BigDecimal lowStockThreshold
     ) {
+    }
+
+    record LocationHit(UUID locationId, String name, String path) {
     }
 
     record LocationStock(UUID locationId, String locationPath, List<LocationPosition> positions) {
@@ -374,6 +582,23 @@ class HouseholdFactQueries {
             String itemName,
             UUID lotId,
             String lotNumber
+    ) {
+    }
+
+    record MovementQuery(
+            List<MovementFact> movements,
+            String itemName,
+            String locationPath,
+            LocalDate from,
+            LocalDate to
+    ) {
+    }
+
+    private record ResolvedMovementWindow(
+            LocalDate from,
+            LocalDate to,
+            OffsetDateTime fromInclusive,
+            OffsetDateTime toExclusive
     ) {
     }
 

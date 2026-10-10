@@ -1,0 +1,16 @@
+{
+  "properties": [
+    {
+      "name": "zija.log.max-history",
+      "type": "java.lang.Integer",
+      "description": "prod 下 zija.log 归档保留天数，由 logback-spring.xml 读取.",
+      "defaultValue": 14
+    },
+    {
+      "name": "zija.log.total-size-cap",
+      "type": "java.lang.String",
+      "description": "prod 下 zija.log 归档总量上限（如 1GB），超出后删除最旧归档。由 logback-spring.xml 读取.",
+      "defaultValue": "1GB"
+    }
+  ]
+}

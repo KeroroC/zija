@@ -6,6 +6,8 @@ import com.zija.household.internal.persistence.OwnerRecoveryTokenEntity;
 import com.zija.household.internal.persistence.OwnerRecoveryTokenMapper;
 import com.zija.identity.IdentityApi;
 import com.zija.system.SystemApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,8 @@ import java.util.UUID;
  */
 @Service
 class OwnerRecoveryService {
+
+    private static final Logger log = LoggerFactory.getLogger(OwnerRecoveryService.class);
 
     private final OwnerRecoveryTokenMapper tokenMapper;
     private final IdentityApi identityApi;
@@ -68,6 +72,8 @@ class OwnerRecoveryService {
         entity.setExpiresAt(expiresAt);
         tokenMapper.insert(entity);
 
+        log.warn("已生成所有者恢复链接（旧链接已作废）: tokenId={} accountId={} expiresAt={}",
+                entity.getId(), ownerAccountId, expiresAt);
         return new GenerateResult(entity.getId(), rawToken, expiresAt);
     }
 
@@ -81,10 +87,14 @@ class OwnerRecoveryService {
     @Transactional
     public void resetPassword(String rawToken, String newPassword) {
         var digest = InvitationService.sha256Hex(rawToken);
-        var token = tokenMapper.selectByDigestForUpdate(digest)
-                .orElseThrow(InvalidInvitationException::new);
+        var token = tokenMapper.selectByDigestForUpdate(digest).orElse(null);
+        if (token == null) {
+            log.warn("所有者恢复失败：恢复令牌不存在");
+            throw new InvalidInvitationException();
+        }
         if (token.getConsumedAt() != null
                 || token.getExpiresAt().isBefore(OffsetDateTime.now(ZoneOffset.UTC))) {
+            log.warn("所有者恢复失败：恢复令牌已使用或已过期 tokenId={}", token.getId());
             throw new InvalidInvitationException();
         }
         tokenMapper.markConsumed(token.getId());
@@ -92,6 +102,7 @@ class OwnerRecoveryService {
         systemApi.recordAudit(new SystemApi.AuditEvent(
                 SystemApi.AuditAction.OWNER_RECOVERY, ZijaAuditOutcome.SUCCESS, token.getHouseholdId(),
                 token.getAccountId(), token.getAccountId(), null, null, null));
+        log.warn("所有者密码已通过恢复链接重置: accountId={}", token.getAccountId());
     }
 
     /**
