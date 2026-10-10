@@ -187,6 +187,13 @@ zija:
   ai:
     knowledge:
       similarity-threshold: ${ZIJA_AI_KNOWLEDGE_SIMILARITY_THRESHOLD:0.30}
+    jev:
+      enabled: ${ZIJA_AI_JEV_ENABLED:false}
+      api-key: ${ZIJA_AI_JEV_API_KEY:}
+      base-url: ${ZIJA_AI_JEV_BASE_URL:https://openrouter.ai/api/alpha/decisions}
+      model: ${ZIJA_AI_JEV_MODEL:typesafe/jev-1.13}
+      timeout-seconds: ${ZIJA_AI_JEV_TIMEOUT_SECONDS:8}
+      min-confidence: ${ZIJA_AI_JEV_MIN_CONFIDENCE:0.55}
 
   # 登录限流
   login:

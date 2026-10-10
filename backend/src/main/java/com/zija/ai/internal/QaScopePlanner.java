@@ -29,20 +29,21 @@ class QaScopePlanner {
 
     private static final int CANDIDATE_LIMIT = 50;
 
-    private static final List<String> FACT_TERMS = List.of(
-            "库存", "还有", "多少", "哪里", "在哪", "位置", "批次", "到期", "临期",
-            "低库存", "缺货", "流水", "入库", "领用", "报损", "提醒", "当前", "过期");
-    private static final List<String> KNOWLEDGE_TERMS = List.of(
-            "怎么", "如何", "清洁", "维护", "保养", "使用", "说明", "故障", "注意", "步骤", "资料");
-
     private final CatalogApi catalogApi;
     private final InventoryApi inventoryApi;
     private final LocationApi locationApi;
+    private final JevQaScopeRecommender scopeRecommender;
 
-    QaScopePlanner(CatalogApi catalogApi, InventoryApi inventoryApi, LocationApi locationApi) {
+    QaScopePlanner(
+            CatalogApi catalogApi,
+            InventoryApi inventoryApi,
+            LocationApi locationApi,
+            JevQaScopeRecommender scopeRecommender
+    ) {
         this.catalogApi = catalogApi;
         this.inventoryApi = inventoryApi;
         this.locationApi = locationApi;
+        this.scopeRecommender = scopeRecommender;
     }
 
     ScopePlan plan(UUID householdId, QaRequest request) {
@@ -112,7 +113,7 @@ class QaScopePlanner {
         return new ScopePlan(recommended, used, reason, target, knowledgeTarget, List.of(), false);
     }
 
-    /** 仅按词表与（已授权的）页面上下文推荐范围，不做候选扫描、不调用模型。 */
+    /** 推荐范围（词表；可选 Jev choice），不做候选扫描。 */
     String previewRecommendedScope(UUID householdId, String question, QaTarget pageContext) {
         QaTarget pageTarget = null;
         if (pageContext != null) {
@@ -126,14 +127,7 @@ class QaScopePlanner {
     }
 
     String recommend(String question, QaTarget pageTarget) {
-        String normalized = question == null ? "" : question.toLowerCase(Locale.ROOT);
-        boolean fact = containsAny(normalized, FACT_TERMS);
-        boolean knowledge = containsAny(normalized, KNOWLEDGE_TERMS);
-        if (fact && knowledge) return BOTH;
-        if (knowledge) return KNOWLEDGE_SOURCE;
-        if (fact) return HOUSEHOLD_FACT;
-        if (pageTarget != null && isKnowledgeTarget(pageTarget.type())) return BOTH;
-        return HOUSEHOLD_FACT;
+        return scopeRecommender.recommend(question, pageTarget);
     }
 
     private String normalizeAnswerScope(String answerScope, QaTarget legacyScope) {

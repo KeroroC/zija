@@ -3,6 +3,7 @@ package com.zija.ai.internal;
 import com.zija.ai.AiApi;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.stereotype.Service;
 
@@ -106,8 +107,12 @@ class SpringAiProvider implements AiModelProvider, AiQaModelProvider {
                 .system(systemPrompt)
                 .user(userPrompt);
         if (tools.length > 0) {
-            prompt.tools(tools)
-                    .advisors(new AiContextBudgetAdvisor(configuration.maxContextTokens()));
+            if (tools.length == 1 && tools[0] instanceof ToolCallback[] callbacks) {
+                prompt.toolCallbacks(callbacks);
+            } else {
+                prompt.tools(tools);
+            }
+            prompt.advisors(new AiContextBudgetAdvisor(configuration.maxContextTokens()));
         }
         String content = prompt.call().content();
         return content == null ? "" : content;
