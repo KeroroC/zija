@@ -15,16 +15,16 @@ import java.util.Map;
 @Component
 class OpenRouterJevDecisionClient implements JevDecisionClient {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     private final JevSettings settings;
     private final HttpClient httpClient;
-    private final ObjectMapper objectMapper;
 
-    OpenRouterJevDecisionClient(JevSettings settings, ObjectMapper objectMapper) {
+    OpenRouterJevDecisionClient(JevSettings settings) {
         this.settings = settings;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(settings.timeoutSeconds()))
                 .build();
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -46,7 +46,7 @@ class OpenRouterJevDecisionClient implements JevDecisionClient {
                 "state", state,
                 "questions", Map.of(questionId, question));
         try {
-            String payload = objectMapper.writeValueAsString(body);
+            String payload = JSON.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(settings.baseUrl()))
                     .timeout(Duration.ofSeconds(settings.timeoutSeconds()))
@@ -58,7 +58,7 @@ class OpenRouterJevDecisionClient implements JevDecisionClient {
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new JevDecisionException("JEV_HTTP_" + response.statusCode());
             }
-            return parseChoice(objectMapper.readTree(response.body()), questionId, criteria.keySet());
+            return parseChoice(JSON.readTree(response.body()), questionId, criteria.keySet());
         } catch (JevDecisionException exception) {
             throw exception;
         } catch (InterruptedException exception) {
