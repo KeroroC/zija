@@ -22,6 +22,7 @@
 - [方式三：CloudBase 云托管](#方式三cloudbase-云托管)
 - [首次使用](#首次使用)
 - [日常使用](#日常使用)
+- [界面](#界面)
 - [备份与恢复](#备份与恢复)
 - [验证部署](#验证部署)
 - [文档地图](#文档地图)
@@ -225,6 +226,42 @@ make recover-owner
 - 文件完整性：`GET /api/v1/files/integrity-report`（仅 Owner）
 
 完整功能与领域术语见 [`CONTEXT.md`](CONTEXT.md)；AI 能力边界见 [`docs/design/ai-capabilities-spec.md`](docs/design/ai-capabilities-spec.md)。
+
+---
+
+## 界面
+
+以下截图取自本地开发实例的桌面页面，家庭、物品与库存为初始化后录入的记录。
+
+### 首页
+
+首页汇总 7 天内到期、低库存和待盘点，并列出优先任务与最近库存流水。
+
+![首页](docs/images/home.png)
+
+### 物品资料
+
+物品资料维护名称、管理类型、分类、单位和低库存阈值。
+
+![物品资料](docs/images/items.png)
+
+### 位置管理
+
+位置按树组织。选中一个位置后，可以看到它的路径和库存记录条数。
+
+![位置管理](docs/images/locations.png)
+
+### 库存管理
+
+当前库存按批次和位置列出数量与有效期。入库、领用、报损、移位和盘点在同一页操作。
+
+![库存管理](docs/images/inventory.png)
+
+### 提醒中心
+
+提醒中心按类型、紧急度和状态列出临期与低库存任务。
+
+![提醒中心](docs/images/reminders.png)
 
 ---
 
