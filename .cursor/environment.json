@@ -1,0 +1,4 @@
+{
+  "install": "bash .cursor/install-tools.sh && env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin JAVA_HOME=/usr/local/lib/jdk-25 bash .cursor/install.sh",
+  "start": "env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin JAVA_HOME=/usr/local/lib/jdk-25 bash .cursor/start.sh"
+}
