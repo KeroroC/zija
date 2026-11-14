@@ -153,6 +153,14 @@ zija:
     knowledge:
       # 知识问答检索的 cosine 相似度下限；低于该值的分块不进入回答依据与 prompt
       similarity-threshold: ${ZIJA_AI_KNOWLEDGE_SIMILARITY_THRESHOLD:0.30}
+    jev:
+      # TypeSafe Jev 试验：AUTO 范围与事实 tool 预路由；默认关闭，无密钥时静默回退词表/全量工具
+      enabled: ${ZIJA_AI_JEV_ENABLED:false}
+      api-key: ${ZIJA_AI_JEV_API_KEY:}
+      base-url: ${ZIJA_AI_JEV_BASE_URL:https://openrouter.ai/api/alpha/decisions}
+      model: ${ZIJA_AI_JEV_MODEL:typesafe/jev-1.13}
+      timeout-seconds: ${ZIJA_AI_JEV_TIMEOUT_SECONDS:8}
+      min-confidence: ${ZIJA_AI_JEV_MIN_CONFIDENCE:0.55}
 
   # 后台定时任务（时区与 cron；测试环境 cron 置 "-" 禁用）
   schedule:

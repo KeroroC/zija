@@ -34,7 +34,7 @@ class QaScopePlannerTest {
         catalogApi = new StubCatalogApi();
         inventoryApi = new StubInventoryApi();
         locationApi = new StubLocationApi();
-        planner = new QaScopePlanner(catalogApi, inventoryApi, locationApi);
+        planner = new QaScopePlanner(catalogApi, inventoryApi, locationApi, disabledJevScopeRecommender());
 
         catalogApi.items = List.of(item("牛奶"));
         catalogApi.itemNames = Map.of(ITEM_ID, "牛奶");
@@ -318,6 +318,14 @@ class QaScopePlannerTest {
 
     private static HouseholdFactQaModels.QaRequest request(String question, String answerScope) {
         return new HouseholdFactQaModels.QaRequest(question, null, answerScope, null, List.of());
+    }
+
+    private static JevQaScopeRecommender disabledJevScopeRecommender() {
+        JevSettings settings = new JevSettings(false, "", "http://localhost", "typesafe/jev-1.13", 1, 0.55);
+        JevDecisionClient client = (state, questionId, instructions, criteria) -> {
+            throw new IllegalStateException("Jev should not be called when disabled");
+        };
+        return new JevQaScopeRecommender(settings, client);
     }
 
     private static final class StubCatalogApi implements CatalogApi {

@@ -59,6 +59,7 @@ class HouseholdFactQaService {
     private final SystemApi systemApi;
     private final KnowledgeQaService knowledgeQaService;
     private final QaScopePlanner scopePlanner;
+    private final JevFactToolPrerouter factToolPrerouter;
     private final AiQaExecutionGuard executionGuard;
     private final Clock clock;
 
@@ -70,6 +71,7 @@ class HouseholdFactQaService {
             SystemApi systemApi,
             KnowledgeQaService knowledgeQaService,
             QaScopePlanner scopePlanner,
+            JevFactToolPrerouter factToolPrerouter,
             AiQaExecutionGuard executionGuard,
             @Qualifier(AiClockConfig.AI_CLOCK) Clock clock
     ) {
@@ -80,6 +82,7 @@ class HouseholdFactQaService {
         this.systemApi = systemApi;
         this.knowledgeQaService = knowledgeQaService;
         this.scopePlanner = scopePlanner;
+        this.factToolPrerouter = factToolPrerouter;
         this.executionGuard = executionGuard;
         this.clock = clock;
     }
@@ -202,7 +205,8 @@ class HouseholdFactQaService {
         String summary;
         try {
             executionGuard.checkContext(session, SYSTEM_PROMPT + userPrompt);
-            summary = session.completeQa(SYSTEM_PROMPT, userPrompt, tools);
+            Object[] toolRegistration = factToolPrerouter.toolsForModel(tools, question, target);
+            summary = session.completeQa(SYSTEM_PROMPT, userPrompt, toolRegistration);
         } catch (AiRequestLimitException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -316,34 +320,8 @@ class HouseholdFactQaService {
     ) {
         var collector = new HouseholdFactQaModels.Collector();
         var tools = new HouseholdFactTools(householdId, queries, collector, target, inventoryApi);
-        String normalized = question.toLowerCase(java.util.Locale.ROOT);
-
-        if (target != null && "LOCATION".equals(target.type())) {
-            if (asksLocationMovements(normalized)) {
-                tools.itemMovements(null, 10, null, null, null, null);
-            } else {
-                tools.locationStock(null, "", 10);
-            }
-        } else if (containsAny(normalized, "流水", "入库", "领用", "报损", "变化", "操作人")
-                && target != null) {
-            fallbackItemId(householdId, target).ifPresentOrElse(
-                    itemId -> tools.itemMovements(itemId.toString(), 10, null, null, null, null),
-                    () -> collector.markFactSourceUnavailable());
-        } else if (asksPendingReminders(normalized)) {
-            tools.openReminderTasks(10);
-        } else if (asksSoonExpiring(normalized)) {
-            tools.expiringLots(30, 10);
-        } else if (asksExpiredLots(normalized)) {
-            tools.expiredLots(10);
-        } else if (containsAny(normalized, "低库存", "缺货", "短缺")) {
-            tools.lowStock(10);
-        } else if (target != null) {
-            fallbackItemId(householdId, target).ifPresentOrElse(
-                    itemId -> tools.itemStock(itemId.toString(), null, 10),
-                    () -> collector.markFactSourceUnavailable());
-        } else {
-            tools.searchItems("", 10);
-        }
+        HouseholdFactIntentLexicon.runStructuredFallback(
+                tools, question, householdId, target, inventoryApi, collector);
 
         OffsetDateTime dataTime = OffsetDateTime.now();
         boolean available = !collector.factSourceUnavailable();
@@ -368,44 +346,10 @@ class HouseholdFactQaService {
                 dataTime);
     }
 
-    private java.util.Optional<UUID> fallbackItemId(
-            UUID householdId,
-            HouseholdFactQaModels.QaTarget target
-    ) {
-        if ("ITEM".equals(target.type())) {
-            return java.util.Optional.of(target.id());
-        }
-        if ("LOT".equals(target.type())) {
-            return inventoryApi.findLot(householdId, target.id()).map(InventoryApi.LotFlat::itemId);
-        }
-        return java.util.Optional.empty();
-    }
-
-    private static boolean asksLocationMovements(String question) {
-        return containsAny(question, "流水", "进出", "入库", "领用", "报损");
-    }
-
-    private static boolean asksSoonExpiring(String question) {
-        return containsAny(question, "快过期", "临期", "到期") && !question.contains("已经过期");
-    }
-
-    private static boolean asksExpiredLots(String question) {
-        return question.contains("已经过期") || question.contains("过期");
-    }
-
     private static boolean asksForCompleteSet(String question) {
-        return containsAny(question, "全部", "总共", "一共", "所有");
-    }
-
-    private static boolean asksPendingReminders(String question) {
-        if (!question.contains("提醒")) {
-            return false;
-        }
-        return !containsAny(question, "提醒规则", "怎么设置", "如何设置", "系统配置");
-    }
-
-    private static boolean containsAny(String value, String... terms) {
-        return java.util.Arrays.stream(terms).anyMatch(value::contains);
+        String normalized = question == null ? "" : question.toLowerCase(java.util.Locale.ROOT);
+        return java.util.Arrays.stream(new String[] {"全部", "总共", "一共", "所有"})
+                .anyMatch(normalized::contains);
     }
 
     private String factQuestion(
